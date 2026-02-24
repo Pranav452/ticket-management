@@ -244,7 +244,7 @@ export function ImportDropzone({ defaultModule, userId }: ImportDropzoneProps) {
           </label>
           <div className="space-y-2">
             {configStatuses.map((s, i) => (
-              <div key={s.colorHex} className="flex items-center gap-3 bg-neutral-900 rounded-lg px-3 py-2 border border-neutral-800">
+              <div key={`status-${i}`} className="flex items-center gap-3 bg-neutral-900 rounded-lg px-3 py-2 border border-neutral-800">
                 <span
                   className="size-4 rounded-full flex-shrink-0"
                   style={{ backgroundColor: `#${s.colorHex}` }}
@@ -282,8 +282,8 @@ export function ImportDropzone({ defaultModule, userId }: ImportDropzoneProps) {
               onChange={(e) => setUniqueKeyField(e.target.value)}
               className="w-full appearance-none bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2.5 text-sm text-neutral-200 focus:outline-none focus:border-amber-600"
             >
-              {preview.columns.map((col) => (
-                <option key={col} value={col}>{col}</option>
+              {preview.columns.map((col, i) => (
+                <option key={`opt-${i}`} value={col}>{col}</option>
               ))}
             </select>
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-neutral-600 pointer-events-none" />
@@ -299,11 +299,11 @@ export function ImportDropzone({ defaultModule, userId }: ImportDropzoneProps) {
             These fields appear on each work order card at a glance.
           </p>
           <div className="flex flex-wrap gap-2">
-            {preview.columns.map((col) => {
+            {preview.columns.map((col, i) => {
               const selected = cardFaceFields.includes(col);
               return (
                 <button
-                  key={col}
+                  key={`face-${i}`}
                   onClick={() => {
                     if (selected) {
                       setCardFaceFields((f) => f.filter((c) => c !== col));
@@ -334,8 +334,8 @@ export function ImportDropzone({ defaultModule, userId }: ImportDropzoneProps) {
               <table className="text-xs text-neutral-400 min-w-full">
                 <thead className="bg-neutral-900 border-b border-neutral-800">
                   <tr>
-                    {cardFaceFields.map((col) => (
-                      <th key={col} className="px-3 py-2 text-left font-medium text-neutral-500">
+                    {cardFaceFields.map((col, i) => (
+                      <th key={`th-${i}`} className="px-3 py-2 text-left font-medium text-neutral-500">
                         {col}
                       </th>
                     ))}
@@ -344,8 +344,8 @@ export function ImportDropzone({ defaultModule, userId }: ImportDropzoneProps) {
                 <tbody>
                   {preview.preview.map((row, i) => (
                     <tr key={i} className="border-b border-neutral-800/50 hover:bg-neutral-900/50">
-                      {cardFaceFields.map((col) => (
-                        <td key={col} className="px-3 py-2 text-neutral-300 max-w-[140px] truncate">
+                      {cardFaceFields.map((col, ci) => (
+                        <td key={`td-${ci}`} className="px-3 py-2 text-neutral-300 max-w-[140px] truncate">
                           {String(row[col] ?? "")}
                         </td>
                       ))}

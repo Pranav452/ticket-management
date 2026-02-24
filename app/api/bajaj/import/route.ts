@@ -10,13 +10,57 @@ function getAdminClient() {
   );
 }
 
+// ExcelJS ARGB format is AARRGGBB — strip the alpha prefix
 function hexFromARGB(argb: string | undefined): string | null {
   if (!argb || argb.length < 6) return null;
-  // ExcelJS ARGB format: AARRGGBB — drop the AA prefix
   const hex = argb.length === 8 ? argb.slice(2) : argb;
-  return hex.toUpperCase();
+  const upper = hex.toUpperCase();
+  // Ignore white and empty fills
+  if (upper === "FFFFFF" || upper === "000000" || upper === "00FFFFFF") return null;
+  return upper;
 }
 
+// Scan a row for a fill colour — check all cells up to maxCols
+function getRowFillHex(row: ExcelJS.Row, maxCols: number): string | null {
+  for (let c = 1; c <= maxCols; c++) {
+    const cell = row.getCell(c);
+    const fill = cell.fill as { fgColor?: { argb?: string } } | undefined;
+    const hex = hexFromARGB(fill?.fgColor?.argb);
+    if (hex) return hex;
+  }
+  return null;
+}
+
+// ── Sheet-name fuzzy matcher ──────────────────────────────────────────────────
+// Handles: "Tirumph" ↔ "triumph", "NIgeria" ↔ "nigeria", "SriLanka" ↔ "srilanka"
+function sheetMatchesSlug(sheetName: string, slug: string): boolean {
+  const norm = (s: string) => s.toLowerCase().replace(/[\s\-_]/g, "");
+  const s = norm(sheetName);
+  const t = norm(slug);
+  if (s === t) return true;
+  // One contains the other
+  if (s.includes(t) || t.includes(s)) return true;
+  // First 5 characters match (handles Tirumph/triumph, SriLanka/srilanka)
+  if (s.length >= 4 && t.length >= 4 && s.slice(0, 5) === t.slice(0, 5)) return true;
+  return false;
+}
+
+// ── Build unique column headers (handle duplicate names in Excel) ─────────────
+function buildUniqueHeaders(row: ExcelJS.Row): string[] {
+  const seen = new Map<string, number>();
+  const headers: string[] = [];
+  row.eachCell({ includeEmpty: true }, (cell) => {
+    const raw = cell.text?.trim() ?? "";
+    if (!raw) {
+      headers.push(""); // keep position
+      return;
+    }
+    const count = seen.get(raw) ?? 0;
+    seen.set(raw, count + 1);
+    headers.push(count === 0 ? raw : `${raw}_${count + 1}`);
+  });
+  return headers;
+}
 
 // ─── POST /api/bajaj/import?module=srilanka&phase=preview|confirm ─────────────
 export async function POST(req: NextRequest) {
@@ -29,7 +73,6 @@ export async function POST(req: NextRequest) {
 
   const supabase = getAdminClient();
 
-  // Look up module
   const { data: mod, error: modError } = await supabase
     .from("bajaj_modules")
     .select("id")
@@ -40,7 +83,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Module not found" }, { status: 404 });
   }
 
-  // Parse multipart form — get the file
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
   if (!file) {
@@ -52,77 +94,106 @@ export async function POST(req: NextRequest) {
   await workbook.xlsx.load(arrayBuffer);
 
   // ─── Read Color Coding Legend sheet ────────────────────────────────────────
+  // The legend sheet can have many layouts. We scan EVERY cell in each row:
+  //   - First cell with a fill colour → that's the status colour
+  //   - All text-bearing cells → joined = status name
   const legendSheet = workbook.getWorksheet("Color Coding Legend");
   const colorMap = new Map<string, string>(); // hex → status name
 
   if (legendSheet) {
     legendSheet.eachRow((row, rowNumber) => {
-      if (rowNumber === 1) return; // skip header
-      const nameCell = row.getCell(1);
-      const colorCell = row.getCell(2); // assume col B has the hex or fill
+      if (rowNumber === 1) return; // skip header row
 
-      // Try to read fill color from cell A (the colored cell)
-      const fill = nameCell.fill as { fgColor?: { argb?: string } } | undefined;
-      const argb = fill?.fgColor?.argb;
-      const hex = hexFromARGB(argb);
-      const name = nameCell.text?.trim() || colorCell.text?.trim();
+      let foundHex: string | null = null;
+      const textParts: string[] = [];
 
-      if (hex && name) {
-        colorMap.set(hex, name);
+      // Scan ALL cells in this legend row
+      row.eachCell({ includeEmpty: false }, (cell) => {
+        // Collect text
+        const txt = cell.text?.trim();
+        if (txt && !/^[0-9A-Fa-f]{6}$/.test(txt)) {
+          // Ignore bare hex strings like "FFFF00" as text — those are code labels
+          textParts.push(txt);
+        }
+
+        // Collect fill colour (first found wins)
+        if (!foundHex) {
+          const fill = cell.fill as { fgColor?: { argb?: string } } | undefined;
+          const hex = hexFromARGB(fill?.fgColor?.argb);
+          if (hex) foundHex = hex;
+        }
+      });
+
+      // If we found a colour, map it to the best available name
+      if (foundHex) {
+        const name = textParts.join(" ").trim() || `Status (${foundHex})`;
+        if (!colorMap.has(foundHex)) {
+          colorMap.set(foundHex, name);
+        }
       }
     });
   }
 
-  // ─── Read target sheet ─────────────────────────────────────────────────────
-  // Try exact match first, then case-insensitive
-  let dataSheet = workbook.getWorksheet(moduleSlug);
-  if (!dataSheet) {
-    workbook.eachSheet((sheet) => {
-      if (sheet.name.toLowerCase().replace(/\s/g, "") === moduleSlug.toLowerCase()) {
-        dataSheet = sheet;
-      }
-    });
-  }
-  // Fallback: first non-legend sheet
-  if (!dataSheet) {
-    workbook.eachSheet((sheet) => {
-      if (!dataSheet && !sheet.name.toLowerCase().includes("legend") && !sheet.name.toLowerCase().includes("original")) {
-        dataSheet = sheet;
-      }
-    });
+  // ─── Find target sheet (fuzzy match) ──────────────────────────────────────
+  // Priority: exact → normalised exact → starts-with / contains → first data sheet
+  const SKIP_SHEET_KEYWORDS = ["legend", "original data", "original"];
+
+  function isSkipSheet(name: string) {
+    return SKIP_SHEET_KEYWORDS.some((k) => name.toLowerCase().includes(k));
   }
 
-  if (!dataSheet) {
-    return NextResponse.json({ error: `Sheet not found for module: ${moduleSlug}` }, { status: 404 });
-  }
+  let dataSheet: ExcelJS.Worksheet | undefined;
 
-  // Get headers from row 1
-  const headers: string[] = [];
-  const headerRow = dataSheet.getRow(1);
-  headerRow.eachCell((cell) => {
-    headers.push(cell.text?.trim() ?? "");
+  // Pass 1: exact or fuzzy match on slug
+  workbook.eachSheet((sheet) => {
+    if (!dataSheet && !isSkipSheet(sheet.name) && sheetMatchesSlug(sheet.name, moduleSlug)) {
+      dataSheet = sheet;
+    }
   });
 
-  // Collect statuses from data rows
-  const detectedStatuses = new Map<string, { hex: string; name: string; count: number }>();
+  // Pass 2: fallback — first non-legend, non-original sheet
+  if (!dataSheet) {
+    workbook.eachSheet((sheet) => {
+      if (!dataSheet && !isSkipSheet(sheet.name)) {
+        dataSheet = sheet;
+      }
+    });
+  }
+
+  if (!dataSheet) {
+    // Return available sheet names to help debug
+    const names: string[] = [];
+    workbook.eachSheet((s) => names.push(s.name));
+    return NextResponse.json(
+      { error: `No matching sheet for "${moduleSlug}". Available: ${names.join(", ")}` },
+      { status: 404 }
+    );
+  }
+
+  // ─── Build column headers (deduplicated) ─────────────────────────────────
+  const headers = buildUniqueHeaders(dataSheet.getRow(1));
+  // Count how many columns actually have headers
+  const lastHeaderIdx = headers.reduce((last, h, i) => (h ? i : last), -1);
+  const activeHeaders = headers.slice(0, lastHeaderIdx + 1);
+
+  // ─── Scan data rows ───────────────────────────────────────────────────────
+  const detectedStatuses = new Map<string, { colorHex: string; name: string; rowCount: number }>();
   const rows: { data: Record<string, unknown>; colorHex: string | null }[] = [];
 
   dataSheet.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return;
 
-    // Determine row color from first cell fill
-    const firstCell = row.getCell(1);
-    const fill = firstCell.fill as { fgColor?: { argb?: string } } | undefined;
-    const argb = fill?.fgColor?.argb;
-    const hex = hexFromARGB(argb);
+    // Detect fill colour across the whole row (handles colour in any column)
+    const hex = getRowFillHex(row, Math.max(activeHeaders.length, 5));
 
-    // Build row data object
+    // Build data object
     const rowData: Record<string, unknown> = {};
     let hasData = false;
     row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
-      const header = headers[colNumber - 1];
+      const header = activeHeaders[colNumber - 1];
       if (header) {
-        rowData[header] = cell.text?.trim() ?? cell.value;
+        const raw = cell.text?.trim() ?? "";
+        rowData[header] = raw !== "" ? raw : cell.value;
         hasData = true;
       }
     });
@@ -133,26 +204,31 @@ export async function POST(req: NextRequest) {
     if (hex) {
       if (!detectedStatuses.has(hex)) {
         const name = colorMap.get(hex) ?? `Status (${hex})`;
-        detectedStatuses.set(hex, { hex, name, count: 0 });
+        detectedStatuses.set(hex, { colorHex: hex, name, rowCount: 0 });
       }
-      detectedStatuses.get(hex)!.count++;
+      detectedStatuses.get(hex)!.rowCount++;
     }
   });
 
   const statuses = Array.from(detectedStatuses.values());
+  // If no statuses detected from fills, add a default "Unclassified" bucket
+  const statusesOut = statuses.length > 0
+    ? statuses
+    : [{ colorHex: "808080", name: "Unclassified", rowCount: rows.length }];
 
-  // ── PREVIEW phase: return columns + statuses + sample rows ─────────────────
+  // ── PREVIEW phase ──────────────────────────────────────────────────────────
   if (phase === "preview") {
     return NextResponse.json({
-      statuses,
-      columns: headers.filter(Boolean),
+      statuses: statusesOut,
+      columns: activeHeaders.filter(Boolean),
       preview: rows.slice(0, 5).map((r) => r.data),
       totalRows: rows.length,
       moduleSlug,
+      sheetName: (dataSheet as ExcelJS.Worksheet).name,
     });
   }
 
-  // ── CONFIRM phase: save config + insert work orders ────────────────────────
+  // ── CONFIRM phase ──────────────────────────────────────────────────────────
   const configRaw = formData.get("config");
   if (!configRaw) {
     return NextResponse.json({ error: "Missing config for confirm phase" }, { status: 400 });
@@ -165,9 +241,8 @@ export async function POST(req: NextRequest) {
     importedBy: string;
   };
 
-  // Upsert statuses into DB
-  const statusIdMap = new Map<string, string>(); // hex → uuid
-
+  // Upsert statuses
+  const statusIdMap = new Map<string, string>();
   for (let i = 0; i < config.statuses.length; i++) {
     const s = config.statuses[i];
     const { data: existing } = await supabase
@@ -178,7 +253,6 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (existing) {
-      // Update name + display_order
       await supabase
         .from("bajaj_statuses")
         .update({ name: s.name, display_order: i })
@@ -202,17 +276,19 @@ export async function POST(req: NextRequest) {
     updated_at: new Date().toISOString(),
   });
 
-  // Fetch existing unique key values for deduplication
+  // Deduplication
   const { data: existingWOs } = await supabase
     .from("bajaj_work_orders")
     .select("data")
     .eq("module_id", mod.id);
 
   const existingKeys = new Set(
-    (existingWOs ?? []).map((wo) => String((wo.data as Record<string, unknown>)[config.uniqueKeyField] ?? ""))
+    (existingWOs ?? []).map((wo) =>
+      String((wo.data as Record<string, unknown>)[config.uniqueKeyField] ?? "")
+    )
   );
 
-  // Create import batch
+  // Import batch
   const { data: batch } = await supabase
     .from("bajaj_import_batches")
     .insert({
@@ -226,17 +302,15 @@ export async function POST(req: NextRequest) {
     .single();
 
   // Insert new rows
-  const toInsert = [];
+  const toInsert: Record<string, unknown>[] = [];
   let addedCount = 0;
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const uniqueVal = String(row.data[config.uniqueKeyField] ?? "");
-
     if (existingKeys.has(uniqueVal) && uniqueVal !== "") continue;
 
-    const statusId = row.colorHex ? statusIdMap.get(row.colorHex) ?? null : null;
-
+    const statusId = row.colorHex ? (statusIdMap.get(row.colorHex) ?? null) : null;
     toInsert.push({
       module_id: mod.id,
       status_id: statusId,
@@ -251,7 +325,6 @@ export async function POST(req: NextRequest) {
     await supabase.from("bajaj_work_orders").insert(toInsert);
   }
 
-  // Update batch added count
   if (batch) {
     await supabase
       .from("bajaj_import_batches")
@@ -259,14 +332,19 @@ export async function POST(req: NextRequest) {
       .eq("id", batch.id);
   }
 
-  // Write audit log
   await supabase.from("bajaj_audit_logs").insert({
     actor_id: config.importedBy,
     actor_email: "system",
     action: "imported",
     target_type: "import_batch",
     target_id: batch?.id ?? null,
-    new_value: { module: moduleSlug, filename: file.name, added: addedCount, skipped: rows.length - addedCount },
+    new_value: {
+      module: moduleSlug,
+      sheet: (dataSheet as ExcelJS.Worksheet).name,
+      filename: file.name,
+      added: addedCount,
+      skipped: rows.length - addedCount,
+    },
   });
 
   return NextResponse.json({
@@ -274,5 +352,6 @@ export async function POST(req: NextRequest) {
     added: addedCount,
     skipped: rows.length - addedCount,
     total: rows.length,
+    sheetName: (dataSheet as ExcelJS.Worksheet).name,
   });
 }
