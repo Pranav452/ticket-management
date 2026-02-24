@@ -1,10 +1,9 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { ModuleSelector } from "@/components/bajaj/ModuleSelector";
 
 export const dynamic = "force-dynamic";
 
-// The root `/` page now lives inside app/(app)/page.tsx.
-// This file redirects to the appropriate dashboard based on auth state.
 export default async function RootPage() {
   const supabase = await createClient();
   const {
@@ -17,13 +16,9 @@ export default async function RootPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, full_name, email, avatar_url, id, created_at")
     .eq("id", user.id)
     .single();
 
-  if (profile?.role === "dev") {
-    redirect("/dashboard");
-  }
-
-  redirect("/tickets");
+  return <ModuleSelector profile={profile} />;
 }

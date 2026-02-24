@@ -17,6 +17,8 @@ import {
   LogOut,
   Ticket,
   MessageSquare,
+  Ship,
+  BarChart2,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { motion } from "framer-motion";
@@ -55,6 +57,23 @@ const navLinks = [
     href: "/settings",
     icon: (
       <Settings className="text-neutral-400 dark:text-neutral-300 size-5 flex-shrink-0" />
+    ),
+  },
+];
+
+const bajajLinks = [
+  {
+    label: "Bajaj Board",
+    href: "/bajaj/boards/vipar",
+    icon: (
+      <Ship className="text-amber-500 size-5 flex-shrink-0" />
+    ),
+  },
+  {
+    label: "Bajaj Analytics",
+    href: "/bajaj/dashboard",
+    icon: (
+      <BarChart2 className="text-amber-500 size-5 flex-shrink-0" />
     ),
   },
 ];
@@ -149,6 +168,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             {navLinks.map((link, idx) => (
               <SidebarLink key={idx} link={link} href={link.href} />
             ))}
+
+            {/* Bajaj module section */}
+            <div className="my-1 border-t border-neutral-800 pt-2">
+              {bajajLinks.map((link, idx) => (
+                <SidebarLink key={`bajaj-${idx}`} link={link} href={link.href} />
+              ))}
+            </div>
+
             <div className="mt-2">
               <LogoutButton />
             </div>
