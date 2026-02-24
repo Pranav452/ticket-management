@@ -13,7 +13,7 @@ interface WorkOrderCardProps {
   statusColor: string;
 }
 
-const HAZARD_KEYS = ["hazard", "hazardous", "dangerous", "dg", "imo", "un_no"];
+const HAZARD_KEYS = ["hazard", "hazardous", "haz", "dangerous", "dg", "imo", "un_no"];
 
 function isHazardous(data: Record<string, unknown>): boolean {
   return Object.entries(data).some(([k, v]) => {

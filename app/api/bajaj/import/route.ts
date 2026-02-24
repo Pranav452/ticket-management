@@ -20,12 +20,22 @@ function hexFromARGB(argb: string | undefined): string | null {
   return upper;
 }
 
-// Scan a row for a fill colour — check all cells up to maxCols
-function getRowFillHex(row: ExcelJS.Row, maxCols: number): string | null {
+// Scan a row for a colour indicator — background fill first, font colour as fallback.
+// This handles both fill-coloured rows (Yellow/Green/Pink/Orange/Cyan) AND
+// font-coloured rows (Red font = HAZ Container).
+function getRowColorHex(row: ExcelJS.Row, maxCols: number): string | null {
+  // Pass 1: background fill (highest priority — yellow/green/pink/orange/cyan)
   for (let c = 1; c <= maxCols; c++) {
     const cell = row.getCell(c);
     const fill = cell.fill as { fgColor?: { argb?: string } } | undefined;
     const hex = hexFromARGB(fill?.fgColor?.argb);
+    if (hex) return hex;
+  }
+  // Pass 2: font colour (fallback — red font = HAZ Container, or other font-coded rows)
+  for (let c = 1; c <= maxCols; c++) {
+    const cell = row.getCell(c);
+    const font = cell.font as { color?: { argb?: string } } | undefined;
+    const hex = hexFromARGB(font?.color?.argb);
     if (hex) return hex;
   }
   return null;
@@ -94,8 +104,9 @@ export async function POST(req: NextRequest) {
   await workbook.xlsx.load(arrayBuffer);
 
   // ─── Read Color Coding Legend sheet ────────────────────────────────────────
-  // The legend sheet can have many layouts. We scan EVERY cell in each row:
-  //   - First cell with a fill colour → that's the status colour
+  // Scans EVERY cell in each legend row:
+  //   - Background fill colour → status colour (e.g. Yellow, Green, Pink, Orange, Cyan)
+  //   - Font colour fallback → for HAZ Container which uses red font, not background fill
   //   - All text-bearing cells → joined = status name
   const legendSheet = workbook.getWorksheet("Color Coding Legend");
   const colorMap = new Map<string, string>(); // hex → status name
@@ -116,10 +127,17 @@ export async function POST(req: NextRequest) {
           textParts.push(txt);
         }
 
-        // Collect fill colour (first found wins)
+        // Priority 1: background fill colour
         if (!foundHex) {
           const fill = cell.fill as { fgColor?: { argb?: string } } | undefined;
           const hex = hexFromARGB(fill?.fgColor?.argb);
+          if (hex) foundHex = hex;
+        }
+
+        // Priority 2: font colour (catches "HAZ Container" entries styled with red text, no fill)
+        if (!foundHex) {
+          const font = cell.font as { color?: { argb?: string } } | undefined;
+          const hex = hexFromARGB(font?.color?.argb);
           if (hex) foundHex = hex;
         }
       });
@@ -183,8 +201,8 @@ export async function POST(req: NextRequest) {
   dataSheet.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return;
 
-    // Detect fill colour across the whole row (handles colour in any column)
-    const hex = getRowFillHex(row, Math.max(activeHeaders.length, 5));
+    // Detect colour across the whole row: background fill first, font colour fallback
+    const hex = getRowColorHex(row, Math.max(activeHeaders.length, 5));
 
     // Build data object
     const rowData: Record<string, unknown> = {};
