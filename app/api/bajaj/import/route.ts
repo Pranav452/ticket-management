@@ -10,6 +10,19 @@ function getAdminClient() {
   );
 }
 
+// Strip colour-descriptor text that appears in legend rows alongside the real status name.
+// e.g. "Shipment Complete Yellow Background" → keeps "Shipment Complete"
+//      "HAZ Container (Yes) Red Font Color"  → keeps "HAZ Container (Yes)"
+function stripColorDescriptor(text: string): string {
+  // Matches trailing phrases like "Yellow Background", "Red Font Color", "Pink Colour", etc.
+  return text
+    .replace(/\b(yellow|green|red|blue|orange|pink|cyan|aqua|grey|gray|purple|white|black|brown)\s+(background|font\s+colou?r|colou?r|fill|shading)\b/gi, "")
+    .replace(/\bfont\s+colou?r\b/gi, "")
+    .replace(/\b(background|colou?r|fill)\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 // ExcelJS ARGB format is AARRGGBB — strip the alpha prefix
 function hexFromARGB(argb: string | undefined): string | null {
   if (!argb || argb.length < 6) return null;
@@ -142,9 +155,10 @@ export async function POST(req: NextRequest) {
         }
       });
 
-      // If we found a colour, map it to the best available name
+      // If we found a colour, map it to the cleaned status name
       if (foundHex) {
-        const name = textParts.join(" ").trim() || `Status (${foundHex})`;
+        const rawName = textParts.join(" ").trim();
+        const name = stripColorDescriptor(rawName) || `Status (${foundHex})`;
         if (!colorMap.has(foundHex)) {
           colorMap.set(foundHex, name);
         }
@@ -228,10 +242,30 @@ export async function POST(req: NextRequest) {
     }
   });
 
-  const statuses = Array.from(detectedStatuses.values());
-  // If no statuses detected from fills, add a default "Unclassified" bucket
-  const statusesOut = statuses.length > 0
-    ? statuses
+  // ─── Merge legend colours + data-detected colours ─────────────────────────
+  // Legend colours always appear as columns (rowCount=0 if no rows use that colour yet).
+  // This ensures all 7 Kanban columns exist even if a particular sheet only uses 3 of them.
+  const mergedStatuses: { colorHex: string; name: string; rowCount: number }[] = [];
+
+  // 1. Start with every colour from the Color Coding Legend
+  for (const [hex, name] of colorMap.entries()) {
+    mergedStatuses.push({
+      colorHex: hex,
+      name,
+      rowCount: detectedStatuses.get(hex)?.rowCount ?? 0,
+    });
+  }
+
+  // 2. Add any colours found in data rows that aren't already in the legend
+  for (const stat of detectedStatuses.values()) {
+    if (!colorMap.has(stat.colorHex)) {
+      mergedStatuses.push(stat);
+    }
+  }
+
+  // 3. Fallback: if legend is missing AND no data colours found
+  const statusesOut = mergedStatuses.length > 0
+    ? mergedStatuses
     : [{ colorHex: "808080", name: "Unclassified", rowCount: rows.length }];
 
   // ── PREVIEW phase ──────────────────────────────────────────────────────────
