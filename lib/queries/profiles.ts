@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/lib/types";
 
@@ -41,5 +41,18 @@ export function useProfiles() {
       if (error) throw error;
       return (data ?? []) as Profile[];
     },
+  });
+}
+
+// ─── Update current user's profile ───────────────────────
+export function useUpdateProfile() {
+  const qc = useQueryClient();
+  const supabase = createClient();
+  return useMutation({
+    mutationFn: async ({ id, full_name }: { id: string; full_name: string }) => {
+      const { error } = await supabase.from("profiles").update({ full_name }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["profile"] }),
   });
 }

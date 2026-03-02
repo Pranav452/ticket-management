@@ -2,12 +2,10 @@
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, User, Send, Loader2, ChevronDown, ChevronUp, AlertTriangle, CheckCircle } from "lucide-react";
-import { useWorkOrder, useUpdateWorkOrder, useBajajComments, useAddBajajComment } from "@/lib/queries/bajaj";
+import { X, User, Send, Loader2, AlertTriangle, CheckCircle, BellPlus } from "lucide-react";
+import { useWorkOrder, useUpdateWorkOrder, useBajajComments, useAddBajajComment, useCreateBajajReminder } from "@/lib/queries/bajaj";
 import { useProfiles } from "@/lib/queries/profiles";
 import { useAuthStore } from "@/lib/stores/auth-store";
-import { createClient } from "@/lib/supabase/client";
-import type { BajajWorkOrder } from "@/lib/types/bajaj";
 
 interface WorkOrderDetailPanelProps {
   workOrderId: string;
@@ -58,12 +56,13 @@ function EditableField({
   );
 }
 
-export function WorkOrderDetailPanel({ workOrderId, onClose, isAdmin }: WorkOrderDetailPanelProps) {
+export function WorkOrderDetailPanel({ workOrderId, onClose, isAdmin: _isAdmin }: WorkOrderDetailPanelProps) {
   const { data: workOrder, isLoading } = useWorkOrder(workOrderId);
   const { data: comments = [] } = useBajajComments(workOrderId);
   const { data: profiles = [] } = useProfiles();
   const updateWorkOrder = useUpdateWorkOrder();
   const addComment = useAddBajajComment();
+  const createReminder = useCreateBajajReminder();
   const { profile: currentProfile } = useAuthStore();
 
   const [commentText, setCommentText] = useState("");
@@ -71,8 +70,13 @@ export function WorkOrderDetailPanel({ workOrderId, onClose, isAdmin }: WorkOrde
   const [notifyMsg, setNotifyMsg] = useState("");
   const [notifySending, setNotifySending] = useState(false);
   const [notifyResult, setNotifyResult] = useState<"sent" | "error" | null>(null);
-  const [showAudit, setShowAudit] = useState(false);
+  const [remindInDays, setRemindInDays] = useState("2");
+  const [remindEmails, setRemindEmails] = useState("");
+  const [remindMsg, setRemindMsg] = useState("");
+  const [remindResult, setRemindResult] = useState<"scheduled" | "error" | null>(null);
+  const [remindError, setRemindError] = useState<string | null>(null);
   const [assignee, setAssignee] = useState<string | null>(workOrder?.assigned_to ?? null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
 
   // Close on Escape
   useEffect(() => {
@@ -85,18 +89,34 @@ export function WorkOrderDetailPanel({ workOrderId, onClose, isAdmin }: WorkOrde
 
   function handleFieldSave(field: string, newValue: string) {
     if (!workOrder) return;
-    updateWorkOrder.mutate({
-      id: workOrderId,
-      updates: { data: { ...workOrder.data, [field]: newValue } },
-    });
+    setUpdateError(null);
+    updateWorkOrder.mutate(
+      {
+        id: workOrderId,
+        updates: { data: { ...workOrder.data, [field]: newValue } },
+      },
+      {
+        onError: (err) => {
+          setUpdateError(err instanceof Error ? err.message : "Update failed");
+        },
+      },
+    );
   }
 
   function handleAssigneeChange(profileId: string) {
     setAssignee(profileId || null);
-    updateWorkOrder.mutate({
-      id: workOrderId,
-      updates: { assigned_to: profileId || null },
-    });
+    setUpdateError(null);
+    updateWorkOrder.mutate(
+      {
+        id: workOrderId,
+        updates: { assigned_to: profileId || null },
+      },
+      {
+        onError: (err) => {
+          setUpdateError(err instanceof Error ? err.message : "Update failed");
+        },
+      },
+    );
   }
 
   async function handleSendComment() {
@@ -136,6 +156,69 @@ export function WorkOrderDetailPanel({ workOrderId, onClose, isAdmin }: WorkOrde
       setNotifyResult("error");
     } finally {
       setNotifySending(false);
+    }
+  }
+
+  function parseEmails(raw: string): string[] {
+    const parts = raw
+      .split(/[\s,;]+/g)
+      .map((p) => p.trim())
+      .filter(Boolean);
+    const unique = new Set<string>();
+    for (const p of parts) {
+      unique.add(p.toLowerCase());
+    }
+    return Array.from(unique);
+  }
+
+  async function handleScheduleReminder() {
+    if (!workOrder) return;
+    setRemindResult(null);
+    setRemindError(null);
+
+    const days = Number(remindInDays);
+    if (!Number.isFinite(days) || days <= 0 || days > 365) {
+      setRemindError("Days must be between 1 and 365.");
+      return;
+    }
+
+    const recipients = Array.from(
+      new Set<string>([
+        ...parseEmails(notifyEmail),
+        ...parseEmails(remindEmails),
+      ]),
+    );
+    if (recipients.length === 0) {
+      setRemindError("Add at least one recipient email to schedule a reminder.");
+      return;
+    }
+    if (!remindMsg.trim()) {
+      setRemindError("Reminder message is required.");
+      return;
+    }
+
+    const uniqueKeyValue = workOrder?.data
+      ? Object.values(workOrder.data)[0]
+      : workOrderId;
+
+    try {
+      await createReminder.mutateAsync({
+        work_order_id: workOrderId,
+        module_id: workOrder.module_id,
+        work_order_summary: String(uniqueKeyValue),
+        days_offset: days,
+        due_at: new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString(),
+        recipients,
+        message: remindMsg.trim(),
+        status: "scheduled",
+        created_by: currentProfile?.id ?? null,
+      });
+      setRemindResult("scheduled");
+      setRemindEmails("");
+      setRemindMsg("");
+    } catch (err) {
+      setRemindResult("error");
+      setRemindError(err instanceof Error ? err.message : "Failed to schedule reminder.");
     }
   }
 
@@ -203,6 +286,11 @@ export function WorkOrderDetailPanel({ workOrderId, onClose, isAdmin }: WorkOrde
               <p className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-3">
                 Work Order Fields
               </p>
+              {updateError && (
+                <div className="mb-3 rounded-lg border border-red-800 bg-red-950/40 px-3 py-2 text-xs text-red-400">
+                  {updateError}
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                 {fieldEntries.map(([key, val]) => (
                   <EditableField
@@ -250,6 +338,89 @@ export function WorkOrderDetailPanel({ workOrderId, onClose, isAdmin }: WorkOrde
                     </span>
                   )}
                   {notifyResult === "error" && (
+                    <span className="flex items-center gap-1 text-xs text-red-400">
+                      <AlertTriangle className="size-3.5" /> Failed
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* ── Reminder ─────────────────────────────────────── */}
+              <div className="mt-5 pt-4 border-t border-neutral-800">
+                <p className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-2">
+                  Set Reminder
+                </p>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-neutral-600 uppercase tracking-wide">
+                      Remind in (days)
+                    </label>
+                    <input
+                      inputMode="numeric"
+                      placeholder="e.g. 2"
+                      value={remindInDays}
+                      onChange={(e) => setRemindInDays(e.target.value)}
+                      className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-200 placeholder:text-neutral-600 focus:outline-none focus:border-amber-600"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-neutral-600 uppercase tracking-wide">
+                      Additional recipients
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="comma/space separated…"
+                      value={remindEmails}
+                      onChange={(e) => setRemindEmails(e.target.value)}
+                      className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-200 placeholder:text-neutral-600 focus:outline-none focus:border-amber-600"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-2 space-y-1">
+                  <label className="text-[10px] text-neutral-600 uppercase tracking-wide">
+                    Reminder message
+                  </label>
+                  <textarea
+                    placeholder="What should the reminder say?"
+                    value={remindMsg}
+                    onChange={(e) => setRemindMsg(e.target.value)}
+                    rows={3}
+                    className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-200 placeholder:text-neutral-600 focus:outline-none focus:border-amber-600 resize-none"
+                  />
+                  <p className="text-[11px] text-neutral-600">
+                    Reminder will appear in the top bell and be emailed to all recipients (includes the email above if provided).
+                  </p>
+                </div>
+
+                {remindError && (
+                  <div className="mt-2 rounded-lg border border-red-800 bg-red-950/40 px-3 py-2 text-xs text-red-400">
+                    {remindError}
+                  </div>
+                )}
+
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleScheduleReminder}
+                    disabled={createReminder.isPending}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-neutral-800 text-xs font-medium text-neutral-200 hover:bg-neutral-700 disabled:opacity-50 transition-colors"
+                  >
+                    {createReminder.isPending ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <BellPlus className="size-3.5" />
+                    )}
+                    Schedule
+                  </button>
+                  {remindResult === "scheduled" && (
+                    <span className="flex items-center gap-1 text-xs text-emerald-400">
+                      <CheckCircle className="size-3.5" /> Scheduled
+                    </span>
+                  )}
+                  {remindResult === "error" && !remindError && (
                     <span className="flex items-center gap-1 text-xs text-red-400">
                       <AlertTriangle className="size-3.5" /> Failed
                     </span>
@@ -309,23 +480,6 @@ export function WorkOrderDetailPanel({ workOrderId, onClose, isAdmin }: WorkOrde
                   <Send className="size-3.5" />
                 </button>
               </div>
-            </div>
-
-            {/* ── Audit history (collapsible) ───────────────────── */}
-            <div className="px-5 py-4">
-              <button
-                onClick={() => setShowAudit((v) => !v)}
-                className="flex items-center gap-2 text-xs font-medium text-neutral-500 hover:text-neutral-300 transition-colors"
-              >
-                {showAudit ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
-                Audit History
-              </button>
-              {showAudit && (
-                <div className="mt-3 text-xs text-neutral-600">
-                  {/* Full audit log is loaded in the admin panel; here we show a simplified note */}
-                  <p>Full audit log is available in the Admin panel.</p>
-                </div>
-              )}
             </div>
           </div>
         ) : null}

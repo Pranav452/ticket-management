@@ -11,6 +11,7 @@ import type {
   BajajUser,
   BajajAuditLog,
   BajajAnalytics,
+  BajajReminder,
   WorkOrderFilters,
 } from "@/lib/types/bajaj";
 
@@ -349,13 +350,138 @@ export function useBajajAnalytics(moduleSlug?: string) {
         batchId: b.id,
       }));
 
+      // Fetch all work orders with data for container/BL analytics
+      let allWOQuery = supabase.from("bajaj_work_orders").select("data");
+      if (moduleSlug) {
+        const { data: modForAll } = await supabase
+          .from("bajaj_modules").select("id").eq("slug", moduleSlug).single();
+        if (modForAll) allWOQuery = allWOQuery.eq("module_id", modForAll.id);
+      }
+      const { data: allWorkOrders } = await allWOQuery;
+
+      const totalContainers = (allWorkOrders ?? []).reduce((s, wo) => s + (Number((wo.data as Record<string, unknown>)?.Cont) || 0), 0);
+      const totalBLs = (allWorkOrders ?? []).filter(wo => (wo.data as Record<string, unknown>)?.["BL NO"]).length;
+
+      const vesselMap = new Map<string, number>();
+      for (const wo of allWorkOrders ?? []) {
+        const d = wo.data as Record<string, unknown>;
+        const v = d?.["Vessel Name"] as string | undefined;
+        const c = Number(d?.Cont) || 0;
+        if (v) vesselMap.set(v, (vesselMap.get(v) ?? 0) + c);
+      }
+      const containersByVessel = [...vesselMap.entries()]
+        .map(([vesselName, containerCount]) => ({ vesselName, containerCount }))
+        .sort((a, b) => b.containerCount - a.containerCount);
+
+      const lineMap = new Map<string, number>();
+      for (const wo of allWorkOrders ?? []) {
+        const d = wo.data as Record<string, unknown>;
+        const l = d?.["S/LINE"] as string | undefined;
+        const c = Number(d?.Cont) || 0;
+        if (l) lineMap.set(l, (lineMap.get(l) ?? 0) + c);
+      }
+      const containersByLine = [...lineMap.entries()]
+        .map(([lineName, containerCount]) => ({ lineName, containerCount }))
+        .sort((a, b) => b.containerCount - a.containerCount);
+
+      const now = Date.now();
+      const blPendingAfterETD = (allWorkOrders ?? []).filter(wo => {
+        const d = wo.data as Record<string, unknown>;
+        const etd = d?.["CURRENT ETD"] as string | undefined;
+        const bl = d?.["BL NO"] as string | undefined;
+        return etd && new Date(etd).getTime() < now && !bl;
+      }).length;
+
+      const vesselsOverLimit = containersByVessel.filter(v => v.containerCount > 25);
+
       return {
         totalWorkOrders,
         byStatus,
         byModule,
         importTimeline,
+        totalContainers,
+        totalBLs,
+        containersByVessel,
+        containersByLine,
+        blPendingAfterETD,
+        vesselsOverLimit,
       } as BajajAnalytics;
     },
     staleTime: 60 * 1000,
+  });
+}
+
+// ─── Create work order (manual entry) ────────────────────────────────────────
+export function useCreateWorkOrder() {
+  const qc = useQueryClient();
+  const supabase = createClient();
+  return useMutation({
+    mutationFn: async ({ moduleSlug, data }: { moduleSlug: string; data: Record<string, string> }) => {
+      const { data: mod, error: modErr } = await supabase
+        .from('bajaj_modules').select('id').eq('slug', moduleSlug).single();
+      if (modErr || !mod) throw modErr ?? new Error('Module not found');
+      const { data: statuses, error: stErr } = await supabase
+        .from('bajaj_statuses').select('id').eq('module_id', mod.id).order('display_order').limit(1);
+      if (stErr || !statuses?.length) throw stErr ?? new Error('No statuses for module');
+      const { error } = await supabase.from('bajaj_work_orders')
+        .insert({ module_id: mod.id, status_id: statuses[0].id, data });
+      if (error) throw error;
+    },
+    onSuccess: (_, { moduleSlug }) =>
+      qc.invalidateQueries({ queryKey: ['bajaj-work-orders', moduleSlug] }),
+  });
+}
+
+// ─── Reminders ────────────────────────────────────────────────────────────────
+export function useBajajReminders() {
+  const supabase = createClient();
+  return useQuery({
+    queryKey: ['bajaj-reminders'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('bajaj_reminders').select('*').order('due_at');
+      if (error) throw error;
+      return (data ?? []) as BajajReminder[];
+    },
+  });
+}
+
+export function useCreateBajajReminder() {
+  const qc = useQueryClient();
+  const supabase = createClient();
+  return useMutation({
+    mutationFn: async (payload: Omit<BajajReminder, 'id' | 'created_at' | 'sent_at' | 'done_at'>) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await supabase.from('bajaj_reminders')
+        .insert({ ...payload, created_by: user?.id ?? null });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['bajaj-reminders'] }),
+  });
+}
+
+export function useUpdateBajajReminder() {
+  const qc = useQueryClient();
+  const supabase = createClient();
+  return useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: Partial<BajajReminder> }) => {
+      const { error } = await supabase.from('bajaj_reminders').update(updates).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['bajaj-reminders'] }),
+  });
+}
+
+export function useDeleteUserReminders() {
+  const qc = useQueryClient();
+  const supabase = createClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+      const { error } = await supabase.from('bajaj_reminders').delete().eq('created_by', user.id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['bajaj-reminders'] }),
   });
 }

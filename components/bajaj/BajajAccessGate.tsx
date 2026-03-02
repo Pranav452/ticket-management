@@ -95,8 +95,8 @@ export function BajajAccessGate({
                 Request Sent
               </h2>
               <p className="mt-2 text-sm text-neutral-500">
-                Your access request has been sent to the admin. You'll be able
-                to log in once it's approved.
+                Your access request has been sent to the admin. You&apos;ll be able
+                to log in once it&apos;s approved.
               </p>
             </div>
             <button
