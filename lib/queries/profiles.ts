@@ -1,45 +1,43 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/lib/types";
 
-const supabase = createClient();
+const demoProfiles: Profile[] = [
+  {
+    id: "demo-user-1",
+    email: "demo.user@example.com",
+    full_name: "Demo User",
+    avatar_url: null,
+    role: "dev",
+    created_at: new Date().toISOString(),
+  } as Profile,
+  {
+    id: "demo-user-2",
+    email: "assignee@example.com",
+    full_name: "Assignee Demo",
+    avatar_url: null,
+    role: "agent",
+    created_at: new Date().toISOString(),
+  } as Profile,
+];
 
-// ─── Fetch current user's profile ────────────────────────
+// ─── Fetch current user's profile (demo) ──────────────────
 export function useProfile() {
   return useQuery({
     queryKey: ["profile"],
     queryFn: async (): Promise<Profile | null> => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return null;
-
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .single();
-
-      if (error) throw error;
-      return data as Profile;
+      return demoProfiles[0] ?? null;
     },
   });
 }
 
-// ─── Fetch all profiles (for assigned-to dropdown) ───────
+// ─── Fetch all profiles (demo) ────────────────────────────
 export function useProfiles() {
   return useQuery({
     queryKey: ["profiles"],
     queryFn: async (): Promise<Profile[]> => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .order("full_name", { ascending: true });
-
-      if (error) throw error;
-      return (data ?? []) as Profile[];
+      return demoProfiles;
     },
   });
 }

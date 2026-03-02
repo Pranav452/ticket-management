@@ -2,7 +2,6 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { Shield, Clock, XCircle, Loader2 } from "lucide-react";
 
 type GateStatus = "not_found" | "pending" | "rejected";
@@ -30,14 +29,7 @@ export function BajajAccessGate({
     setLoading(true);
     setError(null);
     try {
-      const supabase = createClient();
-      const { error: err } = await supabase.from("bajaj_users").insert({
-        user_id: userId,
-        email,
-        full_name: fullName ?? email.split("@")[0],
-        status: "pending",
-      });
-      if (err) throw err;
+      // Demo mode: pretend the request succeeded immediately.
       setDone(true);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Something went wrong");

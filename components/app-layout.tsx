@@ -20,7 +20,6 @@ import {
   Ship,
   BarChart2,
 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 import { motion } from "framer-motion";
 
 const navLinks = [
@@ -81,10 +80,8 @@ const bajajLinks = [
 function LogoutButton() {
   const { open, animate } = useSidebar();
   const router = useRouter();
-  const supabase = createClient();
 
   async function handleLogout() {
-    await supabase.auth.signOut();
     router.push("/login");
     router.refresh();
   }
@@ -186,7 +183,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </SidebarBody>
       </Sidebar>
 
-      <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <main className="flex min-h-0 flex-1 overflow-hidden">
         {children}
       </main>
     </div>

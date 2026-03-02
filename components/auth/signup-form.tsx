@@ -2,12 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
 import { Eye, EyeOff, Loader2, CheckCircle } from "lucide-react";
 
 export function SignupForm() {
-  const supabase = createClient();
-
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -31,23 +28,8 @@ export function SignupForm() {
     }
 
     setLoading(true);
-
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { full_name: fullName },
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
-
+    await new Promise((resolve) => setTimeout(resolve, 500));
     setLoading(false);
-
-    if (error) {
-      setError(error.message);
-      return;
-    }
-
     setSuccess(true);
   }
 

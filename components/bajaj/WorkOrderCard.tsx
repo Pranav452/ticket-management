@@ -22,6 +22,13 @@ function isHazardous(data: Record<string, unknown>): boolean {
   });
 }
 
+function classifyCategory(data: Record<string, unknown>): "parts" | "frames" | "other" {
+  const veh = String(data["Veh"] ?? data["Type"] ?? "").toLowerCase();
+  if (veh.includes("parts")) return "parts";
+  if (veh.includes("frames")) return "frames";
+  return "other";
+}
+
 export function WorkOrderCard({
   workOrder,
   cardFaceFields,
@@ -31,6 +38,7 @@ export function WorkOrderCard({
   statusColor,
 }: WorkOrderCardProps) {
   const hazard = isHazardous(workOrder.data);
+  const category = classifyCategory(workOrder.data as Record<string, unknown>);
   const fieldsToShow = cardFaceFields.length > 0
     ? cardFaceFields
     : Object.keys(workOrder.data).slice(0, 4);
@@ -48,11 +56,26 @@ export function WorkOrderCard({
       style={{ borderLeftWidth: 3, borderLeftColor: `#${statusColor}` }}
     >
       <div className="p-3.5">
-        {/* Hazard badge */}
-        {hazard && (
-          <div className="flex items-center gap-1 text-orange-400 text-xs font-medium mb-2">
-            <AlertTriangle className="size-3.5" />
-            <span>Hazardous</span>
+        {/* Hazard / category badges */}
+        {(hazard || category !== "other") && (
+          <div className="flex items-center gap-2 mb-2">
+            {hazard && (
+              <div className="flex items-center gap-1 text-orange-400 text-[11px] font-medium">
+                <AlertTriangle className="size-3.5" />
+                <span>Hazardous</span>
+              </div>
+            )}
+            {category !== "other" && (
+              <div
+                className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium border ${
+                  category === "parts"
+                    ? "border-sky-500 text-sky-400"
+                    : "border-emerald-500 text-emerald-400"
+                }`}
+              >
+                {category === "parts" ? "Parts" : "Frames"}
+              </div>
+            )}
           </div>
         )}
 

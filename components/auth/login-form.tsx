@@ -3,12 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 
 export function LoginForm() {
   const router = useRouter();
-  const supabase = createClient();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -19,18 +17,16 @@ export function LoginForm() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
-      setError(error.message);
-      setLoading(false);
+    if (!email || !password) {
+      setError("Enter any email and password to continue the demo.");
       return;
     }
+
+    setLoading(true);
+    // Simulate a short delay so the loading state is visible.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    setLoading(false);
 
     router.push("/");
     router.refresh();
@@ -41,7 +37,7 @@ export function LoginForm() {
       <div>
         <h1 className="text-2xl font-semibold text-neutral-50">Sign in</h1>
         <p className="mt-1 text-sm text-neutral-400">
-          Welcome back to the ticket system
+          For demo purposes, any credentials will work.
         </p>
       </div>
 

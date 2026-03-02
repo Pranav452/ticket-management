@@ -83,6 +83,26 @@ export interface BajajAuditLog {
   created_at: string;
 }
 
+// ─── Reminders (demo) ─────────────────────────────────────────────────────────
+
+export type BajajReminderStatus = "scheduled" | "sent" | "done";
+
+export interface BajajReminder {
+  id: string;
+  work_order_id: string;
+  module_id: string;
+  work_order_summary: string;
+  created_by: string | null;
+  created_at: string;
+  due_at: string; // ISO string
+  days_offset: number;
+  recipients: string[];
+  message: string;
+  status: BajajReminderStatus;
+  sent_at: string | null;
+  done_at: string | null;
+}
+
 // ─── Import flow types ────────────────────────────────────────────────────────
 
 export interface ImportPreviewStatus {
@@ -113,6 +133,13 @@ export interface BajajAnalytics {
   byStatus: { statusName: string; colorHex: string; count: number }[];
   byModule: { moduleName: string; slug: string; count: number }[];
   importTimeline: { date: string; addedCount: number; batchId: string }[];
+  // Extended demo metrics
+  totalContainers: number;
+  totalBLs: number;
+  containersByVessel: { vesselName: string; containerCount: number }[];
+  containersByLine: { lineName: string; containerCount: number }[];
+  blPendingAfterETD: number;
+  vesselsOverLimit: { vesselName: string; containerCount: number }[];
 }
 
 // ─── Board filters ────────────────────────────────────────────────────────────

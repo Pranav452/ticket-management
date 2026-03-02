@@ -1,4 +1,3 @@
-import { createClient } from "@/lib/supabase/server";
 import { WorkOrderBoardClient } from "@/components/bajaj/WorkOrderBoardClient";
 
 export const dynamic = "force-dynamic";
@@ -19,9 +18,6 @@ export default async function BajajBoardPage({
     );
   }
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  const isAdmin = user?.email === "pranavnairop090@gmail.com";
-
-  return <WorkOrderBoardClient slug={slug} isAdmin={isAdmin} />;
+  // In demo mode we always show the board and treat the viewer as admin.
+  return <WorkOrderBoardClient slug={slug} isAdmin />;
 }

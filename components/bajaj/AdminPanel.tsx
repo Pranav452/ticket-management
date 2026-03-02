@@ -123,7 +123,7 @@ export function AdminPanel() {
   ];
 
   return (
-    <div className="min-h-full bg-neutral-950 px-8 py-8 overflow-y-auto">
+    <div className="flex h-full flex-1 flex-col bg-neutral-950 px-8 py-8 overflow-y-auto">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-neutral-100">Admin Panel</h1>
         <p className="text-sm text-neutral-500 mt-1">Manage access requests and view the full audit log.</p>
