@@ -385,14 +385,31 @@ export function useBajajAnalytics(moduleSlug?: string) {
         .sort((a, b) => b.containerCount - a.containerCount);
 
       const now = Date.now();
+      const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
       const blPendingAfterETD = (allWorkOrders ?? []).filter(wo => {
         const d = wo.data as Record<string, unknown>;
         const etd = d?.["CURRENT ETD"] as string | undefined;
         const bl = d?.["BL NO"] as string | undefined;
-        return etd && new Date(etd).getTime() < now && !bl;
+        if (!etd || bl) return false;
+        const etdDate = new Date(etd);
+        return !isNaN(etdDate.getTime()) && (now - etdDate.getTime()) > FORTY_EIGHT_HOURS_MS;
       }).length;
 
       const vesselsOverLimit = containersByVessel.filter(v => v.containerCount > 25);
+
+      // Parts & frames: rows where Veh contains "FRAME" or "PART"
+      const partsAndFrames: { vesselName: string; vehType: string; containerCount: number }[] = [];
+      for (const wo of allWorkOrders ?? []) {
+        const d = wo.data as Record<string, unknown>;
+        const veh = String(d?.["Veh"] ?? "").toUpperCase();
+        if (veh.includes("FRAME") || veh.includes("PART")) {
+          partsAndFrames.push({
+            vesselName: String(d?.["Vessel Name"] ?? "Unknown").trim() || "Unknown",
+            vehType: String(d?.["Veh"] ?? "").trim(),
+            containerCount: Number(d?.["Cont"]) || 0,
+          });
+        }
+      }
 
       return {
         totalWorkOrders,
@@ -405,6 +422,7 @@ export function useBajajAnalytics(moduleSlug?: string) {
         containersByLine,
         blPendingAfterETD,
         vesselsOverLimit,
+        partsAndFrames,
       } as BajajAnalytics;
     },
     staleTime: 60 * 1000,

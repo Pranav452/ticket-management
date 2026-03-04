@@ -137,6 +137,7 @@ export interface BajajAnalytics {
   containersByLine:   { lineName: string;   containerCount: number }[];
   blPendingAfterETD: number;
   vesselsOverLimit:  { vesselName: string; containerCount: number }[];
+  partsAndFrames: { vesselName: string; vehType: string; containerCount: number }[];
 }
 
 // ─── Board filters ────────────────────────────────────────────────────────────
