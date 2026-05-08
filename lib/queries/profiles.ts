@@ -17,7 +17,7 @@ const demoProfiles: Profile[] = [
     email: "assignee@example.com",
     full_name: "Assignee Demo",
     avatar_url: null,
-    role: "agent",
+    role: "user",
     created_at: new Date().toISOString(),
   } as Profile,
 ];
