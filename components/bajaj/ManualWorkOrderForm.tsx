@@ -89,7 +89,7 @@ export function ManualWorkOrderForm({ moduleSlug }: ManualWorkOrderFormProps) {
         <div>
           <h2 className="text-sm font-semibold text-neutral-100">Manual Work Order Entry</h2>
           <p className="text-xs text-neutral-500">
-            New rows are added to the planning column for the selected board.
+            New rows are added to the first lifecycle column for the selected board.
           </p>
         </div>
         {createdId && (

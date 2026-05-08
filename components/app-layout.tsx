@@ -1,189 +1,216 @@
 "use client";
 
 import React, { useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
-  Sidebar,
-  SidebarBody,
-  SidebarLink,
-  useSidebar,
-} from "@/components/ui/sidebar";
-import {
-  LayoutDashboard,
-  UserCog,
-  Settings,
-  LogOut,
-  Ticket,
-  MessageSquare,
-  Ship,
   BarChart2,
+  Upload,
+  ShieldCheck,
+  LogOut,
+  ChevronLeft,
+  ChevronRight,
+  Globe,
 } from "lucide-react";
-import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
 
-const navLinks = [
-  {
-    label: "Dashboard",
-    href: "/dashboard",
-    icon: (
-      <LayoutDashboard className="text-neutral-400 dark:text-neutral-300 size-5 flex-shrink-0" />
-    ),
-  },
-  {
-    label: "Tickets",
-    href: "/tickets",
-    icon: (
-      <Ticket className="text-neutral-400 dark:text-neutral-300 size-5 flex-shrink-0" />
-    ),
-  },
-  {
-    label: "Chats",
-    href: "/chats",
-    icon: (
-      <MessageSquare className="text-neutral-400 dark:text-neutral-300 size-5 flex-shrink-0" />
-    ),
-  },
-  {
-    label: "Profile",
-    href: "/profile",
-    icon: (
-      <UserCog className="text-neutral-400 dark:text-neutral-300 size-5 flex-shrink-0" />
-    ),
-  },
-  {
-    label: "Settings",
-    href: "/settings",
-    icon: (
-      <Settings className="text-neutral-400 dark:text-neutral-300 size-5 flex-shrink-0" />
-    ),
-  },
+// ─── Module config ────────────────────────────────────────────────────────────
+const MODULES = [
+  { slug: "vipar",      name: "VIPAR",      flag: "🌏", desc: "Myanmar · Brazil · Others" },
+  { slug: "srilanka",   name: "Sri Lanka",  flag: "🇱🇰", desc: "Colombo · CMNBO" },
+  { slug: "nigeria",    name: "Nigeria",    flag: "🇳🇬", desc: "Apapa Lagos" },
+  { slug: "bangladesh", name: "Bangladesh", flag: "🇧🇩", desc: "Chattogram" },
+  { slug: "triumph",    name: "Triumph",    flag: "🇬🇧", desc: "United Kingdom" },
 ];
 
-const bajajLinks = [
-  {
-    label: "Bajaj Board",
-    href: "/bajaj/boards/vipar",
-    icon: (
-      <Ship className="text-amber-500 size-5 flex-shrink-0" />
-    ),
-  },
-  {
-    label: "Bajaj Analytics",
-    href: "/bajaj/dashboard",
-    icon: (
-      <BarChart2 className="text-amber-500 size-5 flex-shrink-0" />
-    ),
-  },
+const UTILS: { href: string; label: string; icon: React.ElementType }[] = [
+  { href: "/bajaj/dashboard", label: "Analytics", icon: BarChart2 },
+  { href: "/bajaj/import",    label: "Import",    icon: Upload },
+  { href: "/bajaj/admin",     label: "Admin",     icon: ShieldCheck },
 ];
 
-function LogoutButton() {
-  const { open, animate } = useSidebar();
-  const router = useRouter();
-
-  async function handleLogout() {
-    router.push("/login");
-    router.refresh();
-  }
-
+// ─── NavItem ──────────────────────────────────────────────────────────────────
+function NavItem({
+  href,
+  active,
+  collapsed,
+  children,
+  title,
+}: {
+  href: string;
+  active?: boolean;
+  collapsed: boolean;
+  children: React.ReactNode;
+  title?: string;
+}) {
   return (
-    <button
-      type="button"
-      onClick={handleLogout}
-      className="flex items-center justify-start gap-2 group/sidebar py-2 w-full text-left"
+    <Link
+      href={href}
+      title={collapsed ? title : undefined}
+      className={cn(
+        "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-all duration-150 group relative",
+        active
+          ? "bg-amber-600/15 text-amber-300 border border-amber-700/40"
+          : "text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 border border-transparent"
+      )}
     >
-      <LogOut className="text-neutral-400 dark:text-neutral-300 size-5 flex-shrink-0" />
-      <motion.span
-        animate={{
-          display: animate
-            ? open
-              ? "inline-block"
-              : "none"
-            : "inline-block",
-          opacity: animate ? (open ? 1 : 0) : 1,
-        }}
-        className="text-neutral-400 dark:text-neutral-300 text-sm group-hover/sidebar:translate-x-1 transition duration-150 whitespace-pre inline-block !p-0 !m-0"
-      >
-        Logout
-      </motion.span>
-    </button>
+      {active && (
+        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-amber-500 rounded-r" />
+      )}
+      {children}
+    </Link>
   );
 }
 
-function SidebarBottom() {
-  const { open, animate } = useSidebar();
-  const showLabel = animate ? open : true;
+// ─── AppLayout ────────────────────────────────────────────────────────────────
+export function AppLayout({ children }: { children: React.ReactNode }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const pathname = usePathname();
+  const router   = useRouter();
+
+  const activeModule = MODULES.find(
+    (m) => pathname.includes(`/bajaj/boards/${m.slug}`)
+  )?.slug;
 
   return (
-    <div className="flex flex-col items-center gap-2 pt-4 border-t border-neutral-700">
-      <Link
-        href="/"
-        className="flex flex-col items-center gap-1.5 group"
-        aria-label="Home"
+    <div className="flex h-dvh bg-neutral-950 text-neutral-50 overflow-hidden">
+
+      {/* ── Sidebar ──────────────────────────────────────────────────────── */}
+      <aside
+        className={cn(
+          "flex flex-col flex-shrink-0 border-r border-neutral-800/60 bg-[#0a0a0a] transition-all duration-200 overflow-hidden",
+          collapsed ? "w-[52px]" : "w-52"
+        )}
       >
-        {/* Circular logo */}
-        <div className="size-10 rounded-full overflow-hidden bg-white ring-2 ring-neutral-700 group-hover:ring-violet-500 transition-all flex-shrink-0">
-          <Image
-            src="/logo.png"
-            alt="Manilal logo"
-            width={40}
-            height={40}
-            className="size-full object-contain"
-          />
+        {/* Brand header */}
+        <div className={cn(
+          "flex items-center border-b border-neutral-800/60 px-3",
+          collapsed ? "justify-center py-4" : "justify-between py-3.5"
+        )}>
+          {!collapsed && (
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="flex size-7 items-center justify-center rounded-md bg-amber-600 flex-shrink-0">
+                <Globe className="size-3.5 text-white" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-neutral-100 leading-none tracking-tight">
+                  Bajaj Logistics
+                </p>
+                <p className="text-[10px] text-neutral-500 leading-none mt-0.5">
+                  Links · Operations
+                </p>
+              </div>
+            </div>
+          )}
+          {collapsed && (
+            <div className="flex size-7 items-center justify-center rounded-md bg-amber-600">
+              <Globe className="size-3.5 text-white" />
+            </div>
+          )}
+          {!collapsed && (
+            <button
+              onClick={() => setCollapsed(true)}
+              className="size-6 flex items-center justify-center rounded text-neutral-600 hover:text-neutral-300 hover:bg-neutral-800 transition-colors flex-shrink-0"
+            >
+              <ChevronLeft className="size-3.5" />
+            </button>
+          )}
         </div>
 
-        {/* Label + copyright — only shown when expanded */}
-        {showLabel && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="flex flex-col items-center text-center"
+        {/* Expand button when collapsed */}
+        {collapsed && (
+          <button
+            onClick={() => setCollapsed(false)}
+            className="mx-auto mt-2 size-7 flex items-center justify-center rounded text-neutral-600 hover:text-neutral-300 hover:bg-neutral-800 transition-colors"
           >
-            <span className="text-sm font-medium text-neutral-200">
-              Manilal
-            </span>
-            <span className="text-[10px] text-neutral-600 leading-tight">
-              © 2026 Manilal. All rights reserved.
-            </span>
-          </motion.div>
+            <ChevronRight className="size-3.5" />
+          </button>
         )}
-      </Link>
-    </div>
-  );
-}
 
-export function AppLayout({ children }: { children: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
+        {/* Nav */}
+        <nav className="flex flex-col flex-1 gap-0.5 px-1.5 py-3 overflow-y-auto overflow-x-hidden">
 
-  return (
-    <div className="flex h-dvh bg-neutral-900 text-neutral-50">
-      <Sidebar open={open} setOpen={setOpen}>
-        <SidebarBody className="justify-between gap-4 border-r border-neutral-700">
-          {/* Top — nav links */}
-          <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden gap-2 pt-2">
-            {navLinks.map((link, idx) => (
-              <SidebarLink key={idx} link={link} href={link.href} />
-            ))}
+          {/* Modules */}
+          {!collapsed && (
+            <p className="px-2.5 mb-1 text-[9px] uppercase tracking-widest text-neutral-600 font-semibold select-none">
+              Modules
+            </p>
+          )}
+          {MODULES.map((m) => {
+            const isActive = activeModule === m.slug;
+            return (
+              <NavItem
+                key={m.slug}
+                href={`/bajaj/boards/${m.slug}`}
+                active={isActive}
+                collapsed={collapsed}
+                title={m.name}
+              >
+                <span className="text-sm leading-none flex-shrink-0 select-none">{m.flag}</span>
+                {!collapsed && (
+                  <div className="min-w-0 flex-1">
+                    <p className={cn(
+                      "text-[13px] font-medium leading-none",
+                      isActive ? "text-amber-300" : "text-neutral-200 group-hover:text-white"
+                    )}>
+                      {m.name}
+                    </p>
+                    <p className="text-[10px] text-neutral-600 leading-none mt-0.5 truncate">
+                      {m.desc}
+                    </p>
+                  </div>
+                )}
+              </NavItem>
+            );
+          })}
 
-            {/* Bajaj module section */}
-            <div className="my-1 border-t border-neutral-800 pt-2">
-              {bajajLinks.map((link, idx) => (
-                <SidebarLink key={`bajaj-${idx}`} link={link} href={link.href} />
-              ))}
-            </div>
+          <div className={cn("my-2 border-t border-neutral-800/60", collapsed && "mx-1")} />
 
-            <div className="mt-2">
-              <LogoutButton />
-            </div>
-          </div>
+          {/* Tools */}
+          {!collapsed && (
+            <p className="px-2.5 mb-1 text-[9px] uppercase tracking-widest text-neutral-600 font-semibold select-none">
+              Tools
+            </p>
+          )}
+          {UTILS.map(({ href, label, icon: Icon }) => {
+            const isActive = pathname.startsWith(href);
+            return (
+              <NavItem key={href} href={href} active={isActive} collapsed={collapsed} title={label}>
+                <Icon className={cn(
+                  "size-4 flex-shrink-0",
+                  isActive ? "text-amber-400" : "text-neutral-500 group-hover:text-neutral-300"
+                )} />
+                {!collapsed && (
+                  <span className={cn(
+                    "text-[13px]",
+                    isActive ? "text-amber-300 font-medium" : "text-neutral-400 group-hover:text-neutral-100"
+                  )}>
+                    {label}
+                  </span>
+                )}
+              </NavItem>
+            );
+          })}
+        </nav>
 
-          {/* Bottom — logo + copyright */}
-          <SidebarBottom />
-        </SidebarBody>
-      </Sidebar>
+        {/* Sign out */}
+        <div className="px-1.5 py-3 border-t border-neutral-800/60">
+          <button
+            onClick={() => router.push("/login")}
+            title={collapsed ? "Sign out" : undefined}
+            className={cn(
+              "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-neutral-600 hover:text-red-400 hover:bg-neutral-800 border border-transparent transition-all w-full",
+              collapsed && "justify-center"
+            )}
+          >
+            <LogOut className="size-4 flex-shrink-0" />
+            {!collapsed && <span className="text-[13px]">Sign out</span>}
+          </button>
+        </div>
+      </aside>
 
-      <main className="flex min-h-0 flex-1 overflow-hidden">
+      {/* ── Page content ─────────────────────────────────────────────────── */}
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {children}
       </main>
     </div>

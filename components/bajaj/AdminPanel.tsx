@@ -123,14 +123,10 @@ export function AdminPanel() {
   ];
 
   return (
-    <div className="flex h-full flex-1 flex-col bg-neutral-950 px-8 py-8 overflow-y-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-neutral-100">Admin Panel</h1>
-        <p className="text-sm text-neutral-500 mt-1">Manage access requests and view the full audit log.</p>
-      </div>
+    <div className="flex flex-col bg-neutral-950 px-6 py-5">
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 border-b border-neutral-800">
+      <div className="flex gap-1 mb-5 border-b border-neutral-800">
         <button
           onClick={() => setTab("requests")}
           className={`px-4 py-2 text-sm font-medium transition-colors ${

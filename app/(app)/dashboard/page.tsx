@@ -1,5 +1,2 @@
-import { KanbanPageClient } from "@/components/ticket/kanban-page-client";
-
-export default function DashboardPage() {
-  return <KanbanPageClient />;
-}
+import { redirect } from "next/navigation";
+export default function DashboardPage() { redirect("/bajaj/boards/vipar"); }

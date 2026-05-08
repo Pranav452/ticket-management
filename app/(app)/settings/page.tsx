@@ -1,7 +1,2 @@
-export const metadata = { title: "Settings — Manilal Ticket System" };
-
-import { SettingsPageClient } from "@/components/settings/settings-page-client";
-
-export default function SettingsPage() {
-  return <SettingsPageClient />;
-}
+import { redirect } from "next/navigation";
+export default function SettingsPage() { redirect("/bajaj/boards/vipar"); }

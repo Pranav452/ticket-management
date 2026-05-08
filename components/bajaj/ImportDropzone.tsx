@@ -2,454 +2,504 @@
 
 import React, { useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
-import { Upload, CheckCircle, AlertCircle, Loader2, ChevronDown, X } from "lucide-react";
-import type { ImportPreview, ImportConfig } from "@/lib/types/bajaj";
+import {
+  Upload, CheckCircle, AlertCircle, Loader2, X,
+  ClipboardPaste, FileSpreadsheet, ChevronRight,
+} from "lucide-react";
 import { ManualWorkOrderForm } from "@/components/bajaj/ManualWorkOrderForm";
+import { cn } from "@/lib/utils";
 
 const MODULES = [
-  { slug: "vipar", name: "Vipar" },
-  { slug: "srilanka", name: "Sri Lanka" },
-  { slug: "nigeria", name: "Nigeria" },
-  { slug: "bangladesh", name: "Bangladesh" },
-  { slug: "triumph", name: "Triumph" },
+  { slug: "vipar",      name: "VIPAR",      flag: "🌏" },
+  { slug: "srilanka",   name: "Sri Lanka",  flag: "🇱🇰" },
+  { slug: "nigeria",    name: "Nigeria",    flag: "🇳🇬" },
+  { slug: "bangladesh", name: "Bangladesh", flag: "🇧🇩" },
+  { slug: "triumph",    name: "Triumph",    flag: "🇬🇧" },
 ];
+
+// ── Dispatch-plan email column headers → DB column names ──────────────────
+const EMAIL_COL_MAP: Record<string, string> = {
+  "cha":                       "CHA",
+  "wo no":                     "WO",
+  "wo":                        "WO",
+  "work order":                "WO",
+  "country":                   "country",
+  "plant":                     "Plant",
+  "brand":                     "Brand",
+  "variant":                   "Variant",
+  "qty":                       "QTY",
+  "40 hc":                     "40HC",
+  "40hc":                      "40HC",
+  "std 20":                    "STD20",
+  "std20":                     "STD20",
+  "plant ready / dispatch date":"WODT",
+  "plant ready":               "WODT",
+  "lsd":                       "SAILINGDT",
+  "assy config":                "AssyConfig",
+  "port (wo/pod)":             "port",
+  "port":                      "port",
+  "quotation no/ref":          "bookingno",
+  "quotation no":              "bookingno",
+  "po no":                     "SBNO",
+  "po":                        "SBNO",
+  "plan-add/rvsd":             "PLAN_STATUS",
+  "ib plan-zord":              "BLDT",
+};
+
+function parseEmailTable(text: string): {
+  headers: string[];
+  rows: Record<string, string>[];
+  rawHeaders: string[];
+} {
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  if (lines.length < 2) return { headers: [], rows: [], rawHeaders: [] };
+
+  // Detect separator: tab-separated or pipe-separated
+  const sep = lines[0].includes("\t") ? "\t" : "|";
+  const rawHeaders = lines[0].split(sep).map((h) => h.trim().replace(/\s+/g, " "));
+
+  const mappedHeaders = rawHeaders.map((h) => {
+    const key = h.toLowerCase();
+    return EMAIL_COL_MAP[key] ?? h;
+  });
+
+  const rows: Record<string, string>[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(sep).map((c) => c.trim());
+    if (cols.length < 2) continue;
+    const row: Record<string, string> = {};
+    mappedHeaders.forEach((header, idx) => {
+      row[header] = cols[idx] ?? "";
+    });
+    // Skip rows where WO is empty
+    if (!row["WO"]) continue;
+    rows.push(row);
+  }
+
+  return { headers: mappedHeaders, rows, rawHeaders };
+}
 
 interface ImportDropzoneProps {
   defaultModule?: string;
   userId: string;
 }
 
-type Step = "upload" | "configure" | "importing" | "done" | "error";
+type Mode = "paste" | "excel" | "manual";
+type Step = "idle" | "preview" | "importing" | "done" | "error";
 
-export function ImportDropzone({ defaultModule, userId }: ImportDropzoneProps) {
+export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzoneProps) {
+  const [mode,       setMode]       = useState<Mode>("paste");
   const [moduleSlug, setModuleSlug] = useState(defaultModule ?? "vipar");
-  const [file, setFile] = useState<File | null>(null);
-  const [step, setStep] = useState<Step>("upload");
-  const [preview, setPreview] = useState<ImportPreview | null>(null);
+
+  // Paste mode state
+  const [pasteText,    setPasteText]    = useState("");
+  const [pastePreview, setPastePreview] = useState<{ headers: string[]; rows: Record<string, string>[]; rawHeaders: string[] } | null>(null);
+  const [filterCHA,    setFilterCHA]    = useState(true);
+
+  // Excel mode state
+  const [file,   setFile]   = useState<File | null>(null);
+
+  // Shared
+  const [step,    setStep]    = useState<Step>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [result, setResult] = useState<{ added: number; skipped: number } | null>(null);
+  const [result,   setResult]   = useState<{ added: number; skipped: number } | null>(null);
 
-  // Config state
-  const [configStatuses, setConfigStatuses] = useState<{ colorHex: string; name: string }[]>([]);
-  const [uniqueKeyField, setUniqueKeyField] = useState<string>("");
-  const [cardFaceFields, setCardFaceFields] = useState<string[]>([]);
-
-  const onDrop = useCallback(
-    async (acceptedFiles: File[]) => {
-      const f = acceptedFiles[0];
-      if (!f) return;
-      setFile(f);
-      setStep("importing");
-      setErrorMsg(null);
-
-      const fd = new FormData();
-      fd.append("file", f);
-
-      try {
-        const res = await fetch(`/api/bajaj/import?module=${moduleSlug}&phase=preview`, {
-          method: "POST",
-          body: fd,
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Preview failed");
-
-        setPreview(data as ImportPreview);
-        setConfigStatuses(
-          data.statuses.map((s: { colorHex: string; name: string }) => ({
-            colorHex: s.colorHex,
-            name: s.name,
-          })),
-        );
-        setCardFaceFields(data.columns.slice(0, 4));
-        setUniqueKeyField(data.columns[0] ?? "");
-        setStep("configure");
-      } catch (e: unknown) {
-        setErrorMsg(e instanceof Error ? e.message : "Upload failed");
-        setStep("error");
-      }
-    },
-    [moduleSlug],
-  );
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
-    },
-    maxFiles: 1,
-    disabled: step !== "upload",
-  });
-
-  async function handleConfirmImport() {
-    if (!file || !preview) return;
+  // ── Excel dropzone ───────────────────────────────────────────────────────
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    const f = acceptedFiles[0];
+    if (!f) return;
+    setFile(f);
     setStep("importing");
     setErrorMsg(null);
 
-    const config: ImportConfig & { importedBy: string } = {
-      moduleSlug,
-      statuses: configStatuses,
-      cardFaceFields,
-      uniqueKeyField,
-      importedBy: userId,
-    };
-
     const fd = new FormData();
-    fd.append("file", file);
-    fd.append("config", JSON.stringify(config));
+    fd.append("file", f);
+    fd.append("moduleSlug", moduleSlug);
 
     try {
-      const res = await fetch(`/api/bajaj/import?module=${moduleSlug}&phase=confirm`, {
-        method: "POST",
-        body: fd,
-      });
+      const res  = await fetch("/api/bajaj/import", { method: "POST", body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Import failed");
-      setResult({ added: data.added, skipped: data.skipped });
+      setResult({ added: data.addedCount, skipped: data.skippedCount });
       setStep("done");
-    } catch (e: unknown) {
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : "Import failed");
+      setStep("error");
+    }
+  }, [moduleSlug]);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"] },
+    maxFiles: 1,
+    disabled: step !== "idle",
+  });
+
+  // ── Paste preview ────────────────────────────────────────────────────────
+  function handlePasteParse() {
+    if (!pasteText.trim()) return;
+    const parsed = parseEmailTable(pasteText);
+    setPastePreview(parsed);
+    setStep("preview");
+  }
+
+  function getPasteRows() {
+    if (!pastePreview) return [];
+    if (!filterCHA) return pastePreview.rows;
+    // Filter to rows where CHA = "LINKS" (our company)
+    return pastePreview.rows.filter(
+      (r) => !r["CHA"] || r["CHA"].toUpperCase() === "LINKS"
+    );
+  }
+
+  async function handlePasteImport() {
+    const rows = getPasteRows();
+    if (!rows.length) return;
+    setStep("importing");
+    setErrorMsg(null);
+
+    let added = 0;
+    let skipped = 0;
+
+    try {
+      for (const row of rows) {
+        const body = {
+          FFJOBNO:    row["bookingno"]  ?? "",
+          WO:         row["WO"]         ?? "",
+          WODT:       row["WODT"]       ?? "",
+          port:       row["port"]       ?? "",
+          country:    row["country"]    ?? "",
+          bookingno:  row["bookingno"]  ?? "",
+          SBNO:       row["SBNO"]       ?? "",
+          SBDT:       "",
+          BLNO:       "",
+          BLDT:       row["BLDT"]       ?? "",
+          containerno:"",
+          vslname:    "",
+          SAILINGDT:  row["SAILINGDT"]  ?? "",
+          REMARK:     [
+            row["Brand"] ? `Brand: ${row["Brand"]}` : "",
+            row["Variant"] ? `Variant: ${row["Variant"]}` : "",
+            row["AssyConfig"] ? `Assy: ${row["AssyConfig"]}` : "",
+            row["QTY"] ? `Qty: ${row["QTY"]}` : "",
+            row["40HC"] ? `40HC: ${row["40HC"]}` : "",
+            row["PLAN_STATUS"] ? `Plan: ${row["PLAN_STATUS"]}` : "",
+          ].filter(Boolean).join(" | "),
+        };
+
+        const res  = await fetch("/api/bajaj/work-orders/paste", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ ...body, moduleSlug }),
+        });
+
+        const data = await res.json();
+        if (data.skipped) skipped++;
+        else added++;
+      }
+
+      setResult({ added, skipped });
+      setStep("done");
+    } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : "Import failed");
       setStep("error");
     }
   }
 
   function reset() {
+    setStep("idle");
     setFile(null);
-    setStep("upload");
-    setPreview(null);
+    setPasteText("");
+    setPastePreview(null);
     setErrorMsg(null);
     setResult(null);
-    setConfigStatuses([]);
-    setCardFaceFields([]);
-    setUniqueKeyField("");
   }
 
-  const [mode, setMode] = useState<"excel" | "manual">("excel");
-
-  // ── Upload step ─────────────────────────────────────────────────────────────
-  if (step === "upload") {
-    return (
-      <div className="h-full flex flex-col">
-        {/* Mode + module selector */}
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setMode("excel")}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium ${
-                mode === "excel"
-                  ? "bg-neutral-800 text-neutral-50 border border-neutral-600"
-                  : "bg-neutral-900 text-neutral-500 border border-neutral-800 hover:text-neutral-200"
-              }`}
-            >
-              Excel Import
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("manual")}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium ${
-                mode === "manual"
-                  ? "bg-neutral-800 text-neutral-50 border border-neutral-600"
-                  : "bg-neutral-900 text-neutral-500 border border-neutral-800 hover:text-neutral-200"
-              }`}
-            >
-              Manual Entry
-            </button>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-neutral-500 mb-1">
-              Board
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {MODULES.map((m) => (
-                <button
-                  key={m.slug}
-                  type="button"
-                  onClick={() => setModuleSlug(m.slug)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium ${
-                    m.slug === moduleSlug
-                      ? "bg-neutral-800 text-neutral-50 border border-neutral-600"
-                      : "bg-neutral-900 text-neutral-500 border border-neutral-800 hover:text-neutral-200"
-                  }`}
-                >
-                  {m.name}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {mode === "excel" ? (
-          <div className="space-y-6 max-w-3xl">
-            {/* Dropzone */}
-            <div
-              {...getRootProps()}
-              className={`border border-dashed rounded-2xl px-10 py-16 text-center cursor-pointer transition-colors ${
-                isDragActive
-                  ? "border-neutral-400 bg-neutral-900"
-                  : "border-neutral-700 hover:border-neutral-500 bg-neutral-950"
-              }`}
-            >
-              <input {...getInputProps()} />
-              <Upload className="size-10 text-neutral-600 mx-auto mb-4" />
-              <p className="text-neutral-200 font-medium mb-1">
-                {isDragActive ? "Drop it here…" : "Drag & drop your Excel file"}
-              </p>
-              <p className="text-xs text-neutral-600">
-                Accepts .xlsx files only — used for layout demo in this environment.
-              </p>
-            </div>
-          </div>
-        ) : (
-          <ManualWorkOrderForm moduleSlug={moduleSlug} />
-        )}
-      </div>
-    );
-  }
-
-  // ── Loading / importing ─────────────────────────────────────────────────────
+  // ── Loading ──────────────────────────────────────────────────────────────
   if (step === "importing") {
     return (
-      <div className="flex flex-col items-center justify-center gap-4 py-20 text-center max-w-2xl">
+      <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
         <Loader2 className="size-10 text-amber-500 animate-spin" />
-        <p className="text-neutral-300">
-          {preview ? "Importing work orders…" : "Analysing your Excel file…"}
-        </p>
-        <p className="text-sm text-neutral-600">{file?.name}</p>
+        <p className="text-neutral-300 text-sm font-medium">Importing work orders…</p>
+        {file && <p className="text-[13px] text-neutral-600">{file.name}</p>}
       </div>
     );
   }
 
-  // ── Error ───────────────────────────────────────────────────────────────────
+  // ── Error ────────────────────────────────────────────────────────────────
   if (step === "error") {
     return (
-      <div className="flex flex-col items-center gap-4 py-16 text-center max-w-2xl">
+      <div className="flex flex-col items-center gap-4 py-20 text-center">
         <AlertCircle className="size-10 text-red-500" />
-        <p className="text-neutral-200 font-medium">Something went wrong</p>
-        <p className="text-sm text-red-400 bg-red-950/30 rounded-lg px-4 py-2">{errorMsg}</p>
-        <button
-          type="button"
-          onClick={reset}
-          className="text-sm text-neutral-500 hover:text-neutral-300 underline"
-        >
+        <p className="text-neutral-200 font-medium">Import failed</p>
+        <p className="text-[13px] text-red-400 bg-red-950/30 rounded-lg px-4 py-2 max-w-sm">{errorMsg}</p>
+        <button onClick={reset} className="text-[13px] text-neutral-500 hover:text-amber-400 underline transition-colors">
           Try again
         </button>
       </div>
     );
   }
 
-  // ── Done ────────────────────────────────────────────────────────────────────
+  // ── Done ─────────────────────────────────────────────────────────────────
   if (step === "done" && result) {
     return (
-      <div className="flex flex-col items-center gap-4 py-16 text-center max-w-2xl">
-        <CheckCircle className="size-12 text-emerald-500" />
-        <h3 className="text-xl font-semibold text-neutral-100">Import Complete</h3>
-        <div className="flex gap-8 text-center">
+      <div className="flex flex-col items-center gap-5 py-20 text-center">
+        <CheckCircle className="size-14 text-amber-500" />
+        <div>
+          <h3 className="text-xl font-bold text-neutral-100">Import Complete</h3>
+          <p className="text-[13px] text-neutral-500 mt-1">Work orders are now on the board</p>
+        </div>
+        <div className="flex gap-10 mt-2">
           <div>
-            <p className="text-3xl font-bold text-emerald-400">{result.added}</p>
-            <p className="text-sm text-neutral-500 mt-1">Added</p>
+            <p className="text-3xl font-bold text-amber-400 tabular-nums">{result.added}</p>
+            <p className="text-[12px] text-neutral-500 mt-1">Added</p>
           </div>
           <div>
-            <p className="text-3xl font-bold text-neutral-500">{result.skipped}</p>
-            <p className="text-sm text-neutral-500 mt-1">Skipped (duplicate)</p>
+            <p className="text-3xl font-bold text-neutral-600 tabular-nums">{result.skipped}</p>
+            <p className="text-[12px] text-neutral-500 mt-1">Skipped (duplicate)</p>
           </div>
         </div>
-        <div className="flex gap-3 mt-4">
+        <div className="flex gap-3 mt-2">
           <a
             href={`/bajaj/boards/${moduleSlug}`}
-            className="px-6 py-2.5 rounded-lg bg-amber-600 text-sm font-medium text-white hover:bg-amber-500 transition-colors"
+            className="flex items-center gap-1.5 px-5 py-2.5 rounded-lg bg-amber-600 text-sm font-semibold text-white hover:bg-amber-500 transition-colors"
           >
-            View Board →
+            View Board <ChevronRight className="size-4" />
           </a>
           <button
-            type="button"
             onClick={reset}
-            className="px-6 py-2.5 rounded-lg bg-neutral-800 text-sm text-neutral-400 hover:text-neutral-200 border border-neutral-700 transition-colors"
+            className="px-5 py-2.5 rounded-lg bg-neutral-900 text-sm text-neutral-400 hover:text-neutral-200 border border-neutral-800 transition-colors"
           >
-            Import Another
+            Import More
           </button>
         </div>
       </div>
     );
   }
 
-  // ── Configure ───────────────────────────────────────────────────────────────
-  if (step === "configure" && preview) {
-    const totalSelected = cardFaceFields.length;
-
+  // ── Paste preview (step === "preview") ───────────────────────────────────
+  if (step === "preview" && pastePreview) {
+    const rows = getPasteRows();
     return (
-      <div className="h-full grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Left: configuration controls with scroll */}
-        <div className="space-y-6 min-h-0 overflow-y-auto pr-2">
+      <div className="space-y-5">
+        {/* Header */}
+        <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-neutral-100 mb-1">Configure Import</h3>
-            <p className="text-sm text-neutral-500">
-              We detected <span className="text-neutral-300">{preview.totalRows}</span> rows and{" "}
-              <span className="text-neutral-300">{preview.statuses.length}</span> status types from{" "}
-              <span className="text-neutral-300">{file?.name}</span>.
+            <h3 className="text-base font-semibold text-neutral-100">
+              Preview — {pastePreview.rows.length} rows parsed
+            </h3>
+            <p className="text-[13px] text-neutral-500 mt-0.5">
+              {filterCHA
+                ? `Showing ${rows.length} LINKS rows only.`
+                : `Showing all ${rows.length} rows (all CHAs).`}
             </p>
           </div>
-
-          {/* Status columns */}
-          <div>
-            <label className="block text-sm font-medium text-neutral-400 mb-3">
-              Status Columns (from Color Coding Legend)
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={filterCHA}
+                onChange={(e) => setFilterCHA(e.target.checked)}
+                className="accent-amber-500"
+              />
+              <span className="text-[13px] text-neutral-400">LINKS rows only</span>
             </label>
-            <div className="space-y-2">
-              {configStatuses.map((s, i) => (
-                <div
-                  key={`status-${i}`}
-                  className="flex items-center gap-3 bg-neutral-900 rounded-lg px-3 py-2 border border-neutral-800"
-                >
-                  <span
-                    className="size-4 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: `#${s.colorHex}` }}
-                  />
-                  <span className="text-xs text-neutral-600 font-mono">{s.colorHex}</span>
-                  <input
-                    type="text"
-                    value={s.name}
-                    onChange={(e) => {
-                      const updated = [...configStatuses];
-                      updated[i] = { ...s, name: e.target.value };
-                      setConfigStatuses(updated);
-                    }}
-                    className="flex-1 bg-transparent text-sm text-neutral-200 focus:outline-none border-b border-transparent focus:border-amber-600"
-                  />
-                  <span className="text-xs text-neutral-700 ml-auto">
-                    {preview.statuses.find((ps) => ps.colorHex === s.colorHex)?.rowCount ?? 0} rows
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Unique key field */}
-          <div>
-            <label className="block text-sm font-medium text-neutral-400 mb-2">
-              Unique Key Field (for deduplication)
-            </label>
-            <p className="text-xs text-neutral-600 mb-2">
-              When re-importing, rows with the same value in this column will be skipped.
-            </p>
-            <div className="relative">
-              <select
-                value={uniqueKeyField}
-                onChange={(e) => setUniqueKeyField(e.target.value)}
-                className="w-full appearance-none bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2.5 text-sm text-neutral-200 focus:outline-none focus:border-amber-600"
-              >
-                {preview.columns.map((col, i) => (
-                  <option key={`opt-${i}`} value={col}>
-                    {col}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-neutral-600 pointer-events-none" />
-            </div>
-          </div>
-
-          {/* Card face fields */}
-          <div>
-            <label className="block text-sm font-medium text-neutral-400 mb-2">
-              Card Face Fields ({totalSelected} selected — pick up to 5)
-            </label>
-            <p className="text-xs text-neutral-600 mb-3">
-              These fields appear on each work order card at a glance.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {preview.columns.map((col, i) => {
-                const selected = cardFaceFields.includes(col);
-                return (
-                  <button
-                    key={`face-${i}`}
-                    type="button"
-                    onClick={() => {
-                      if (selected) {
-                        setCardFaceFields((f) => f.filter((c) => c !== col));
-                      } else if (cardFaceFields.length < 5) {
-                        setCardFaceFields((f) => [...f, col]);
-                      }
-                    }}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                      selected
-                        ? "bg-amber-600 text-white"
-                        : "bg-neutral-800 text-neutral-500 hover:text-neutral-300 border border-neutral-700"
-                    }`}
-                  >
-                    {col}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div className="flex items-center gap-3 pt-4 border-t border-neutral-800">
-            <button
-              type="button"
-              onClick={handleConfirmImport}
-              disabled={!uniqueKeyField || cardFaceFields.length === 0}
-              className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-neutral-900 text-sm font-medium text-neutral-100 hover:bg-neutral-800 disabled:opacity-50 border border-neutral-700 transition-colors"
-            >
-              <Upload className="size-4" />
-              Import {preview.totalRows} Rows
-            </button>
-            <button
-              type="button"
-              onClick={reset}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-neutral-950 text-sm text-neutral-400 hover:text-neutral-200 border border-neutral-800 transition-colors"
-            >
+            <button onClick={reset} className="text-neutral-600 hover:text-neutral-300 transition-colors">
               <X className="size-4" />
-              Cancel
             </button>
           </div>
         </div>
 
-        {/* Right: preview table, independently scrollable */}
-        <div className="min-h-0 overflow-y-auto">
-          {preview.preview.length > 0 && (
-            <div>
-              <label className="block text-sm font-medium text-neutral-400 mb-2">
-                Data Preview (first 5 rows)
-              </label>
-              <div className="overflow-auto rounded-lg border border-neutral-800">
-                <table className="text-xs text-neutral-400 min-w-full">
-                  <thead className="bg-neutral-900 border-b border-neutral-800">
-                    <tr>
-                      {cardFaceFields.map((col, i) => (
-                        <th
-                          key={`th-${i}`}
-                          className="px-3 py-2 text-left font-medium text-neutral-500"
-                        >
-                          {col}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {preview.preview.map((row, i) => (
-                      <tr
-                        key={i}
-                        className="border-b border-neutral-800/50 hover:bg-neutral-900/50"
-                      >
-                        {cardFaceFields.map((col, ci) => (
-                          <td
-                            key={`td-${ci}`}
-                            className="px-3 py-2 text-neutral-300 max-w-[140px] truncate"
-                          >
-                            {String(row[col] ?? "")}
-                          </td>
-                        ))}
-                      </tr>
+        {/* Table */}
+        {rows.length === 0 ? (
+          <div className="rounded-xl border border-neutral-800 bg-neutral-900 px-6 py-10 text-center">
+            <p className="text-sm text-neutral-500">No LINKS rows found in the pasted data.</p>
+            <button
+              onClick={() => setFilterCHA(false)}
+              className="mt-3 text-[13px] text-amber-500 hover:text-amber-400 underline"
+            >
+              Show all CHAs
+            </button>
+          </div>
+        ) : (
+          <div className="overflow-auto rounded-xl border border-neutral-800 max-h-80">
+            <table className="text-[12px] min-w-full">
+              <thead className="bg-neutral-900 border-b border-neutral-800 sticky top-0">
+                <tr>
+                  {pastePreview.headers.filter(h => h !== "CHA").map((h) => (
+                    <th key={h} className="px-3 py-2 text-left font-medium text-neutral-500 whitespace-nowrap">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.slice(0, 50).map((row, i) => (
+                  <tr key={i} className={cn(
+                    "border-b border-neutral-800/50",
+                    i % 2 === 0 ? "bg-neutral-950" : "bg-neutral-900/30"
+                  )}>
+                    {pastePreview.headers.filter(h => h !== "CHA").map((h) => (
+                      <td key={h} className="px-3 py-1.5 text-neutral-300 whitespace-nowrap max-w-[140px] truncate">
+                        {row[h] ?? ""}
+                      </td>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex items-center gap-3 pt-2">
+          <button
+            onClick={handlePasteImport}
+            disabled={rows.length === 0}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-amber-600 text-sm font-semibold text-white hover:bg-amber-500 disabled:opacity-50 transition-colors"
+          >
+            <Upload className="size-4" />
+            Import {rows.length} Rows
+          </button>
+          <button
+            onClick={reset}
+            className="px-4 py-2.5 rounded-lg bg-neutral-900 text-sm text-neutral-400 hover:text-neutral-200 border border-neutral-800 transition-colors"
+          >
+            Cancel
+          </button>
         </div>
       </div>
     );
   }
 
-  return null;
+  // ── Idle: mode selector ───────────────────────────────────────────────────
+  return (
+    <div className="space-y-6">
+      {/* Module selector */}
+      <div>
+        <p className="text-[11px] uppercase tracking-widest text-neutral-600 font-semibold mb-2">
+          Target Module
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {MODULES.map((m) => (
+            <button
+              key={m.slug}
+              onClick={() => setModuleSlug(m.slug)}
+              className={cn(
+                "flex items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] font-medium border transition-colors",
+                m.slug === moduleSlug
+                  ? "bg-amber-600/15 text-amber-300 border-amber-700/40"
+                  : "bg-neutral-900 text-neutral-500 border-neutral-800 hover:text-neutral-300 hover:border-neutral-700"
+              )}
+            >
+              <span className="text-sm">{m.flag}</span>
+              {m.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Mode tabs */}
+      <div className="flex gap-1 border-b border-neutral-800">
+        {[
+          { id: "paste",  label: "Paste from Email",  icon: ClipboardPaste },
+          { id: "excel",  label: "Upload Excel",       icon: FileSpreadsheet },
+          { id: "manual", label: "Manual Entry",       icon: Upload },
+        ].map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => setMode(id as Mode)}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2.5 text-[13px] font-medium border-b-2 transition-colors -mb-px",
+              mode === id
+                ? "border-amber-500 text-amber-300"
+                : "border-transparent text-neutral-500 hover:text-neutral-300"
+            )}
+          >
+            <Icon className="size-4" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── PASTE MODE ───────────────────────────────────────────────────── */}
+      {mode === "paste" && (
+        <div className="space-y-4 max-w-3xl">
+          <div className="rounded-xl border border-amber-800/30 bg-amber-950/10 px-4 py-3">
+            <p className="text-[13px] font-semibold text-amber-300 mb-1">
+              📧 How to import from the Bajaj dispatch email
+            </p>
+            <ol className="text-[12px] text-neutral-400 space-y-1 list-decimal list-inside">
+              <li>Open the dispatch plan email from Somandra / Bajaj Auto IB Logistics</li>
+              <li>Select all rows in the table (Ctrl+A inside the table)</li>
+              <li>Copy (Ctrl+C) and paste below</li>
+              <li>We&apos;ll auto-filter LINKS rows and parse CHA, WO NO, COUNTRY, LSD, Port etc.</li>
+            </ol>
+          </div>
+
+          <div>
+            <label className="block text-[12px] text-neutral-500 mb-2 uppercase tracking-wider font-semibold">
+              Paste dispatch plan table here
+            </label>
+            <textarea
+              value={pasteText}
+              onChange={(e) => setPasteText(e.target.value)}
+              placeholder={`CHA\tWO NO\tCOUNTRY\tPlant\tBrand\tVariant\tQTY\t40 HC\tSTD 20\tPlant Ready / Dispatch Date\tLSD\tAssy Config\tPort (WO/POD)\tQuotation No/Ref\tPO NO\tPLAN-ADD/RVSD\tIB Plan-ZORD\nLINKS\t5584880\tBangladesh\tWA01\tDISCOVER\t125 DI\t0\t2\t\t\t12-Jun\tPLP\tCHATTOGRAM\t5233061\t5233061\tRVSD\t18-Apr`}
+              rows={10}
+              className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-[13px] text-neutral-200 placeholder-neutral-700 focus:border-amber-600 focus:outline-none font-mono resize-y transition-colors"
+            />
+          </div>
+
+          <button
+            onClick={handlePasteParse}
+            disabled={!pasteText.trim()}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-amber-600 text-sm font-semibold text-white hover:bg-amber-500 disabled:opacity-50 transition-colors"
+          >
+            <ClipboardPaste className="size-4" />
+            Parse Table
+          </button>
+        </div>
+      )}
+
+      {/* ── EXCEL MODE ───────────────────────────────────────────────────── */}
+      {mode === "excel" && (
+        <div className="max-w-xl">
+          <div
+            {...getRootProps()}
+            className={cn(
+              "border-2 border-dashed rounded-2xl px-10 py-16 text-center cursor-pointer transition-colors",
+              isDragActive
+                ? "border-amber-600 bg-amber-950/10"
+                : "border-neutral-800 hover:border-neutral-700 hover:bg-neutral-900/50"
+            )}
+          >
+            <input {...getInputProps()} />
+            <FileSpreadsheet className={cn("size-10 mx-auto mb-4", isDragActive ? "text-amber-500" : "text-neutral-700")} />
+            <p className="text-neutral-300 font-medium mb-1">
+              {isDragActive ? "Drop it here…" : "Drag & drop your Excel file"}
+            </p>
+            <p className="text-[12px] text-neutral-600 mb-4">Accepts .xlsx files</p>
+            <span className="inline-block px-4 py-2 rounded-lg bg-neutral-900 border border-neutral-700 text-[13px] text-neutral-400 hover:text-neutral-200 transition-colors">
+              Browse file
+            </span>
+          </div>
+          <div className="mt-4 rounded-xl border border-neutral-800 bg-neutral-900/50 px-4 py-3">
+            <p className="text-[12px] text-neutral-500">
+              <span className="text-neutral-300 font-medium">Expected columns:</span>{" "}
+              FFJOBNO / WO, COUNTRY, port, bookingno, SBNO, BLNO, containerno, vslname, SAILINGDT, REMARK
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── MANUAL MODE ──────────────────────────────────────────────────── */}
+      {mode === "manual" && (
+        <ManualWorkOrderForm moduleSlug={moduleSlug} />
+      )}
+    </div>
+  );
 }

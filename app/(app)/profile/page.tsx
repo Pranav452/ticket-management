@@ -1,7 +1,2 @@
-export const metadata = { title: "Profile — Manilal Ticket System" };
-
-import { ProfilePageClient } from "@/components/profile/profile-page-client";
-
-export default function ProfilePage() {
-  return <ProfilePageClient />;
-}
+import { redirect } from "next/navigation";
+export default function ProfilePage() { redirect("/bajaj/boards/vipar"); }

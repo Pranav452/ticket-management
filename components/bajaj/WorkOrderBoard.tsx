@@ -4,12 +4,14 @@ import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { WorkOrderCard } from "@/components/bajaj/WorkOrderCard";
 import type { BajajStatus, BajajWorkOrder } from "@/lib/types/bajaj";
+import { cn } from "@/lib/utils";
 
 interface WorkOrderBoardProps {
   slug: string;
   statuses: BajajStatus[];
   workOrders: BajajWorkOrder[];
   cardFaceFields: string[];
+  isLight?: boolean;
   isLoading: boolean;
   selectedId: string | null;
   onSelectCard: (id: string) => void;
@@ -32,6 +34,7 @@ function Column({
   status,
   workOrders,
   cardFaceFields,
+  isLight = false,
   selectedId,
   onSelectCard,
   onDrop,
@@ -39,6 +42,7 @@ function Column({
   status: BajajStatus;
   workOrders: BajajWorkOrder[];
   cardFaceFields: string[];
+  isLight?: boolean;
   selectedId: string | null;
   onSelectCard: (id: string) => void;
   onDrop: (workOrderId: string, newStatusId: string, newOrder: number) => void;
@@ -139,10 +143,10 @@ function Column({
           className="size-3 rounded-full flex-shrink-0"
           style={{ backgroundColor: `#${status.color_hex}` }}
         />
-        <span className="text-sm font-medium text-neutral-300 truncate">
+        <span className={cn("text-sm font-medium truncate", isLight ? "text-neutral-700" : "text-neutral-300")}>
           {status.name}
         </span>
-        <span className="ml-auto text-xs text-neutral-600 bg-neutral-800 rounded px-1.5 py-0.5">
+        <span className={cn("ml-auto text-xs rounded px-1.5 py-0.5", isLight ? "text-neutral-500 bg-neutral-100" : "text-neutral-600 bg-neutral-800")}>
           {workOrders.length}
         </span>
       </div>
@@ -152,9 +156,16 @@ function Column({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`flex-1 rounded-xl p-2 transition-colors min-h-[120px] ${
-          active ? "bg-neutral-800/60" : "bg-neutral-900/30"
-        }`}
+        className={cn(
+          "flex-1 rounded-xl p-2 transition-colors min-h-[120px]",
+          active
+            ? isLight
+              ? "bg-neutral-200/80"
+              : "bg-neutral-800/60"
+            : isLight
+              ? "bg-neutral-100/80"
+              : "bg-neutral-900/30",
+        )}
       >
         {columnOrders.map((wo) => (
           <React.Fragment key={wo.id}>
@@ -162,6 +173,7 @@ function Column({
             <WorkOrderCard
               workOrder={wo}
               cardFaceFields={cardFaceFields}
+              isLight={isLight}
               isSelected={selectedId === wo.id}
               onSelect={() => onSelectCard(wo.id)}
               onDragStart={(e) => handleDragStart(e, wo)}
@@ -180,6 +192,7 @@ export function WorkOrderBoard({
   statuses,
   workOrders,
   cardFaceFields,
+  isLight = false,
   isLoading,
   selectedId,
   onSelectCard,
@@ -187,20 +200,21 @@ export function WorkOrderBoard({
 }: WorkOrderBoardProps) {
   if (isLoading) {
     return (
-      <div className="flex flex-1 items-center justify-center text-neutral-600 text-sm">
+      <div className={cn("flex flex-1 items-center justify-center text-sm", isLight ? "text-neutral-500" : "text-neutral-600")}>
         Loading board…
       </div>
     );
   }
 
   return (
-    <div className="flex flex-1 gap-4 overflow-x-auto p-6 pb-8">
+      <div className="flex flex-1 gap-4 overflow-x-auto p-6 pb-8">
       {statuses.map((status) => (
         <Column
           key={status.id}
           status={status}
           workOrders={workOrders.filter((wo) => wo.status_id === status.id)}
           cardFaceFields={cardFaceFields}
+            isLight={isLight}
           selectedId={selectedId}
           onSelectCard={onSelectCard}
           onDrop={onDrop}
@@ -208,7 +222,7 @@ export function WorkOrderBoard({
       ))}
 
       {statuses.length === 0 && (
-        <div className="flex flex-1 items-center justify-center text-neutral-600 text-sm">
+        <div className={cn("flex flex-1 items-center justify-center text-sm", isLight ? "text-neutral-500" : "text-neutral-600")}>
           No status columns defined. Import an Excel file to configure the board.
         </div>
       )}

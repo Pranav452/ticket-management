@@ -43,10 +43,10 @@ export function BajajDashboard() {
 
   const totalWOs = data?.totalWorkOrders ?? 0;
   const completedCount = data?.byStatus.find((s) =>
-    s.statusName.toLowerCase().includes("complet") || s.colorHex === "99CC00"
+    s.statusName.toLowerCase().includes("complet")
   )?.count ?? 0;
   const criticalCount = data?.byStatus.find((s) =>
-    s.statusName.toLowerCase().includes("critical") || s.statusName.toLowerCase().includes("issue") || s.colorHex === "FF0000"
+    s.statusName.toLowerCase().includes("critical") || s.statusName.toLowerCase().includes("issue")
   )?.count ?? 0;
   const inProgressCount = data?.byStatus.find((s) =>
     s.statusName.toLowerCase().includes("pending") ||
@@ -55,7 +55,7 @@ export function BajajDashboard() {
     s.statusName.toLowerCase().includes("planned")
   )?.count ?? 0;
 
-  const PIE_COLORS = data?.byStatus.map((s) => `#${s.colorHex}`) ?? [];
+  const PIE_COLORS = data?.byStatus.map((s) => s.colorHex) ?? [];
 
   function downloadCSV() {
     if (!data) return;
@@ -74,18 +74,19 @@ export function BajajDashboard() {
   }
 
   return (
-    <div className="flex h-full flex-1 flex-col bg-neutral-950 px-8 py-8 overflow-y-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+    <div className="flex h-full flex-1 flex-col bg-neutral-950 overflow-hidden">
+
+      {/* ── Header ──────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-neutral-800 bg-[#0a0a0a] flex-shrink-0">
         <div>
-          <h1 className="text-2xl font-bold text-neutral-100">Analytics Dashboard</h1>
-          <p className="text-sm text-neutral-500 mt-1">Bajaj Auto Shipment — Work Order Overview</p>
+          <h1 className="text-[15px] font-semibold text-neutral-100 leading-none">Analytics</h1>
+          <p className="text-[11px] text-neutral-600 leading-none mt-0.5">Bajaj Auto · Shipment Overview</p>
         </div>
         <div className="flex items-center gap-2">
           <select
             value={selectedModule}
             onChange={(e) => setSelectedModule(e.target.value)}
-            className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-neutral-500"
+            className="bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-1.5 text-[13px] text-neutral-300 focus:outline-none focus:border-amber-600 transition-colors"
           >
             {MODULE_SLUGS.map((m) => (
               <option key={m.slug} value={m.slug}>{m.name}</option>
@@ -93,23 +94,24 @@ export function BajajDashboard() {
           </select>
           <button
             onClick={() => refetch()}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-neutral-900 text-sm text-neutral-300 hover:text-neutral-50 border border-neutral-700 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-900 text-[13px] text-neutral-400 hover:text-neutral-100 border border-neutral-800 hover:border-neutral-700 transition-colors"
           >
-            <RefreshCw className="size-4" />
+            <RefreshCw className="size-3.5" />
             Refresh
           </button>
           <button
             onClick={downloadCSV}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-neutral-900 text-sm text-neutral-200 hover:text-neutral-50 border border-neutral-700 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-900 text-[13px] text-neutral-400 hover:text-neutral-100 border border-neutral-800 hover:border-neutral-700 transition-colors"
           >
-            <Download className="size-4" />
+            <Download className="size-3.5" />
             Export CSV
           </button>
         </div>
       </div>
 
+      <div className="flex-1 overflow-y-auto px-6 py-6">
       {isLoading ? (
-        <div className="flex items-center justify-center py-32 text-neutral-600">Loading analytics…</div>
+        <div className="flex items-center justify-center py-32 text-neutral-600 text-sm">Loading analytics…</div>
       ) : (
         <>
           {/* KPI Row */}
@@ -301,6 +303,7 @@ export function BajajDashboard() {
           </div>
         </>
       )}
+      </div>{/* /scroll container */}
     </div>
   );
 }

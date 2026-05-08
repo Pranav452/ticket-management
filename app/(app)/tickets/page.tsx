@@ -1,9 +1,2 @@
-import { TicketListPageClient } from "@/components/ticket/ticket-list-page-client";
-
-export const metadata = {
-  title: "My Tickets — Manilal Ticket System",
-};
-
-export default function TicketsPage() {
-  return <TicketListPageClient />;
-}
+import { redirect } from "next/navigation";
+export default function TicketsPage() { redirect("/bajaj/boards/vipar"); }

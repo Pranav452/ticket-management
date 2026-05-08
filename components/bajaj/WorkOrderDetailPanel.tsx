@@ -8,22 +8,78 @@ import { useProfiles } from "@/lib/queries/profiles";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { createClient } from "@/lib/supabase/client";
 import type { BajajWorkOrder } from "@/lib/types/bajaj";
+import { cn } from "@/lib/utils";
 
 interface WorkOrderDetailPanelProps {
   workOrderId: string;
   onClose: () => void;
   isAdmin: boolean;
+  isLight?: boolean;
 }
+
+const FIELD_NAMES: string[] = [
+  "WO",
+  "Port",
+  "Country",
+  "Veh",
+  "Qty",
+  "Cont",
+  "Type",
+  "Stuffing on",
+  "S/LINE",
+  "Vessel Name",
+  "Agent",
+  "TRANSPORTER",
+  "Plant",
+  "PO NO",
+  "LC NO",
+  "LC DATE",
+  "HAZ",
+  "CONSIGNEE",
+  "REMARK 1",
+  "D/O GIVEN DT",
+  "BOOKING NO",
+  "CONTAINER NO",
+  "POL GATE",
+  "GATE OPEN",
+  "GATE CUT OFF",
+  "SI CUT OFF",
+  "DO ETD",
+  "CURRENT ETD",
+  "ETA AT DESTINATION",
+  "PICK UP DT",
+  "CNTR DISPATCH",
+  "CNTR REPORT NHAVA SHEVA",
+  "CNTR GATED IN PORT",
+  "FINAL VSL SOB",
+  "VGM SUBMITTED",
+  "SI SUBMITTED",
+  "BL NO",
+  "BL DT",
+  "BL HAND OVER TIME",
+  "FF JOB",
+  "CLEARANCE POINT",
+  "OPEN ORDER",
+  "BUFFER YARD",
+  "S/LINE PAYMENT STATUS",
+  "E DOC STATUS",
+  "COURIER DT",
+  "SB NO",
+  "SB DATE",
+  "FOR HBL",
+];
 
 // ─── Inline editable field ────────────────────────────────────────────────────
 function EditableField({
   label,
   value,
   onSave,
+  isLight = false,
 }: {
   label: string;
   value: string;
   onSave: (v: string) => void;
+  isLight?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(value);
@@ -35,7 +91,7 @@ function EditableField({
 
   return (
     <div className="group">
-      <p className="text-[10px] text-neutral-600 uppercase tracking-wide mb-0.5">{label}</p>
+      <p className={cn("text-[10px] uppercase tracking-wide mb-0.5", isLight ? "text-neutral-500" : "text-neutral-600")}>{label}</p>
       {editing ? (
         <input
           autoFocus
@@ -43,22 +99,28 @@ function EditableField({
           onChange={(e) => setVal(e.target.value)}
           onBlur={handleBlur}
           onKeyDown={(e) => { if (e.key === "Enter") handleBlur(); if (e.key === "Escape") { setVal(value); setEditing(false); } }}
-          className="w-full bg-neutral-800 border border-amber-600 rounded px-2 py-1 text-sm text-neutral-100 focus:outline-none"
+          className={cn(
+            "w-full border border-amber-600 rounded px-2 py-1 text-sm focus:outline-none",
+            isLight ? "bg-white text-neutral-900" : "bg-neutral-800 text-neutral-100",
+          )}
         />
       ) : (
         <p
           onClick={() => setEditing(true)}
-          className="text-sm text-neutral-200 cursor-text hover:text-amber-300 transition-colors py-0.5 truncate"
+          className={cn(
+            "text-sm cursor-text transition-colors py-0.5 truncate",
+            isLight ? "text-neutral-800 hover:text-amber-700" : "text-neutral-200 hover:text-amber-300",
+          )}
           title={val || "Click to edit"}
         >
-          {val || <span className="text-neutral-700 italic">empty</span>}
+          {val || <span className={cn("italic", isLight ? "text-neutral-400" : "text-neutral-700")}>empty</span>}
         </p>
       )}
     </div>
   );
 }
 
-export function WorkOrderDetailPanel({ workOrderId, onClose, isAdmin }: WorkOrderDetailPanelProps) {
+export function WorkOrderDetailPanel({ workOrderId, onClose, isAdmin, isLight = false }: WorkOrderDetailPanelProps) {
   const { data: workOrder, isLoading } = useWorkOrder(workOrderId);
   const { data: comments = [] } = useBajajComments(workOrderId);
   const { data: profiles = [] } = useProfiles();
@@ -80,6 +142,7 @@ export function WorkOrderDetailPanel({ workOrderId, onClose, isAdmin }: WorkOrde
   const [showAudit, setShowAudit] = useState(false);
   const [assignee, setAssignee] = useState<string | null>(workOrder?.assigned_to ?? null);
   const [updateError, setUpdateError] = useState<string | null>(null);
+  const [newFieldName, setNewFieldName] = useState("");
 
   // Close on Escape
   useEffect(() => {
@@ -89,6 +152,11 @@ export function WorkOrderDetailPanel({ workOrderId, onClose, isAdmin }: WorkOrde
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [onClose]);
+
+  useEffect(() => {
+    setAssignee(workOrder?.assigned_to ?? null);
+  }, [workOrder?.assigned_to]);
+
 
   function handleFieldSave(field: string, newValue: string) {
     if (!workOrder) return;
@@ -224,8 +292,36 @@ export function WorkOrderDetailPanel({ workOrderId, onClose, isAdmin }: WorkOrde
   }
 
   const fieldEntries = workOrder
-    ? Object.entries(workOrder.data)
+    ? Array.from(
+        new Set<string>([
+          ...FIELD_NAMES,
+          ...Object.keys(workOrder.data ?? {}),
+        ]),
+      ).map((key) => [key, workOrder.data?.[key]] as [string, unknown])
     : [];
+
+  function handleAddField() {
+    if (!workOrder) return;
+    const key = newFieldName.trim();
+    if (!key) return;
+    if (Object.prototype.hasOwnProperty.call(workOrder.data ?? {}, key)) {
+      setNewFieldName("");
+      return;
+    }
+    setUpdateError(null);
+    updateWorkOrder.mutate(
+      {
+        id: workOrderId,
+        updates: { data: { ...workOrder.data, [key]: "" } },
+      },
+      {
+        onSuccess: () => setNewFieldName(""),
+        onError: (err) => {
+          setUpdateError(err instanceof Error ? err.message : "Update failed");
+        },
+      },
+    );
+  }
 
   return (
     <AnimatePresence>
@@ -234,10 +330,13 @@ export function WorkOrderDetailPanel({ workOrderId, onClose, isAdmin }: WorkOrde
         animate={{ x: 0 }}
         exit={{ x: "100%" }}
         transition={{ type: "spring", damping: 28, stiffness: 250 }}
-        className="w-[420px] flex-shrink-0 flex flex-col border-l border-neutral-800 bg-neutral-950 overflow-hidden h-full"
+        className={cn(
+          "w-[420px] flex-shrink-0 flex flex-col border-l overflow-hidden h-full",
+          isLight ? "border-neutral-200 bg-white" : "border-neutral-800 bg-neutral-950",
+        )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-800 flex-shrink-0">
+        <div className={cn("flex items-center justify-between px-5 py-4 border-b flex-shrink-0", isLight ? "border-neutral-200" : "border-neutral-800")}>
           <div className="flex items-center gap-2 min-w-0">
             {workOrder?.status && (
               <span
@@ -245,13 +344,16 @@ export function WorkOrderDetailPanel({ workOrderId, onClose, isAdmin }: WorkOrde
                 style={{ backgroundColor: `#${workOrder.status.color_hex}` }}
               />
             )}
-            <h2 className="text-sm font-semibold text-neutral-100 truncate">
+            <h2 className={cn("text-sm font-semibold truncate", isLight ? "text-neutral-900" : "text-neutral-100")}>
               {workOrder ? String(fieldEntries[0]?.[1] ?? "Work Order") : "Loading…"}
             </h2>
           </div>
           <button
             onClick={onClose}
-            className="size-7 flex items-center justify-center rounded-md text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 transition-colors flex-shrink-0"
+            className={cn(
+              "size-7 flex items-center justify-center rounded-md transition-colors flex-shrink-0",
+              isLight ? "text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100" : "text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800",
+            )}
           >
             <X className="size-4" />
           </button>
@@ -264,14 +366,17 @@ export function WorkOrderDetailPanel({ workOrderId, onClose, isAdmin }: WorkOrde
         ) : workOrder ? (
           <div className="flex-1 overflow-y-auto">
             {/* ── Assign section ──────────────────────────────── */}
-            <div className="px-5 py-4 border-b border-neutral-800">
-              <p className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-2">
+            <div className={cn("px-5 py-4 border-b", isLight ? "border-neutral-200" : "border-neutral-800")}>
+              <p className={cn("text-xs font-medium uppercase tracking-wide mb-2", isLight ? "text-neutral-500" : "text-neutral-500")}>
                 Assigned To
               </p>
               <select
                 value={assignee ?? ""}
                 onChange={(e) => handleAssigneeChange(e.target.value)}
-                className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-amber-600"
+                className={cn(
+                  "w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-600",
+                  isLight ? "bg-white border-neutral-300 text-neutral-900" : "bg-neutral-900 border-neutral-700 text-neutral-200",
+                )}
               >
                 <option value="">Unassigned</option>
                 {profiles.map((p) => (
@@ -283,10 +388,38 @@ export function WorkOrderDetailPanel({ workOrderId, onClose, isAdmin }: WorkOrde
             </div>
 
             {/* ── All fields (editable) ────────────────────────── */}
-            <div className="px-5 py-4 border-b border-neutral-800">
-              <p className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-3">
+            <div className={cn("px-5 py-4 border-b", isLight ? "border-neutral-200" : "border-neutral-800")}>
+              <p className={cn("text-xs font-medium uppercase tracking-wide mb-3", isLight ? "text-neutral-500" : "text-neutral-500")}>
                 Work Order Fields
               </p>
+              <div className="mb-3 flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Add custom field name..."
+                  value={newFieldName}
+                  onChange={(e) => setNewFieldName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddField();
+                    }
+                  }}
+                  className={cn(
+                    "flex-1 border rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-amber-600",
+                    isLight ? "bg-white border-neutral-300 text-neutral-900 placeholder:text-neutral-400" : "bg-neutral-900 border-neutral-700 text-neutral-200 placeholder:text-neutral-600",
+                  )}
+                />
+                <button
+                  type="button"
+                  onClick={handleAddField}
+                  className={cn(
+                    "px-3 py-2 rounded-lg text-xs transition-colors border",
+                    isLight ? "bg-white border-neutral-300 text-neutral-700 hover:bg-neutral-100" : "bg-neutral-800 border-neutral-700 text-neutral-200 hover:bg-neutral-700",
+                  )}
+                >
+                  Add Field
+                </button>
+              </div>
               {updateError && (
                 <div className="mb-3 rounded-lg border border-red-800 bg-red-950/40 px-3 py-2 text-xs text-red-400">
                   {updateError}
@@ -298,6 +431,7 @@ export function WorkOrderDetailPanel({ workOrderId, onClose, isAdmin }: WorkOrde
                     key={key}
                     label={key}
                     value={String(val ?? "")}
+                    isLight={isLight}
                     onSave={(v) => handleFieldSave(key, v)}
                   />
                 ))}
