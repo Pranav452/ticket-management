@@ -3,10 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Loader2, CheckCircle, Globe } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 
 export function SignupForm() {
   const [fullName, setFullName] = useState("");
   const [email,    setEmail]    = useState("");
+  const [password, setPassword] = useState("");
   const [company,  setCompany]  = useState("");
   const [error,    setError]    = useState<string | null>(null);
   const [loading,  setLoading]  = useState(false);
@@ -15,17 +17,34 @@ export function SignupForm() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!email || !fullName) {
-      setError("Name and email are required.");
+    if (!email || !fullName || !password) {
+      setError("Name, email, and password are required.");
       return;
     }
     setLoading(true);
     try {
+      const supabase = createClient();
+      const { error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { full_name: fullName },
+        },
+      });
+
+      if (signUpError) {
+        setError(signUpError.message);
+        setLoading(false);
+        return;
+      }
+
+      // Create pending bajaj_users record
       await fetch("/api/bajaj/users", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ email, full_name: fullName }),
       });
+
       setSuccess(true);
     } catch {
       setError("Something went wrong. Please try again.");
@@ -39,11 +58,11 @@ export function SignupForm() {
       <div className="min-h-dvh bg-neutral-950 flex items-center justify-center px-6">
         <div className="w-full max-w-sm text-center space-y-5">
           <CheckCircle className="mx-auto size-14 text-amber-500" />
-          <h2 className="text-2xl font-bold text-neutral-50">Request sent!</h2>
+          <h2 className="text-2xl font-bold text-neutral-50">Request submitted!</h2>
           <p className="text-sm text-neutral-400 leading-relaxed">
             Your access request for{" "}
             <span className="text-neutral-200 font-medium">{email}</span>{" "}
-            has been sent to the Links admin team. You&apos;ll receive a confirmation once approved.
+            has been received. An admin will approve your account — you&apos;ll be notified once approved.
           </p>
           <Link
             href="/login"
@@ -105,6 +124,22 @@ export function SignupForm() {
               onChange={(e) => setEmail(e.target.value)}
               className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3.5 py-2.5 text-sm text-neutral-50 placeholder-neutral-600 focus:border-amber-600 focus:outline-none focus:ring-1 focus:ring-amber-600 transition-colors"
               placeholder="you@linksin.com"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="password" className="block text-[13px] font-medium text-neutral-400">
+              Password
+            </label>
+            <input
+              id="password"
+              type="password"
+              required
+              autoComplete="new-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3.5 py-2.5 text-sm text-neutral-50 placeholder-neutral-600 focus:border-amber-600 focus:outline-none focus:ring-1 focus:ring-amber-600 transition-colors"
+              placeholder="••••••••"
             />
           </div>
 

@@ -3,6 +3,8 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import { useAuthStore } from "@/lib/stores/auth-store";
 import {
   BarChart2,
   Upload,
@@ -65,8 +67,17 @@ function NavItem({
 // ─── AppLayout ────────────────────────────────────────────────────────────────
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
-  const pathname = usePathname();
-  const router   = useRouter();
+  const pathname   = usePathname();
+  const router     = useRouter();
+  const clearAuth  = useAuthStore((s) => s.clearAuth);
+
+  async function handleSignOut() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    clearAuth();
+    sessionStorage.removeItem("bajaj_user");
+    router.push("/login");
+  }
 
   const activeModule = MODULES.find(
     (m) => pathname.includes(`/bajaj/boards/${m.slug}`)
@@ -196,7 +207,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         {/* Sign out */}
         <div className="px-1.5 py-3 border-t border-neutral-800/60">
           <button
-            onClick={() => router.push("/login")}
+            onClick={handleSignOut}
             title={collapsed ? "Sign out" : undefined}
             className={cn(
               "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-neutral-600 hover:text-red-400 hover:bg-neutral-800 border border-transparent transition-all w-full",

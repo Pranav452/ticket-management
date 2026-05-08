@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff, Loader2, Globe, ChevronDown, ChevronUp } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import { useAuthStore } from "@/lib/stores/auth-store";
 
 // ─── Test accounts ────────────────────────────────────────────────────────────
 const TEST_USERS = [
@@ -17,6 +19,9 @@ const TEST_PASSWORD = "Links@2026";
 
 export function LoginForm() {
   const router = useRouter();
+  const setBajajUser = useAuthStore((s) => s.setBajajUser);
+  const setUser      = useAuthStore((s) => s.setUser);
+
   const [email,       setEmail]       = useState("");
   const [password,    setPassword]    = useState("");
   const [showPwd,     setShowPwd]     = useState(false);
@@ -30,22 +35,55 @@ export function LoginForm() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/bajaj/auth/login", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ email: email.trim(), password }),
+      const supabase = createClient();
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error ?? "Login failed");
+      if (signInError || !data.user) {
+        setError(signInError?.message ?? "Login failed");
         setLoading(false);
         return;
       }
 
-      // Store session in sessionStorage so other components can read it
-      sessionStorage.setItem("bajaj_user", JSON.stringify(data));
+      setUser(data.user);
+
+      // Fetch bajaj_users profile
+      const meRes = await fetch("/api/bajaj/auth/me");
+      const meData = await meRes.json() as {
+        id?: string;
+        email?: string;
+        full_name?: string | null;
+        role?: string;
+        department?: string | null;
+        status?: string;
+        error?: string;
+      };
+
+      if (!meRes.ok) {
+        setError(meData.error ?? "Could not load profile");
+        setLoading(false);
+        return;
+      }
+
+      if (meData.status === "pending") {
+        setError("Your account is pending admin approval.");
+        await supabase.auth.signOut();
+        setLoading(false);
+        return;
+      }
+
+      const bajajUser = {
+        id:         meData.id!,
+        email:      meData.email!,
+        full_name:  meData.full_name ?? null,
+        role:       meData.role ?? "viewer",
+        department: meData.department ?? null,
+      };
+
+      setBajajUser(bajajUser);
+      sessionStorage.setItem("bajaj_user", JSON.stringify(bajajUser));
 
       router.push("/bajaj/boards/vipar");
       router.refresh();
