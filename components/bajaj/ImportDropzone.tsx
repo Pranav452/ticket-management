@@ -46,37 +46,102 @@ const EMAIL_COL_MAP: Record<string, string> = {
   "ib plan-zord":              "BLDT",
 };
 
+// Headers that are genuinely split across 2 lines when copying an HTML email table.
+// "Port (WO/POD)" always arrives as a single line so it is NOT listed here.
+const SPLIT_HEADER_JOINS: string[] = [
+  "plant ready / dispatch date",
+];
+
 function parseEmailTable(text: string): {
   headers: string[];
   rows: Record<string, string>[];
   rawHeaders: string[];
 } {
-  const lines = text
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
+  // ── Format detection ───────────────────────────────────────────────────────
+  // Case 1: Tab-separated (copy from Excel or Outlook table copy with tabs)
+  // Case 2: One cell per line (copy from HTML email in most mail clients —
+  //         blank cells become empty lines, split headers become 2 lines)
 
-  if (lines.length < 2) return { headers: [], rows: [], rawHeaders: [] };
+  const allLines = text.split(/\r?\n/).map((l) => l.trim());
+  const hasTab   = allLines[0]?.includes("\t");
 
-  // Detect separator: tab-separated or pipe-separated
-  const sep = lines[0].includes("\t") ? "\t" : "|";
-  const rawHeaders = lines[0].split(sep).map((h) => h.trim().replace(/\s+/g, " "));
+  if (hasTab) {
+    // ── TAB-SEPARATED ────────────────────────────────────────────────────────
+    const lines = allLines.filter(Boolean);
+    if (lines.length < 2) return { headers: [], rows: [], rawHeaders: [] };
 
-  const mappedHeaders = rawHeaders.map((h) => {
-    const key = h.toLowerCase();
-    return EMAIL_COL_MAP[key] ?? h;
-  });
+    const sep        = "\t";
+    const rawHeaders = lines[0].split(sep).map((h) => h.trim().replace(/\s+/g, " "));
+    const mappedHeaders = rawHeaders.map((h) => EMAIL_COL_MAP[h.toLowerCase()] ?? h);
 
+    const rows: Record<string, string>[] = [];
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(sep).map((c) => c.trim());
+      if (cols.length < 2) continue;
+      const row: Record<string, string> = {};
+      mappedHeaders.forEach((header, idx) => { row[header] = cols[idx] ?? ""; });
+      if (!row["WO"]) continue;
+      rows.push(row);
+    }
+    return { headers: mappedHeaders, rows, rawHeaders };
+  }
+
+  // ── ONE-CELL-PER-LINE (email HTML table copy) ─────────────────────────────
+  // Keep blank lines so empty cells preserve column alignment.
+  // First step: merge split headers like "Plant Ready /" + "Dispatch Date"
+  const merged: string[] = [];
+  for (let i = 0; i < allLines.length; i++) {
+    const cur  = allLines[i].trim();
+    const next = (allLines[i + 1] ?? "").trim();
+    // Detect a line that is the first half of a known split header
+    const combined = (cur + " " + next).toLowerCase().replace(/\s+/g, " ");
+    const isSplit  = SPLIT_HEADER_JOINS.some((h) => combined.startsWith(h));
+    if (isSplit) {
+      merged.push(cur + " " + next); // merge the two lines
+      i++; // skip next
+    } else {
+      merged.push(cur);
+    }
+  }
+
+  // Determine column count: the header row is the first row.
+  // Known column count for the Bajaj dispatch plan = 17.
+  // Detect by finding the "CHA" cell and counting until a cell that looks like
+  // a CHA value (LINKS/BHATIA/SHARP) appears again.
+  const KNOWN_CHA_VALUES = ["LINKS", "BHATIA", "SHARP", "VSP"];
+  let colCount   = 0;
+  let headerStart = -1;
+
+  for (let i = 0; i < merged.length; i++) {
+    if (merged[i].toUpperCase() === "CHA") { headerStart = i; break; }
+  }
+  if (headerStart === -1) return { headers: [], rows: [], rawHeaders: [] };
+
+  // Count cells until we hit the first data cell (a CHA value)
+  for (let i = headerStart + 1; i < merged.length; i++) {
+    if (KNOWN_CHA_VALUES.includes(merged[i].toUpperCase())) {
+      colCount = i - headerStart;
+      break;
+    }
+  }
+  if (colCount === 0) colCount = 17; // fallback
+
+  // Extract headers
+  const rawHeaders: string[] = [];
+  for (let i = headerStart; i < headerStart + colCount; i++) {
+    rawHeaders.push((merged[i] ?? "").replace(/\s+/g, " "));
+  }
+  const mappedHeaders = rawHeaders.map((h) => EMAIL_COL_MAP[h.toLowerCase()] ?? h);
+
+  // Extract data rows (groups of colCount cells starting after headers)
+  const dataStart = headerStart + colCount;
   const rows: Record<string, string>[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split(sep).map((c) => c.trim());
-    if (cols.length < 2) continue;
+
+  for (let i = dataStart; i + colCount <= merged.length; i += colCount) {
+    const cells = merged.slice(i, i + colCount).map((c) => c);
     const row: Record<string, string> = {};
-    mappedHeaders.forEach((header, idx) => {
-      row[header] = cols[idx] ?? "";
-    });
-    // Skip rows where WO is empty
-    if (!row["WO"]) continue;
+    mappedHeaders.forEach((header, idx) => { row[header] = cells[idx] ?? ""; });
+    if (!row["WO"] || row["WO"].trim() === "") continue;
     rows.push(row);
   }
 
