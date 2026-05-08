@@ -3,28 +3,62 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Eye, EyeOff, Loader2, Globe } from "lucide-react";
+import { Eye, EyeOff, Loader2, Globe, ChevronDown, ChevronUp } from "lucide-react";
+
+// ─── Test accounts ────────────────────────────────────────────────────────────
+const TEST_USERS = [
+  { email: "superadmin@links.com", label: "Super Admin",    role: "superadmin", color: "text-red-400"    },
+  { email: "admin@links.com",      label: "Admin",           role: "admin",      color: "text-amber-400"  },
+  { email: "ops@links.com",        label: "Ops (operator)",  role: "operator",   color: "text-blue-400"   },
+  { email: "docs@links.com",       label: "Docs (operator)", role: "operator",   color: "text-purple-400" },
+  { email: "viewer@links.com",     label: "Viewer",          role: "viewer",     color: "text-neutral-400"},
+];
+const TEST_PASSWORD = "Links@2026";
 
 export function LoginForm() {
   const router = useRouter();
-  const [email,    setEmail]    = useState("");
-  const [password, setPassword] = useState("");
-  const [showPwd,  setShowPwd]  = useState(false);
-  const [error,    setError]    = useState<string | null>(null);
-  const [loading,  setLoading]  = useState(false);
+  const [email,       setEmail]       = useState("");
+  const [password,    setPassword]    = useState("");
+  const [showPwd,     setShowPwd]     = useState(false);
+  const [error,       setError]       = useState<string | null>(null);
+  const [loading,     setLoading]     = useState(false);
+  const [showTestBox, setShowTestBox] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!email || !password) {
-      setError("Please enter your email and password.");
-      return;
-    }
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 400));
-    setLoading(false);
-    router.push("/bajaj/boards/vipar");
-    router.refresh();
+
+    try {
+      const res = await fetch("/api/bajaj/auth/login", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ email: email.trim(), password }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error ?? "Login failed");
+        setLoading(false);
+        return;
+      }
+
+      // Store session in sessionStorage so other components can read it
+      sessionStorage.setItem("bajaj_user", JSON.stringify(data));
+
+      router.push("/bajaj/boards/vipar");
+      router.refresh();
+    } catch {
+      setError("Network error. Check your connection.");
+      setLoading(false);
+    }
+  }
+
+  function quickLogin(testEmail: string) {
+    setEmail(testEmail);
+    setPassword(TEST_PASSWORD);
+    setShowTestBox(false);
   }
 
   return (
@@ -59,8 +93,8 @@ export function LoginForm() {
             {[
               { icon: "🌏", text: "5 country modules — VIPAR, Sri Lanka, Nigeria, Bangladesh, Triumph" },
               { icon: "📋", text: "Paste dispatch plan from email — rows imported in seconds" },
-              { icon: "📦", text: "Track WO → SB → BL → Completed with live kanban" },
-              { icon: "🔔", text: "Reminders, comments & audit trail per shipment" },
+              { icon: "📦", text: "Planning → Booking → SI Filing → Clearance → Billing → BL Release" },
+              { icon: "🛡",  text: "Role-based access — superadmin, admin, operator, viewer" },
             ].map(({ icon, text }) => (
               <div key={text} className="flex items-start gap-3">
                 <span className="text-lg leading-none mt-0.5">{icon}</span>
@@ -70,7 +104,6 @@ export function LoginForm() {
           </div>
         </div>
 
-        {/* Footer */}
         <p className="text-[11px] text-neutral-700">
           © 2026 Manilal / Links. Internal use only.
         </p>
@@ -78,7 +111,7 @@ export function LoginForm() {
 
       {/* ── Right panel — form ─────────────────────────────────────────── */}
       <div className="flex flex-1 items-center justify-center px-6 py-12">
-        <div className="w-full max-w-sm space-y-7">
+        <div className="w-full max-w-sm space-y-6">
 
           {/* Mobile logo */}
           <div className="flex items-center gap-2.5 lg:hidden">
@@ -90,9 +123,7 @@ export function LoginForm() {
 
           <div>
             <h1 className="text-2xl font-bold text-neutral-50 tracking-tight">Sign in</h1>
-            <p className="mt-1 text-sm text-neutral-500">
-              Enter your Links email to continue.
-            </p>
+            <p className="mt-1 text-sm text-neutral-500">Enter your Links email to continue.</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -154,12 +185,44 @@ export function LoginForm() {
             </button>
           </form>
 
+          {/* ── Test accounts ──────────────────────────────────────────── */}
+          <div className="border border-neutral-800 rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowTestBox(!showTestBox)}
+              className="flex w-full items-center justify-between px-4 py-3 text-[13px] text-neutral-500 hover:bg-neutral-900 transition-colors"
+            >
+              <span>🧪 Test accounts (dev only)</span>
+              {showTestBox ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+            </button>
+            {showTestBox && (
+              <div className="border-t border-neutral-800 bg-neutral-950 px-4 py-3 space-y-2">
+                <p className="text-[11px] text-neutral-600 mb-3">
+                  Password for all: <code className="bg-neutral-800 px-1.5 py-0.5 rounded text-amber-400 font-mono">{TEST_PASSWORD}</code>
+                </p>
+                {TEST_USERS.map((u) => (
+                  <button
+                    key={u.email}
+                    type="button"
+                    onClick={() => quickLogin(u.email)}
+                    className="flex w-full items-center justify-between px-3 py-2 rounded-lg hover:bg-neutral-900 transition-colors text-left"
+                  >
+                    <div>
+                      <p className={`text-[13px] font-medium ${u.color}`}>{u.label}</p>
+                      <p className="text-[11px] text-neutral-600">{u.email}</p>
+                    </div>
+                    <span className="text-[10px] text-neutral-700 bg-neutral-800 px-1.5 py-0.5 rounded-full uppercase tracking-wide">
+                      {u.role}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           <p className="text-center text-[13px] text-neutral-600">
             New to Links?{" "}
-            <Link
-              href="/signup"
-              className="text-amber-500 hover:text-amber-400 underline-offset-4 hover:underline transition-colors"
-            >
+            <Link href="/signup" className="text-amber-500 hover:text-amber-400 underline-offset-4 hover:underline transition-colors">
               Request access
             </Link>
           </p>

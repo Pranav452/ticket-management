@@ -395,9 +395,9 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
             <table className="text-[12px] min-w-full">
               <thead className="bg-neutral-900 border-b border-neutral-800 sticky top-0">
                 <tr>
-                  {pastePreview.headers.filter(h => h !== "CHA").map((h) => (
-                    <th key={h} className="px-3 py-2 text-left font-medium text-neutral-500 whitespace-nowrap">
-                      {h}
+                  {pastePreview.headers.filter(h => h !== "CHA").map((h, idx) => (
+                    <th key={`h-${idx}-${h}`} className="px-3 py-2 text-left font-medium text-neutral-500 whitespace-nowrap">
+                      {h || <span className="text-neutral-700 italic">col{idx}</span>}
                     </th>
                   ))}
                 </tr>
@@ -408,8 +408,8 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
                     "border-b border-neutral-800/50",
                     i % 2 === 0 ? "bg-neutral-950" : "bg-neutral-900/30"
                   )}>
-                    {pastePreview.headers.filter(h => h !== "CHA").map((h) => (
-                      <td key={h} className="px-3 py-1.5 text-neutral-300 whitespace-nowrap max-w-[140px] truncate">
+                    {pastePreview.headers.filter(h => h !== "CHA").map((h, idx) => (
+                      <td key={`c-${i}-${idx}`} className="px-3 py-1.5 text-neutral-300 whitespace-nowrap max-w-[140px] truncate">
                         {row[h] ?? ""}
                       </td>
                     ))}
