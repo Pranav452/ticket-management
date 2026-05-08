@@ -10,7 +10,7 @@ export async function GET() {
   try {
     const pool   = await getLinksPool();
     const result = await pool.request().query(
-      "SELECT id, email, full_name, status, approved_by, approved_at, created_at FROM bajaj_users ORDER BY created_at DESC"
+      "SELECT id, email, full_name, status, role, department, approved_by, approved_at, created_at FROM bajaj_users ORDER BY created_at DESC"
     );
     return NextResponse.json(
       result.recordset.map((r) => ({ ...r, user_id: r.id }))

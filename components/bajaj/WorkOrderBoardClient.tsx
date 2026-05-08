@@ -289,7 +289,7 @@ export function WorkOrderBoardClient({ slug, isAdmin }: WorkOrderBoardClientProp
       )}
 
       {/* ─── Board ───────────────────────────────────────────────────────── */}
-      {!statusLoading && statuses.length === 0 ? (
+      {!statusLoading && statuses.length === 0 && workOrders.length === 0 ? (
         <div className="flex flex-1 items-center justify-center flex-col gap-5 text-neutral-600">
           <Upload className="size-10 text-neutral-800" />
           <div className="text-center">

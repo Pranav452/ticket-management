@@ -60,15 +60,31 @@ export interface BajajComment {
   author?: { id: string; full_name: string | null; email: string; avatar_url: string | null };
 }
 
+export type BajajUserRole = "superadmin" | "admin" | "operator" | "viewer";
+
 export interface BajajUser {
   id: string;
-  user_id: string;
+  user_id?: string | null;
   email: string;
   full_name: string | null;
   status: BajajUserStatus;
+  role: BajajUserRole | null;
+  department: string | null;
   approved_by: string | null;
   approved_at: string | null;
   created_at: string;
+}
+
+export interface BajajRolePermission {
+  id: string;
+  role: BajajUserRole;
+  module_slug: string;
+  can_view: boolean;
+  can_edit_fields: boolean;
+  can_move_stage: boolean;
+  can_import: boolean;
+  can_export: boolean;
+  can_manage_users: boolean;
 }
 
 export interface BajajAuditLog {

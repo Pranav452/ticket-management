@@ -1,15 +1,23 @@
 "use client";
 
 import React, { useState } from "react";
-import { CheckCircle, XCircle, Loader2, Search, Filter } from "lucide-react";
-import { useBajajUsers, useApproveBajajUser, useRejectBajajUser, useBajajAuditLogs } from "@/lib/queries/bajaj";
+import { CheckCircle, XCircle, Loader2, Search, Filter, ShieldCheck } from "lucide-react";
+import {
+  useBajajUsers,
+  useApproveBajajUser,
+  useRejectBajajUser,
+  useBajajAuditLogs,
+  useBajajRolePermissions,
+  useUpdateBajajRolePermission,
+  useUpdateBajajUserRole,
+} from "@/lib/queries/bajaj";
 import { useAuthStore } from "@/lib/stores/auth-store";
-import type { BajajUser, BajajAuditLog } from "@/lib/types/bajaj";
+import type { BajajUser, BajajAuditLog, BajajRolePermission, BajajUserRole } from "@/lib/types/bajaj";
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    pending: "bg-yellow-950/60 text-yellow-400 border-yellow-800",
+    pending:  "bg-yellow-950/60 text-yellow-400 border-yellow-800",
     approved: "bg-emerald-950/60 text-emerald-400 border-emerald-800",
     rejected: "bg-red-950/60 text-red-400 border-red-800",
   };
@@ -20,10 +28,27 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// ─── Role badge ───────────────────────────────────────────────────────────────
+function RoleBadge({ role }: { role: string | null }) {
+  const styles: Record<string, string> = {
+    superadmin: "bg-violet-950/60 text-violet-300 border-violet-800",
+    admin:      "bg-amber-950/60  text-amber-300  border-amber-800",
+    operator:   "bg-blue-950/60   text-blue-300   border-blue-800",
+    viewer:     "bg-neutral-800   text-neutral-400 border-neutral-700",
+  };
+  const r = role ?? "—";
+  return (
+    <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${styles[r] ?? "bg-neutral-800 text-neutral-400 border-neutral-700"}`}>
+      {r}
+    </span>
+  );
+}
+
 // ─── User row ─────────────────────────────────────────────────────────────────
-function UserRow({ user, adminId }: { user: BajajUser; adminId: string }) {
+function UserRow({ user, adminId, canManageRoles }: { user: BajajUser; adminId: string; canManageRoles: boolean }) {
   const approve = useApproveBajajUser();
-  const reject = useRejectBajajUser();
+  const reject  = useRejectBajajUser();
+  const updateRole = useUpdateBajajUserRole();
 
   return (
     <tr className="border-b border-neutral-800 hover:bg-neutral-900/50">
@@ -32,6 +57,25 @@ function UserRow({ user, adminId }: { user: BajajUser; adminId: string }) {
       <td className="px-4 py-3">
         <StatusBadge status={user.status} />
       </td>
+      <td className="px-4 py-3">
+        {canManageRoles ? (
+          <select
+            value={user.role ?? ""}
+            onChange={(e) => updateRole.mutate({ userId: user.id, role: e.target.value as BajajUserRole })}
+            disabled={updateRole.isPending}
+            className="bg-neutral-900 border border-neutral-700 rounded-md text-xs text-neutral-300 px-2 py-1 focus:outline-none focus:border-amber-600 disabled:opacity-50"
+          >
+            <option value="">— no role —</option>
+            <option value="superadmin">superadmin</option>
+            <option value="admin">admin</option>
+            <option value="operator">operator</option>
+            <option value="viewer">viewer</option>
+          </select>
+        ) : (
+          <RoleBadge role={user.role} />
+        )}
+      </td>
+      <td className="px-4 py-3 text-sm text-neutral-500">{user.department ?? "—"}</td>
       <td className="px-4 py-3 text-xs text-neutral-600">
         {new Date(user.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
       </td>
@@ -67,13 +111,13 @@ function UserRow({ user, adminId }: { user: BajajUser; adminId: string }) {
 // ─── Audit log row ────────────────────────────────────────────────────────────
 function AuditRow({ log }: { log: BajajAuditLog }) {
   const actionColors: Record<string, string> = {
-    moved_card: "text-blue-400",
-    assigned: "text-amber-400",
-    commented: "text-neutral-400",
-    imported: "text-emerald-400",
-    edited_field: "text-violet-400",
-    approved_user: "text-emerald-400",
-    rejected_user: "text-red-400",
+    moved_card:       "text-blue-400",
+    assigned:         "text-amber-400",
+    commented:        "text-neutral-400",
+    imported:         "text-emerald-400",
+    edited_field:     "text-violet-400",
+    approved_user:    "text-emerald-400",
+    rejected_user:    "text-red-400",
     requested_access: "text-yellow-400",
   };
 
@@ -88,9 +132,7 @@ function AuditRow({ log }: { log: BajajAuditLog }) {
       <td className={`px-4 py-3 text-sm font-medium ${actionColors[log.action] ?? "text-neutral-400"}`}>
         {log.action.replace(/_/g, " ")}
       </td>
-      <td className="px-4 py-3 text-xs text-neutral-600">
-        {log.target_type ?? "—"}
-      </td>
+      <td className="px-4 py-3 text-xs text-neutral-600">{log.target_type ?? "—"}</td>
       <td className="px-4 py-3 text-xs text-neutral-600 max-w-[200px] truncate">
         {log.new_value ? JSON.stringify(log.new_value) : "—"}
       </td>
@@ -98,9 +140,98 @@ function AuditRow({ log }: { log: BajajAuditLog }) {
   );
 }
 
+// ─── Permissions Matrix ───────────────────────────────────────────────────────
+const ROLES: BajajUserRole[] = ["superadmin", "admin", "operator", "viewer"];
+
+const PERM_COLS: { key: keyof BajajRolePermission; label: string }[] = [
+  { key: "can_view",         label: "View" },
+  { key: "can_edit_fields",  label: "Edit Fields" },
+  { key: "can_move_stage",   label: "Move Stage" },
+  { key: "can_import",       label: "Import" },
+  { key: "can_export",       label: "Export" },
+  { key: "can_manage_users", label: "Manage Users" },
+];
+
+function PermissionsMatrix({ isSuperAdmin }: { isSuperAdmin: boolean }) {
+  const { data: perms = [], isLoading } = useBajajRolePermissions();
+  const update = useUpdateBajajRolePermission();
+
+  function getPermRow(role: BajajUserRole): BajajRolePermission | undefined {
+    return perms.find((p) => p.role === role && p.module_slug === "*");
+  }
+
+  function toggle(role: BajajUserRole, key: keyof BajajRolePermission, currentVal: boolean) {
+    if (!isSuperAdmin) return;
+    const row = getPermRow(role) ?? {
+      id: "",
+      role,
+      module_slug: "*",
+      can_view: false,
+      can_edit_fields: false,
+      can_move_stage: false,
+      can_import: false,
+      can_export: false,
+      can_manage_users: false,
+    };
+    update.mutate({ ...row, [key]: !currentVal });
+  }
+
+  if (isLoading) {
+    return <div className="text-sm text-neutral-600 py-4">Loading permissions…</div>;
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-neutral-800">
+      <table className="w-full">
+        <thead className="bg-neutral-900/80 border-b border-neutral-800">
+          <tr>
+            <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide w-32">Role</th>
+            {PERM_COLS.map((col) => (
+              <th key={col.key} className="px-4 py-3 text-center text-xs font-medium text-neutral-500 uppercase tracking-wide">
+                {col.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {ROLES.map((role) => {
+            const row = getPermRow(role);
+            return (
+              <tr key={role} className="border-b border-neutral-800 hover:bg-neutral-900/30">
+                <td className="px-4 py-3">
+                  <RoleBadge role={role} />
+                </td>
+                {PERM_COLS.map((col) => {
+                  const val = row ? !!(row[col.key] as boolean | number) : false;
+                  return (
+                    <td key={col.key} className="px-4 py-3 text-center">
+                      <input
+                        type="checkbox"
+                        checked={val}
+                        onChange={() => toggle(role, col.key, val)}
+                        disabled={!isSuperAdmin || update.isPending}
+                        className="size-4 rounded accent-amber-500 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+                      />
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {!isSuperAdmin && (
+        <p className="px-4 py-2.5 text-xs text-neutral-600 border-t border-neutral-800">
+          Only superadmins can edit role permissions.
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── Admin Panel ──────────────────────────────────────────────────────────────
 export function AdminPanel() {
-  const [tab, setTab] = useState<"requests" | "audit">("requests");
+  const [tab, setTab]               = useState<"requests" | "audit" | "roles">("requests");
   const [searchEmail, setSearchEmail] = useState("");
   const [actionFilter, setActionFilter] = useState("");
 
@@ -108,14 +239,16 @@ export function AdminPanel() {
   const { data: allUsers = [] } = useBajajUsers();
   const { data: auditLogs = [] } = useBajajAuditLogs({
     actorEmail: searchEmail || undefined,
-    action: actionFilter || undefined,
-    limit: 200,
+    action:     actionFilter || undefined,
+    limit:      200,
   });
 
-  const pendingUsers = allUsers.filter((u) => u.status === "pending");
-  const allUsersFiltered = searchEmail
+  const pendingUsers      = allUsers.filter((u) => u.status === "pending");
+  const allUsersFiltered  = searchEmail
     ? allUsers.filter((u) => u.email.includes(searchEmail))
     : allUsers;
+
+  const isSuperAdmin = (profile as { role?: string } | null)?.role === "superadmin";
 
   const ACTIONS = [
     "moved_card", "assigned", "commented", "imported",
@@ -152,12 +285,22 @@ export function AdminPanel() {
         >
           Audit Log
         </button>
+        <button
+          onClick={() => setTab("roles")}
+          className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors ${
+            tab === "roles"
+              ? "text-amber-400 border-b-2 border-amber-500"
+              : "text-neutral-500 hover:text-neutral-300"
+          }`}
+        >
+          <ShieldCheck className="size-3.5" />
+          Roles &amp; Permissions
+        </button>
       </div>
 
       {/* ── Access Requests tab ───────────────────────────────────── */}
       {tab === "requests" && (
         <div>
-          {/* Search */}
           <div className="flex items-center gap-2 mb-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-neutral-600" />
@@ -178,17 +321,19 @@ export function AdminPanel() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Name</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Email</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Role</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Department</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Requested</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {allUsersFiltered.map((u) => (
-                  <UserRow key={u.id} user={u} adminId={profile?.id ?? ""} />
+                  <UserRow key={u.id} user={u} adminId={profile?.id ?? ""} canManageRoles={isSuperAdmin} />
                 ))}
                 {allUsersFiltered.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-sm text-neutral-600">
+                    <td colSpan={7} className="px-4 py-8 text-center text-sm text-neutral-600">
                       No access requests yet.
                     </td>
                   </tr>
@@ -202,7 +347,6 @@ export function AdminPanel() {
       {/* ── Audit Log tab ─────────────────────────────────────────── */}
       {tab === "audit" && (
         <div>
-          {/* Filters */}
           <div className="flex items-center gap-2 mb-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-neutral-600" />
@@ -254,6 +398,20 @@ export function AdminPanel() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* ── Roles & Permissions tab ───────────────────────────────── */}
+      {tab === "roles" && (
+        <div>
+          <div className="mb-4">
+            <h2 className="text-sm font-semibold text-neutral-200 mb-1">Roles &amp; Permissions Matrix</h2>
+            <p className="text-xs text-neutral-600">
+              Default permissions apply to all modules (<code className="text-neutral-500">*</code>).
+              {!isSuperAdmin && " Only superadmins can modify permissions."}
+            </p>
+          </div>
+          <PermissionsMatrix isSuperAdmin={isSuperAdmin} />
         </div>
       )}
     </div>

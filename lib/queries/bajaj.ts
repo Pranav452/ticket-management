@@ -12,6 +12,8 @@ import type {
   BajajAnalytics,
   WorkOrderFilters,
   BajajReminder,
+  BajajRolePermission,
+  BajajUserRole,
 } from "@/lib/types/bajaj";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -301,6 +303,42 @@ export function useCreateBajajReminder() {
         }),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["bajaj", "reminders"] }),
+  });
+}
+
+// ─── Role Permissions ─────────────────────────────────────────────────────────
+
+export function useBajajRolePermissions() {
+  return useQuery<BajajRolePermission[]>({
+    queryKey: ["bajaj", "role-permissions"],
+    queryFn:  () => apiFetch("/api/bajaj/role-permissions"),
+    staleTime: 30_000,
+  });
+}
+
+export function useUpdateBajajRolePermission() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (perm: Partial<BajajRolePermission> & { role: BajajUserRole }) =>
+      apiFetch("/api/bajaj/role-permissions", {
+        method:  "PUT",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(perm),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["bajaj", "role-permissions"] }),
+  });
+}
+
+export function useUpdateBajajUserRole() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: BajajUserRole }) =>
+      apiFetch(`/api/bajaj/users/${userId}`, {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ role }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["bajaj", "users"] }),
   });
 }
 

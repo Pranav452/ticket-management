@@ -208,11 +208,14 @@ export function WorkOrderBoard({
 
   return (
       <div className="flex flex-1 gap-4 overflow-x-auto p-6 pb-8">
-      {statuses.map((status) => (
+      {statuses.map((status, idx) => (
         <Column
           key={status.id}
           status={status}
-          workOrders={workOrders.filter((wo) => wo.status_id === status.id)}
+          workOrders={workOrders.filter((wo) =>
+            wo.status_id === status.id ||
+            (idx === 0 && (wo.status_id === null || wo.status_id === undefined))
+          )}
           cardFaceFields={cardFaceFields}
             isLight={isLight}
           selectedId={selectedId}

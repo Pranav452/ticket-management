@@ -1,5 +1,7 @@
 /**
- * PATCH /api/bajaj/users/[id]  { action: "approve"|"reject", approved_by }
+ * PATCH /api/bajaj/users/[id]
+ *   { action: "approve"|"reject", approved_by }
+ *   OR { role: "superadmin"|"admin"|"operator"|"viewer" }
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -11,13 +13,29 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const { action, approved_by } = await req.json();
+    const body = await req.json();
+    const pool = await getLinksPool();
 
+    // Role update branch
+    if ("role" in body) {
+      const validRoles = ["superadmin", "admin", "operator", "viewer"];
+      if (!validRoles.includes(body.role))
+        return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+
+      await pool.request()
+        .input("id",   sql.VarChar, id)
+        .input("role", sql.VarChar, body.role)
+        .query("UPDATE bajaj_users SET role=@role WHERE id=@id");
+
+      return NextResponse.json({ success: true });
+    }
+
+    // Approve / reject branch
+    const { action, approved_by } = body;
     if (!["approve", "reject"].includes(action))
       return NextResponse.json({ error: "action must be approve or reject" }, { status: 400 });
 
     const status = action === "approve" ? "approved" : "rejected";
-    const pool   = await getLinksPool();
 
     await pool.request()
       .input("id",   sql.VarChar,  id)
