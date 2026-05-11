@@ -237,6 +237,7 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
         });
 
         const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Insert failed");
         if (data.skipped) skipped++;
         else added++;
       }

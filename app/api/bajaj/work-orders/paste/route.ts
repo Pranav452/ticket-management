@@ -105,14 +105,19 @@ const FIELD_MAP: Record<string, string> = {
   "buffer_yard": "buffer_yard",
   "courier dt": "courier_dt",
   "courier_dt": "courier_dt",
+  "ffjobno": "ff_job",
+  "ff job no": "ff_job",
+  "wodt": "wodt",
+  "wo date": "wodt",
+  "wo dt": "wodt",
   "remark": "remark",
   "remarks": "remark",
   "remark 1": "remark",
 };
 
-function mapFieldName(key: string): string {
+function mapFieldName(key: string): string | null {
   const lower = key.toLowerCase().trim();
-  return FIELD_MAP[lower] || lower;
+  return FIELD_MAP[lower] ?? null; // null = not a known column, skip
 }
 
 const MODULE_DEFAULT_COUNTRY: Record<string, string> = {
