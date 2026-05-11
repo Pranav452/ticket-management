@@ -50,12 +50,15 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
     { name: "Completed",           color_hex: "22c55e" },
   ];
 
-  // Merge: if DB has a matching status (by name substring), use its id; else use placeholder
+  // Merge: exact match first, then substring, tracking used IDs to prevent duplicates
+  const usedDbIds = new Set<string>();
   const statuses = LIFECYCLE.map((stage, i) => {
-    const match = dbStatuses.find((s) =>
-      s.name.toLowerCase().includes(stage.name.split(" ")[0].toLowerCase()) ||
-      stage.name.toLowerCase().includes(s.name.toLowerCase().split(" ")[0])
-    );
+    const stageLower = stage.name.toLowerCase();
+    const match =
+      dbStatuses.find((s) => !usedDbIds.has(s.id) && s.name.toLowerCase() === stageLower) ??
+      dbStatuses.find((s) => !usedDbIds.has(s.id) && s.name.toLowerCase().includes(stageLower)) ??
+      dbStatuses.find((s) => !usedDbIds.has(s.id) && stageLower.includes(s.name.toLowerCase()));
+    if (match) usedDbIds.add(match.id);
     return match ?? {
       id: `__placeholder_${i}`,
       module_id: null,
