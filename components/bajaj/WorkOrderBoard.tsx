@@ -108,7 +108,7 @@ function Column({
   const columnOrders = [...workOrders].sort((a, b) => a.column_order - b.column_order);
 
   return (
-    <div className="flex flex-col flex-1 min-w-0 border-r border-gray-100 dark:border-white/[0.06] last:border-r-0 min-h-full" style={{ background: "var(--card-bg)" }}>
+    <div className="flex flex-col w-[280px] flex-shrink-0 border-r border-gray-100 dark:border-white/[0.06] last:border-r-0 min-h-full" style={{ background: "var(--card-bg)" }}>
       {/* Column header — Linear style */}
       <div className="flex items-center gap-2 px-4 py-3 mb-0 group border-b border-gray-100 dark:border-white/[0.06]">
         <StatusIcon colorHex={status.color_hex} name={status.name} />
@@ -173,7 +173,7 @@ export function WorkOrderBoard({ statuses, workOrders, cardFaceFields, isLoading
   }
 
   return (
-    <div className="bajaj-board-bg flex flex-1 overflow-hidden items-stretch" style={{ background: "var(--main-bg)" }}>
+    <div className="bajaj-board-bg flex flex-1 overflow-x-auto overflow-y-hidden items-stretch" style={{ background: "var(--main-bg)" }}>
       {statuses.map((status, idx) => (
         <Column
           key={status.id}
