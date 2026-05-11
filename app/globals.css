@@ -12,11 +12,43 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Dark mode via next-themes (.dark class on <html>) */
+.dark {
+  --background: #111110;
+  --foreground: #eeeeec;
+
+  /* Sidebar */
+  --sb-bg: #1C1C1A;
+  --sb-border: rgba(255,255,255,0.06);
+  --sb-text: #EEEEEC;
+  --sb-muted: #888884;
+  --sb-hover: rgba(255,255,255,0.04);
+  --sb-active: rgba(255,255,255,0.07);
+
+  /* Main content */
+  --main-bg: #161614;
+  --card-bg: #1E1E1C;
+  --border-color: rgba(255,255,255,0.07);
+}
+
+/* Dark mode overrides for the Bajaj app layout */
+.dark .bajaj-sidebar {
+  background: var(--sb-bg) !important;
+  border-right-color: var(--sb-border) !important;
+}
+.dark .bajaj-main {
+  background: var(--main-bg) !important;
+}
+.dark .bajaj-board-bg {
+  background: var(--main-bg) !important;
+}
+.dark .bajaj-card {
+  background: var(--card-bg) !important;
+  border-color: var(--border-color) !important;
+}
+.dark .bajaj-topbar {
+  background: var(--main-bg) !important;
+  border-bottom-color: var(--border-color) !important;
 }
 
 body {

@@ -39,7 +39,9 @@ function buildWhereClause(
           return `@country${i}`;
         })
         .join(", ");
-      conditions.push(`w.country IN (${placeholders})`);
+      req.input("moduleSlug", sql.VarChar, moduleSlug);
+      // Show rows matching country OR rows with NULL country stamped for this module
+      conditions.push(`(w.country IN (${placeholders}) OR (w.country IS NULL AND m.module_slug = @moduleSlug))`);
     }
   } else if (moduleSlug === "vipar") {
     // vipar = all countries NOT in any other module bucket
@@ -50,7 +52,8 @@ function buildWhereClause(
         return `@vipar_exc${i}`;
       })
       .join(", ");
-    conditions.push(`w.country NOT IN (${placeholders})`);
+    // Include NULL-country rows in vipar (SQL NOT IN excludes NULLs)
+    conditions.push(`(w.country NOT IN (${placeholders}) OR w.country IS NULL)`);
   }
 
   if (params.statusId) {
@@ -83,8 +86,10 @@ export async function GET(req: NextRequest) {
   try {
     const sp = req.nextUrl.searchParams;
     const moduleSlug = sp.get("module");
-    const page     = Math.max(1, parseInt(sp.get("page") ?? "1", 10));
-    const pageSize = Math.min(200, Math.max(1, parseInt(sp.get("pageSize") ?? "50", 10)));
+    const pageRaw     = parseInt(sp.get("page") ?? "1", 10);
+    const pageSizeRaw = parseInt(sp.get("pageSize") ?? "50", 10);
+    const page        = Math.max(1, isNaN(pageRaw)     ? 1   : pageRaw);
+    const pageSize    = Math.min(200, Math.max(1, isNaN(pageSizeRaw) ? 50 : pageSizeRaw));
     const offset   = (page - 1) * pageSize;
 
     const pool    = await getLinksPool();
@@ -106,66 +111,76 @@ export async function GET(req: NextRequest) {
     );
 
     const dataQ = `
-      SELECT
-        w.PKID         AS id,
-        w.FFJOBNO, w.WO, w.WODT, w.port, w.country,
-        w.bookingno, w.SBNO, w.SBDT, w.BLNO, w.BLDT,
-        w.containerno, w.vslname, w.SAILINGDT, w.REMARK,
-        m.status_id    AS status_id,
-        m.assigned_to  AS assigned_to,
-        m.column_order AS column_order,
-        s.name         AS status_name,
-        s.color_hex    AS status_color
-      FROM TMP_TBL_BAJAJ_WO w
-      LEFT JOIN bajaj_wo_meta    m ON m.pkid      = w.PKID
-      LEFT JOIN bajaj_statuses   s ON s.id        = m.status_id
-      ${where}
-      ORDER BY ISNULL(m.column_order, w.PKID)
-      OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY
+      SELECT *
+      FROM (
+        SELECT
+          w.*,
+          m.status_id    AS status_id,
+          m.assigned_to  AS assigned_to,
+          m.column_order AS column_order,
+          s.name         AS status_name,
+          s.color_hex    AS status_color,
+          ROW_NUMBER() OVER (ORDER BY ISNULL(m.column_order, w.id)) AS rn
+        FROM bajaj_work_orders w
+        LEFT JOIN bajaj_wo_meta    m ON m.wo_id    = w.id
+        LEFT JOIN bajaj_statuses   s ON s.id       = m.status_id
+        ${where}
+      ) AS paged
+      WHERE rn > @offset AND rn <= @offset + @pageSize
+      ORDER BY rn
     `;
 
-    const countQ = `
-      SELECT COUNT(*) AS total
-      FROM TMP_TBL_BAJAJ_WO w
-      LEFT JOIN bajaj_wo_meta m ON m.pkid = w.PKID
-      ${where}
-    `;
+    // Execute data query first
+    const dataResult = await request.query(dataQ);
 
-    const [dataResult, countResult] = await Promise.all([
-      request.query(dataQ),
-      pool.request().query(countQ), // separate request — params already bound above
-    ]);
-
-    const rows = dataResult.recordset.map((r: Record<string, unknown>) => ({
-      id:           String(r.id),
-      module_id:    null, // resolved client-side from module slug
-      status_id:    r.status_id ?? null,
-      assigned_to:  r.assigned_to ?? null,
-      column_order: r.column_order ?? 0,
-      import_batch_id: null,
-      created_at:   new Date().toISOString(),
-      updated_at:   new Date().toISOString(),
-      data: {
-        PKID:        r.id,
-        FFJOBNO:     r.FFJOBNO,
-        WO:          r.WO,
-        WODT:        r.WODT,
-        port:        r.port,
-        country:     r.country,
-        bookingno:   r.bookingno,
-        SBNO:        r.SBNO,
-        SBDT:        r.SBDT,
-        BLNO:        r.BLNO,
-        BLDT:        r.BLDT,
-        containerno: r.containerno,
-        vslname:     r.vslname,
-        SAILINGDT:   r.SAILINGDT,
-        REMARK:      r.REMARK,
+    // Count query needs its own request with same parameters
+    const countRequest = pool.request();
+    // Re-add all the same parameters that were bound to the first request
+    const sp2 = req.nextUrl.searchParams;
+    const moduleSlug2 = sp2.get("module");
+    const where2 = buildWhereClause(
+      moduleSlug2,
+      {
+        statusId:   sp2.get("statusId") ?? undefined,
+        assignedTo: sp2.get("assignedTo") ?? undefined,
+        search:     sp2.get("search") ?? undefined,
+        dateFrom:   sp2.get("dateFrom") ?? undefined,
+        dateTo:     sp2.get("dateTo") ?? undefined,
       },
-      status: r.status_id
-        ? { id: r.status_id, name: r.status_name, color_hex: r.status_color }
-        : null,
-    }));
+      countRequest
+    );
+    const countQ2 = `
+      SELECT COUNT(*) AS total
+      FROM bajaj_work_orders w
+      LEFT JOIN bajaj_wo_meta m ON m.wo_id = w.id
+      ${where2}
+    `;
+    const countResult = await countRequest.query(countQ2);
+
+    const rows = dataResult.recordset.map((r: Record<string, unknown>) => {
+      // Exclude metadata/system fields from data object
+      const excludeFields = new Set(['id', 'status_id', 'assigned_to', 'column_order', 'created_at', 'updated_at', 'status_name', 'status_color']);
+      const data: Record<string, unknown> = {};
+      Object.keys(r).forEach(key => {
+        if (!excludeFields.has(key)) {
+          data[key] = r[key];
+        }
+      });
+
+      return {
+        id: String(r.id),
+        module_id: null,
+        status_id: r.status_id ?? null,
+        assigned_to: r.assigned_to ?? null,
+        column_order: r.column_order ?? 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        data,
+        status: r.status_id
+          ? { id: r.status_id, name: r.status_name, color_hex: r.status_color }
+          : null,
+      };
+    });
 
     return NextResponse.json({
       data:  rows,

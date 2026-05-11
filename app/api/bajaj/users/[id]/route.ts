@@ -6,6 +6,21 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getLinksPool, sql } from "@/lib/db";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+
+async function getActorEmail(): Promise<string | null> {
+  try {
+    const cookieStore = await cookies();
+    const sb = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
+    );
+    const { data: { user } } = await sb.auth.getUser();
+    return user?.email ?? null;
+  } catch { return null; }
+}
 
 export async function PATCH(
   req: NextRequest,
@@ -31,6 +46,7 @@ export async function PATCH(
     }
 
     // Approve / reject branch
+    const actorEmail = await getActorEmail();
     const { action, approved_by } = body;
     if (!["approve", "reject"].includes(action))
       return NextResponse.json({ error: "action must be approve or reject" }, { status: 400 });
@@ -48,12 +64,14 @@ export async function PATCH(
 
     // Audit
     try {
+      const auditAction = action === "approve" ? "approved_user" : "rejected_user";
       await pool.request()
-        .input("action", sql.NVarChar, `user.${action}`)
-        .input("tid",    sql.NVarChar, id)
-        .input("nv",     sql.NVarChar, JSON.stringify({ status }))
+        .input("actor_email", sql.NVarChar, actorEmail ?? approved_by ?? "system")
+        .input("action",      sql.NVarChar, auditAction)
+        .input("tid",         sql.NVarChar, id)
+        .input("nv",          sql.NVarChar, JSON.stringify({ status, by: approved_by }))
         .query(
-          "INSERT INTO bajaj_audit_log (action,target_type,target_id,new_value) VALUES (@action,'bajaj_user',@tid,@nv)"
+          "INSERT INTO bajaj_audit_log (actor_email,action,target_type,target_id,new_value) VALUES (@actor_email,@action,'bajaj_user',@tid,@nv)"
         );
     } catch (_) {}
 

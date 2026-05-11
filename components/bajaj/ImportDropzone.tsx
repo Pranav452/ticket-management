@@ -46,8 +46,6 @@ const EMAIL_COL_MAP: Record<string, string> = {
   "ib plan-zord":              "BLDT",
 };
 
-// Headers that are genuinely split across 2 lines when copying an HTML email table.
-// "Port (WO/POD)" always arrives as a single line so it is NOT listed here.
 const SPLIT_HEADER_JOINS: string[] = [
   "plant ready / dispatch date",
 ];
@@ -57,16 +55,10 @@ function parseEmailTable(text: string): {
   rows: Record<string, string>[];
   rawHeaders: string[];
 } {
-  // ── Format detection ───────────────────────────────────────────────────────
-  // Case 1: Tab-separated (copy from Excel or Outlook table copy with tabs)
-  // Case 2: One cell per line (copy from HTML email in most mail clients —
-  //         blank cells become empty lines, split headers become 2 lines)
-
   const allLines = text.split(/\r?\n/).map((l) => l.trim());
   const hasTab   = allLines[0]?.includes("\t");
 
   if (hasTab) {
-    // ── TAB-SEPARATED ────────────────────────────────────────────────────────
     const lines = allLines.filter(Boolean);
     if (lines.length < 2) return { headers: [], rows: [], rawHeaders: [] };
 
@@ -86,28 +78,20 @@ function parseEmailTable(text: string): {
     return { headers: mappedHeaders, rows, rawHeaders };
   }
 
-  // ── ONE-CELL-PER-LINE (email HTML table copy) ─────────────────────────────
-  // Keep blank lines so empty cells preserve column alignment.
-  // First step: merge split headers like "Plant Ready /" + "Dispatch Date"
   const merged: string[] = [];
   for (let i = 0; i < allLines.length; i++) {
     const cur  = allLines[i].trim();
     const next = (allLines[i + 1] ?? "").trim();
-    // Detect a line that is the first half of a known split header
     const combined = (cur + " " + next).toLowerCase().replace(/\s+/g, " ");
     const isSplit  = SPLIT_HEADER_JOINS.some((h) => combined.startsWith(h));
     if (isSplit) {
-      merged.push(cur + " " + next); // merge the two lines
-      i++; // skip next
+      merged.push(cur + " " + next);
+      i++;
     } else {
       merged.push(cur);
     }
   }
 
-  // Determine column count: the header row is the first row.
-  // Known column count for the Bajaj dispatch plan = 17.
-  // Detect by finding the "CHA" cell and counting until a cell that looks like
-  // a CHA value (LINKS/BHATIA/SHARP) appears again.
   const KNOWN_CHA_VALUES = ["LINKS", "BHATIA", "SHARP", "VSP"];
   let colCount   = 0;
   let headerStart = -1;
@@ -117,23 +101,20 @@ function parseEmailTable(text: string): {
   }
   if (headerStart === -1) return { headers: [], rows: [], rawHeaders: [] };
 
-  // Count cells until we hit the first data cell (a CHA value)
   for (let i = headerStart + 1; i < merged.length; i++) {
     if (KNOWN_CHA_VALUES.includes(merged[i].toUpperCase())) {
       colCount = i - headerStart;
       break;
     }
   }
-  if (colCount === 0) colCount = 17; // fallback
+  if (colCount === 0) colCount = 17;
 
-  // Extract headers
   const rawHeaders: string[] = [];
   for (let i = headerStart; i < headerStart + colCount; i++) {
     rawHeaders.push((merged[i] ?? "").replace(/\s+/g, " "));
   }
   const mappedHeaders = rawHeaders.map((h) => EMAIL_COL_MAP[h.toLowerCase()] ?? h);
 
-  // Extract data rows (groups of colCount cells starting after headers)
   const dataStart = headerStart + colCount;
   const rows: Record<string, string>[] = [];
 
@@ -160,20 +141,15 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
   const [mode,       setMode]       = useState<Mode>("paste");
   const [moduleSlug, setModuleSlug] = useState(defaultModule ?? "vipar");
 
-  // Paste mode state
   const [pasteText,    setPasteText]    = useState("");
   const [pastePreview, setPastePreview] = useState<{ headers: string[]; rows: Record<string, string>[]; rawHeaders: string[] } | null>(null);
   const [filterCHA,    setFilterCHA]    = useState(true);
 
-  // Excel mode state
-  const [file,   setFile]   = useState<File | null>(null);
-
-  // Shared
-  const [step,    setStep]    = useState<Step>("idle");
+  const [file,     setFile]     = useState<File | null>(null);
+  const [step,     setStep]     = useState<Step>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [result,   setResult]   = useState<{ added: number; skipped: number } | null>(null);
 
-  // ── Excel dropzone ───────────────────────────────────────────────────────
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const f = acceptedFiles[0];
     if (!f) return;
@@ -204,7 +180,6 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
     disabled: step !== "idle",
   });
 
-  // ── Paste preview ────────────────────────────────────────────────────────
   function handlePasteParse() {
     if (!pasteText.trim()) return;
     const parsed = parseEmailTable(pasteText);
@@ -215,7 +190,6 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
   function getPasteRows() {
     if (!pastePreview) return [];
     if (!filterCHA) return pastePreview.rows;
-    // Filter to rows where CHA = "LINKS" (our company)
     return pastePreview.rows.filter(
       (r) => !r["CHA"] || r["CHA"].toUpperCase() === "LINKS"
     );
@@ -289,8 +263,8 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
         <Loader2 className="size-10 text-amber-500 animate-spin" />
-        <p className="text-neutral-300 text-sm font-medium">Importing work orders…</p>
-        {file && <p className="text-[13px] text-neutral-600">{file.name}</p>}
+        <p className="text-gray-700 text-sm font-medium">Importing work orders…</p>
+        {file && <p className="text-[13px] text-gray-400">{file.name}</p>}
       </div>
     );
   }
@@ -300,9 +274,9 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
     return (
       <div className="flex flex-col items-center gap-4 py-20 text-center">
         <AlertCircle className="size-10 text-red-500" />
-        <p className="text-neutral-200 font-medium">Import failed</p>
-        <p className="text-[13px] text-red-400 bg-red-950/30 rounded-lg px-4 py-2 max-w-sm">{errorMsg}</p>
-        <button onClick={reset} className="text-[13px] text-neutral-500 hover:text-amber-400 underline transition-colors">
+        <p className="text-gray-800 font-medium">Import failed</p>
+        <p className="text-[13px] text-red-600 bg-red-50 rounded-lg px-4 py-2 max-w-sm border border-red-100">{errorMsg}</p>
+        <button onClick={reset} className="text-[13px] text-gray-400 hover:text-amber-600 underline transition-colors">
           Try again
         </button>
       </div>
@@ -315,29 +289,29 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
       <div className="flex flex-col items-center gap-5 py-20 text-center">
         <CheckCircle className="size-14 text-amber-500" />
         <div>
-          <h3 className="text-xl font-bold text-neutral-100">Import Complete</h3>
-          <p className="text-[13px] text-neutral-500 mt-1">Work orders are now on the board</p>
+          <h3 className="text-xl font-bold text-gray-900">Import Complete</h3>
+          <p className="text-[13px] text-gray-400 mt-1">Work orders are now on the board</p>
         </div>
         <div className="flex gap-10 mt-2">
           <div>
-            <p className="text-3xl font-bold text-amber-400 tabular-nums">{result.added}</p>
-            <p className="text-[12px] text-neutral-500 mt-1">Added</p>
+            <p className="text-3xl font-bold text-amber-500 tabular-nums">{result.added}</p>
+            <p className="text-[12px] text-gray-400 mt-1">Added</p>
           </div>
           <div>
-            <p className="text-3xl font-bold text-neutral-600 tabular-nums">{result.skipped}</p>
-            <p className="text-[12px] text-neutral-500 mt-1">Skipped (duplicate)</p>
+            <p className="text-3xl font-bold text-gray-300 tabular-nums">{result.skipped}</p>
+            <p className="text-[12px] text-gray-400 mt-1">Skipped (duplicate)</p>
           </div>
         </div>
         <div className="flex gap-3 mt-2">
           <a
             href={`/bajaj/boards/${moduleSlug}`}
-            className="flex items-center gap-1.5 px-5 py-2.5 rounded-lg bg-amber-600 text-sm font-semibold text-white hover:bg-amber-500 transition-colors"
+            className="flex items-center gap-1.5 px-5 py-2.5 rounded-lg bg-amber-500 text-sm font-semibold text-white hover:bg-amber-600 transition-colors"
           >
             View Board <ChevronRight className="size-4" />
           </a>
           <button
             onClick={reset}
-            className="px-5 py-2.5 rounded-lg bg-neutral-900 text-sm text-neutral-400 hover:text-neutral-200 border border-neutral-800 transition-colors"
+            className="px-5 py-2.5 rounded-lg bg-white text-sm text-gray-500 hover:text-gray-800 border border-gray-200 transition-colors"
           >
             Import More
           </button>
@@ -346,18 +320,17 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
     );
   }
 
-  // ── Paste preview (step === "preview") ───────────────────────────────────
+  // ── Paste preview ────────────────────────────────────────────────────────
   if (step === "preview" && pastePreview) {
     const rows = getPasteRows();
     return (
       <div className="space-y-5">
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-base font-semibold text-neutral-100">
+            <h3 className="text-base font-semibold text-gray-900">
               Preview — {pastePreview.rows.length} rows parsed
             </h3>
-            <p className="text-[13px] text-neutral-500 mt-0.5">
+            <p className="text-[13px] text-gray-400 mt-0.5">
               {filterCHA
                 ? `Showing ${rows.length} LINKS rows only.`
                 : `Showing all ${rows.length} rows (all CHAs).`}
@@ -371,33 +344,32 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
                 onChange={(e) => setFilterCHA(e.target.checked)}
                 className="accent-amber-500"
               />
-              <span className="text-[13px] text-neutral-400">LINKS rows only</span>
+              <span className="text-[13px] text-gray-500">LINKS rows only</span>
             </label>
-            <button onClick={reset} className="text-neutral-600 hover:text-neutral-300 transition-colors">
+            <button onClick={reset} className="text-gray-400 hover:text-gray-700 transition-colors">
               <X className="size-4" />
             </button>
           </div>
         </div>
 
-        {/* Table */}
         {rows.length === 0 ? (
-          <div className="rounded-xl border border-neutral-800 bg-neutral-900 px-6 py-10 text-center">
-            <p className="text-sm text-neutral-500">No LINKS rows found in the pasted data.</p>
+          <div className="rounded-xl border border-gray-200 bg-white px-6 py-10 text-center shadow-sm">
+            <p className="text-sm text-gray-400">No LINKS rows found in the pasted data.</p>
             <button
               onClick={() => setFilterCHA(false)}
-              className="mt-3 text-[13px] text-amber-500 hover:text-amber-400 underline"
+              className="mt-3 text-[13px] text-amber-500 hover:text-amber-600 underline"
             >
               Show all CHAs
             </button>
           </div>
         ) : (
-          <div className="overflow-auto rounded-xl border border-neutral-800 max-h-80">
+          <div className="overflow-auto rounded-xl border border-gray-200 max-h-80 shadow-sm">
             <table className="text-[12px] min-w-full">
-              <thead className="bg-neutral-900 border-b border-neutral-800 sticky top-0">
+              <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
                 <tr>
                   {pastePreview.headers.filter(h => h !== "CHA").map((h, idx) => (
-                    <th key={`h-${idx}-${h}`} className="px-3 py-2 text-left font-medium text-neutral-500 whitespace-nowrap">
-                      {h || <span className="text-neutral-700 italic">col{idx}</span>}
+                    <th key={`h-${idx}-${h}`} className="px-3 py-2 text-left font-medium text-gray-500 whitespace-nowrap">
+                      {h || <span className="text-gray-300 italic">col{idx}</span>}
                     </th>
                   ))}
                 </tr>
@@ -405,11 +377,11 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
               <tbody>
                 {rows.slice(0, 50).map((row, i) => (
                   <tr key={i} className={cn(
-                    "border-b border-neutral-800/50",
-                    i % 2 === 0 ? "bg-neutral-950" : "bg-neutral-900/30"
+                    "border-b border-gray-100",
+                    i % 2 === 0 ? "bg-white" : "bg-gray-50"
                   )}>
                     {pastePreview.headers.filter(h => h !== "CHA").map((h, idx) => (
-                      <td key={`c-${i}-${idx}`} className="px-3 py-1.5 text-neutral-300 whitespace-nowrap max-w-[140px] truncate">
+                      <td key={`c-${i}-${idx}`} className="px-3 py-1.5 text-gray-700 whitespace-nowrap max-w-[140px] truncate">
                         {row[h] ?? ""}
                       </td>
                     ))}
@@ -420,19 +392,18 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
           </div>
         )}
 
-        {/* Actions */}
         <div className="flex items-center gap-3 pt-2">
           <button
             onClick={handlePasteImport}
             disabled={rows.length === 0}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-amber-600 text-sm font-semibold text-white hover:bg-amber-500 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-amber-500 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-50 transition-colors"
           >
             <Upload className="size-4" />
             Import {rows.length} Rows
           </button>
           <button
             onClick={reset}
-            className="px-4 py-2.5 rounded-lg bg-neutral-900 text-sm text-neutral-400 hover:text-neutral-200 border border-neutral-800 transition-colors"
+            className="px-4 py-2.5 rounded-lg bg-white text-sm text-gray-500 hover:text-gray-800 border border-gray-200 transition-colors"
           >
             Cancel
           </button>
@@ -441,12 +412,12 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
     );
   }
 
-  // ── Idle: mode selector ───────────────────────────────────────────────────
+  // ── Idle ─────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
       {/* Module selector */}
       <div>
-        <p className="text-[11px] uppercase tracking-widest text-neutral-600 font-semibold mb-2">
+        <p className="text-[11px] uppercase tracking-widest text-gray-400 font-semibold mb-2">
           Target Module
         </p>
         <div className="flex flex-wrap gap-2">
@@ -457,8 +428,8 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
               className={cn(
                 "flex items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] font-medium border transition-colors",
                 m.slug === moduleSlug
-                  ? "bg-amber-600/15 text-amber-300 border-amber-700/40"
-                  : "bg-neutral-900 text-neutral-500 border-neutral-800 hover:text-neutral-300 hover:border-neutral-700"
+                  ? "bg-amber-50 text-amber-700 border-amber-200"
+                  : "bg-white text-gray-500 border-gray-200 hover:text-gray-700 hover:border-gray-300"
               )}
             >
               <span className="text-sm">{m.flag}</span>
@@ -469,7 +440,7 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
       </div>
 
       {/* Mode tabs */}
-      <div className="flex gap-1 border-b border-neutral-800">
+      <div className="flex gap-1 border-b border-gray-200">
         {[
           { id: "paste",  label: "Paste from Email",  icon: ClipboardPaste },
           { id: "excel",  label: "Upload Excel",       icon: FileSpreadsheet },
@@ -481,8 +452,8 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
             className={cn(
               "flex items-center gap-2 px-4 py-2.5 text-[13px] font-medium border-b-2 transition-colors -mb-px",
               mode === id
-                ? "border-amber-500 text-amber-300"
-                : "border-transparent text-neutral-500 hover:text-neutral-300"
+                ? "border-amber-500 text-amber-600"
+                : "border-transparent text-gray-400 hover:text-gray-700"
             )}
           >
             <Icon className="size-4" />
@@ -491,14 +462,14 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
         ))}
       </div>
 
-      {/* ── PASTE MODE ───────────────────────────────────────────────────── */}
+      {/* ── PASTE MODE ───────────────────────────────────────────── */}
       {mode === "paste" && (
         <div className="space-y-4 max-w-3xl">
-          <div className="rounded-xl border border-amber-800/30 bg-amber-950/10 px-4 py-3">
-            <p className="text-[13px] font-semibold text-amber-300 mb-1">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="text-[13px] font-semibold text-amber-700 mb-1">
               📧 How to import from the Bajaj dispatch email
             </p>
-            <ol className="text-[12px] text-neutral-400 space-y-1 list-decimal list-inside">
+            <ol className="text-[12px] text-amber-600/80 space-y-1 list-decimal list-inside">
               <li>Open the dispatch plan email from Somandra / Bajaj Auto IB Logistics</li>
               <li>Select all rows in the table (Ctrl+A inside the table)</li>
               <li>Copy (Ctrl+C) and paste below</li>
@@ -507,7 +478,7 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
           </div>
 
           <div>
-            <label className="block text-[12px] text-neutral-500 mb-2 uppercase tracking-wider font-semibold">
+            <label className="block text-[12px] text-gray-500 mb-2 uppercase tracking-wider font-semibold">
               Paste dispatch plan table here
             </label>
             <textarea
@@ -515,14 +486,14 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
               onChange={(e) => setPasteText(e.target.value)}
               placeholder={`CHA\tWO NO\tCOUNTRY\tPlant\tBrand\tVariant\tQTY\t40 HC\tSTD 20\tPlant Ready / Dispatch Date\tLSD\tAssy Config\tPort (WO/POD)\tQuotation No/Ref\tPO NO\tPLAN-ADD/RVSD\tIB Plan-ZORD\nLINKS\t5584880\tBangladesh\tWA01\tDISCOVER\t125 DI\t0\t2\t\t\t12-Jun\tPLP\tCHATTOGRAM\t5233061\t5233061\tRVSD\t18-Apr`}
               rows={10}
-              className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-[13px] text-neutral-200 placeholder-neutral-700 focus:border-amber-600 focus:outline-none font-mono resize-y transition-colors"
+              className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-[13px] text-gray-800 placeholder-gray-300 focus:border-amber-500 focus:outline-none font-mono resize-y transition-colors"
             />
           </div>
 
           <button
             onClick={handlePasteParse}
             disabled={!pasteText.trim()}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-amber-600 text-sm font-semibold text-white hover:bg-amber-500 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-amber-500 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-50 transition-colors"
           >
             <ClipboardPaste className="size-4" />
             Parse Table
@@ -530,7 +501,7 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
         </div>
       )}
 
-      {/* ── EXCEL MODE ───────────────────────────────────────────────────── */}
+      {/* ── EXCEL MODE ───────────────────────────────────────────── */}
       {mode === "excel" && (
         <div className="max-w-xl">
           <div
@@ -538,30 +509,30 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
             className={cn(
               "border-2 border-dashed rounded-2xl px-10 py-16 text-center cursor-pointer transition-colors",
               isDragActive
-                ? "border-amber-600 bg-amber-950/10"
-                : "border-neutral-800 hover:border-neutral-700 hover:bg-neutral-900/50"
+                ? "border-amber-400 bg-amber-50"
+                : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
             )}
           >
             <input {...getInputProps()} />
-            <FileSpreadsheet className={cn("size-10 mx-auto mb-4", isDragActive ? "text-amber-500" : "text-neutral-700")} />
-            <p className="text-neutral-300 font-medium mb-1">
+            <FileSpreadsheet className={cn("size-10 mx-auto mb-4", isDragActive ? "text-amber-500" : "text-gray-300")} />
+            <p className="text-gray-700 font-medium mb-1">
               {isDragActive ? "Drop it here…" : "Drag & drop your Excel file"}
             </p>
-            <p className="text-[12px] text-neutral-600 mb-4">Accepts .xlsx files</p>
-            <span className="inline-block px-4 py-2 rounded-lg bg-neutral-900 border border-neutral-700 text-[13px] text-neutral-400 hover:text-neutral-200 transition-colors">
+            <p className="text-[12px] text-gray-400 mb-4">Accepts .xlsx files</p>
+            <span className="inline-block px-4 py-2 rounded-lg bg-white border border-gray-200 text-[13px] text-gray-500 hover:text-gray-700 transition-colors">
               Browse file
             </span>
           </div>
-          <div className="mt-4 rounded-xl border border-neutral-800 bg-neutral-900/50 px-4 py-3">
-            <p className="text-[12px] text-neutral-500">
-              <span className="text-neutral-300 font-medium">Expected columns:</span>{" "}
+          <div className="mt-4 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
+            <p className="text-[12px] text-gray-500">
+              <span className="text-gray-700 font-medium">Expected columns:</span>{" "}
               FFJOBNO / WO, COUNTRY, port, bookingno, SBNO, BLNO, containerno, vslname, SAILINGDT, REMARK
             </p>
           </div>
         </div>
       )}
 
-      {/* ── MANUAL MODE ──────────────────────────────────────────────────── */}
+      {/* ── MANUAL MODE ──────────────────────────────────────────── */}
       {mode === "manual" && (
         <ManualWorkOrderForm moduleSlug={moduleSlug} />
       )}

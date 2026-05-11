@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
       pool.request().query(`
         SELECT
           ISNULL(s.name,'Unassigned') AS statusName,
-          ISNULL(s.color_hex,'#6b7280') AS colorHex,
+          ISNULL(s.color_hex,'6b7280') AS colorHex,
           COUNT(*) AS cnt
         FROM TMP_TBL_BAJAJ_WO w
         LEFT JOIN bajaj_wo_meta    m ON m.pkid = w.PKID
@@ -54,11 +54,41 @@ export async function GET(req: NextRequest) {
         ORDER BY cnt DESC
       `),
 
-      // By module (country group)
+      // By module — map country values to logical slugs
       pool.request().query(`
-        SELECT country AS moduleName, country AS slug, COUNT(*) AS cnt
+        SELECT
+          CASE
+            WHEN country IN ('Sri Lanka')              THEN 'srilanka'
+            WHEN country IN ('Nigeria')                THEN 'nigeria'
+            WHEN country IN ('Bangladesh','BANGALDESH') THEN 'bangladesh'
+            WHEN country IN ('United Kingdom')         THEN 'triumph'
+            ELSE 'vipar'
+          END AS slug,
+          CASE
+            WHEN country IN ('Sri Lanka')              THEN 'Sri Lanka'
+            WHEN country IN ('Nigeria')                THEN 'Nigeria'
+            WHEN country IN ('Bangladesh','BANGALDESH') THEN 'Bangladesh'
+            WHEN country IN ('United Kingdom')         THEN 'Triumph'
+            ELSE 'VIPAR'
+          END AS moduleName,
+          COUNT(*) AS cnt
         FROM TMP_TBL_BAJAJ_WO w WHERE 1=1 ${mf}
-        GROUP BY country ORDER BY cnt DESC
+        GROUP BY
+          CASE
+            WHEN country IN ('Sri Lanka')              THEN 'srilanka'
+            WHEN country IN ('Nigeria')                THEN 'nigeria'
+            WHEN country IN ('Bangladesh','BANGALDESH') THEN 'bangladesh'
+            WHEN country IN ('United Kingdom')         THEN 'triumph'
+            ELSE 'vipar'
+          END,
+          CASE
+            WHEN country IN ('Sri Lanka')              THEN 'Sri Lanka'
+            WHEN country IN ('Nigeria')                THEN 'Nigeria'
+            WHEN country IN ('Bangladesh','BANGALDESH') THEN 'Bangladesh'
+            WHEN country IN ('United Kingdom')         THEN 'Triumph'
+            ELSE 'VIPAR'
+          END
+        ORDER BY cnt DESC
       `),
 
       // Import timeline (by WODT month)

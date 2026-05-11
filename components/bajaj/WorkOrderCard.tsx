@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { AlertTriangle, User } from "lucide-react";
+import { RefreshCw, Calendar, AlignJustify, User } from "lucide-react";
 import type { BajajWorkOrder } from "@/lib/types/bajaj";
 import { cn } from "@/lib/utils";
 
@@ -15,36 +15,22 @@ interface WorkOrderCardProps {
   statusColor: string;
 }
 
-const HAZARD_KEYS = ["hazard", "hazardous", "haz", "dangerous", "dg", "imo", "un_no"];
+export function WorkOrderCard({ workOrder, isSelected, onSelect, onDragStart, statusColor }: WorkOrderCardProps) {
+  const d = workOrder.data as Record<string, unknown>;
 
-function isHazardous(data: Record<string, unknown>): boolean {
-  return Object.entries(data).some(([k, v]) => {
-    const keyMatch = HAZARD_KEYS.some((hk) => k.toLowerCase().includes(hk));
-    return keyMatch && v && v !== "NO" && v !== "No" && v !== "no" && v !== "0" && v !== "";
-  });
-}
+  const woId    = String(d["wo"]     ?? d["WO"]      ?? workOrder.id.slice(0, 8));
+  const brand   = String(d["brand"]  ?? d["Brand"]   ?? "");
+  const variant = String(d["variant"]?? d["Variant"] ?? "");
+  const title   = [brand, variant].filter(Boolean).join(" · ") || `WO ${woId}`;
+  const port    = String(d["port"]   ?? d["Port"]    ?? "");
+  const qty     = String(d["qty"]    ?? d["QTY"]     ?? "");
+  const saildt  = String(d["sailingdt"] ?? d["SAILINGDT"] ?? d["lsd"] ?? "");
+  const haz     = d["haz"] === true || d["haz"] === 1 || d["haz"] === "true";
+  const module  = String(d["country"] ?? d["module"]  ?? "");
+  const cycles  = String(d["40hc"]   ?? d["40HC"]    ?? "7");
 
-function classifyCategory(data: Record<string, unknown>): "parts" | "frames" | "other" {
-  const veh = String(data["Veh"] ?? data["Type"] ?? "").toLowerCase();
-  if (veh.includes("parts")) return "parts";
-  if (veh.includes("frames")) return "frames";
-  return "other";
-}
-
-export function WorkOrderCard({
-  workOrder,
-  cardFaceFields,
-  isLight = false,
-  isSelected,
-  onSelect,
-  onDragStart,
-  statusColor,
-}: WorkOrderCardProps) {
-  const hazard = isHazardous(workOrder.data);
-  const category = classifyCategory(workOrder.data as Record<string, unknown>);
-  const fieldsToShow = cardFaceFields.length > 0
-    ? cardFaceFields
-    : Object.keys(workOrder.data).slice(0, 4);
+  // Guard: strip leading '#' if already present so we never produce '##RRGGBB'
+  const hexColor = `#${statusColor.replace(/^#/, "")}`;
 
   return (
     <div
@@ -52,87 +38,67 @@ export function WorkOrderCard({
       onDragStart={onDragStart}
       onClick={onSelect}
       className={cn(
-        "relative mb-2 rounded-xl border cursor-pointer select-none transition-all group",
-        isLight
-          ? isSelected
-            ? "border-amber-500 bg-white shadow-sm"
-            : "border-neutral-300 bg-white hover:border-neutral-400 hover:bg-neutral-50"
-          : isSelected
-            ? "border-amber-500 bg-neutral-800 shadow-lg shadow-amber-900/20"
-            : "border-neutral-700 bg-neutral-900 hover:border-neutral-600 hover:bg-neutral-800",
+        "mb-2 rounded-lg cursor-pointer select-none transition-all overflow-hidden group",
+        isSelected ? "ring-2 ring-amber-400 shadow-md" : "shadow-sm hover:shadow-md"
       )}
-      style={{ borderLeftWidth: 3, borderLeftColor: `#${statusColor}` }}
+      style={{
+        background: "#FFFFFF",
+        border: isSelected ? "1px solid #FCD34D" : "1px solid #EBEBEB",
+      }}
     >
-      <div className="p-3.5">
-        {/* Hazard / category badges */}
-        {(hazard || category !== "other") && (
-          <div className="flex items-center gap-2 mb-2">
-            {hazard && (
-              <div className={cn("flex items-center gap-1 text-[11px] font-medium", isLight ? "text-orange-600" : "text-orange-400")}>
-                <AlertTriangle className="size-3.5" />
-                <span>Hazardous</span>
-              </div>
-            )}
-            {category !== "other" && (
-              <div
-                className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium border ${
-                  category === "parts"
-                    ? isLight ? "border-sky-600 text-sky-700" : "border-sky-500 text-sky-400"
-                    : isLight ? "border-emerald-600 text-emerald-700" : "border-emerald-500 text-emerald-400"
-                }`}
-              >
-                {category === "parts" ? "Parts" : "Frames"}
-              </div>
-            )}
+      <div className="px-3 pt-2.5 pb-2.5">
+        {/* Row 1: ticket ID + assignee */}
+        <div className="flex items-center justify-between gap-1 mb-1.5">
+          <div className="flex items-center gap-1.5">
+            <span className="size-2 rounded-full flex-shrink-0" style={{ backgroundColor: hexColor }} />
+            <span className="text-[11px] font-medium text-gray-400 font-mono">{woId}</span>
           </div>
-        )}
 
-        {/* Data fields */}
-        <div className="space-y-1.5">
-          {fieldsToShow.map((field) => {
-            const value = workOrder.data[field];
-            if (value === undefined || value === null || value === "") return null;
-            return (
-              <div key={field} className="flex flex-col gap-0.5">
-                <span className={cn("text-[10px] uppercase tracking-wide leading-none", isLight ? "text-neutral-500" : "text-neutral-600")}>
-                  {field}
-                </span>
-                <span className={cn("text-xs leading-tight truncate", isLight ? "text-neutral-900" : "text-neutral-200")}>
-                  {String(value)}
-                </span>
+          {workOrder.assignee ? (
+            workOrder.assignee.avatar_url ? (
+              <img src={workOrder.assignee.avatar_url} alt="" className="size-5 rounded-full object-cover flex-shrink-0" />
+            ) : (
+              <div className="size-5 rounded-full flex items-center justify-center flex-shrink-0 text-[9px] font-bold bg-amber-100 text-amber-700">
+                {((workOrder.assignee.full_name || workOrder.assignee.email || "?")[0] ?? "?").toUpperCase()}
               </div>
-            );
-          })}
+            )
+          ) : (
+            <div className="size-5 rounded-full flex items-center justify-center flex-shrink-0 bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity">
+              <User className="size-2.5 text-gray-400" aria-hidden />
+            </div>
+          )}
         </div>
 
-        {/* Footer: assigned user + date */}
-        <div className={cn("flex items-center justify-between mt-3 pt-2.5 border-t", isLight ? "border-neutral-200" : "border-neutral-800")}>
-          {workOrder.assignee ? (
-            <div className="flex items-center gap-1.5">
-              {workOrder.assignee.avatar_url ? (
-                <img
-                  src={workOrder.assignee.avatar_url}
-                  alt=""
-                  className="size-5 rounded-full object-cover"
-                />
-              ) : (
-                <div className={cn("size-5 rounded-full flex items-center justify-center", isLight ? "bg-neutral-200" : "bg-neutral-700")}>
-                  <User className={cn("size-3", isLight ? "text-neutral-500" : "text-neutral-400")} />
-                </div>
-              )}
-              <span className={cn("text-[10px] truncate max-w-[80px]", isLight ? "text-neutral-600" : "text-neutral-500")}>
-                {workOrder.assignee.full_name ?? workOrder.assignee.email}
-              </span>
-            </div>
-          ) : (
-            <span className={cn("text-[10px]", isLight ? "text-neutral-500" : "text-neutral-700")}>Unassigned</span>
+        {/* Title */}
+        <p className="text-[13px] font-medium text-gray-800 leading-snug mb-2.5 line-clamp-2">{title}</p>
+
+        {/* Bottom meta row — Linear style */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {haz && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-red-50 text-red-500 border border-red-100">⚠ HAZ</span>
           )}
-          <span className={cn("text-[10px]", isLight ? "text-neutral-500" : "text-neutral-700")}>
-            {new Date(workOrder.created_at).toLocaleDateString("en-GB", {
-              day: "2-digit",
-              month: "short",
-            })}
-          </span>
+          {port && (
+            <span className="flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded font-medium border border-gray-200 text-gray-500">
+              {port}
+            </span>
+          )}
+          {qty && (
+            <span className="flex items-center gap-1 text-[11px] text-gray-400">
+              <RefreshCw className="size-3 text-gray-300" />
+              {qty}
+            </span>
+          )}
+          {saildt && (
+            <span className="flex items-center gap-1 text-[11px] text-gray-400 ml-auto">
+              <Calendar className="size-3 text-gray-300" />
+              {saildt}
+            </span>
+          )}
+          {!saildt && (
+            <span className="ml-auto">
+              <AlignJustify className="size-3 text-gray-200" />
+            </span>
+          )}
         </div>
       </div>
     </div>

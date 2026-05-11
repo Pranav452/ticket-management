@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { motion } from "framer-motion";
+import { Plus, MoreHorizontal, Clock } from "lucide-react";
 import { WorkOrderCard } from "@/components/bajaj/WorkOrderCard";
 import type { BajajStatus, BajajWorkOrder } from "@/lib/types/bajaj";
 import { cn } from "@/lib/utils";
@@ -18,31 +18,36 @@ interface WorkOrderBoardProps {
   onDrop: (workOrderId: string, newStatusId: string, newOrder: number) => void;
 }
 
-// ─── Drop Indicator ───────────────────────────────────────────────────────────
 function DropIndicator({ beforeId, statusId }: { beforeId: string | null; statusId: string }) {
   return (
     <div
       data-before={beforeId ?? "-1"}
       data-status={statusId}
-      className="my-0.5 h-0.5 w-full bg-amber-400 opacity-0"
+      className="my-0.5 h-0.5 w-full rounded-full bg-amber-400 opacity-0 transition-opacity"
     />
   );
 }
 
-// ─── Column ───────────────────────────────────────────────────────────────────
+// Status icon — circle with color or clock
+function StatusIcon({ colorHex, name }: { colorHex: string; name: string }) {
+  const lower = name.toLowerCase();
+  if (lower.includes("progress") || lower.includes("review")) {
+    return <Clock className="size-3.5 flex-shrink-0" style={{ color: `#${colorHex}` }} />;
+  }
+  return (
+    <span
+      className="size-3 rounded-full border-2 flex-shrink-0"
+      style={{ borderColor: `#${colorHex}`, background: "transparent" }}
+    />
+  );
+}
+
 function Column({
-  status,
-  workOrders,
-  cardFaceFields,
-  isLight = false,
-  selectedId,
-  onSelectCard,
-  onDrop,
+  status, workOrders, cardFaceFields, selectedId, onSelectCard, onDrop,
 }: {
   status: BajajStatus;
   workOrders: BajajWorkOrder[];
   cardFaceFields: string[];
-  isLight?: boolean;
   selectedId: string | null;
   onSelectCard: (id: string) => void;
   onDrop: (workOrderId: string, newStatusId: string, newOrder: number) => void;
@@ -50,105 +55,73 @@ function Column({
   const [active, setActive] = useState(false);
 
   function getIndicators() {
-    return Array.from(
-      document.querySelectorAll<HTMLElement>(`[data-status="${status.id}"]`)
-    );
+    return Array.from(document.querySelectorAll<HTMLElement>(`[data-status="${status.id}"]`));
   }
-
   function getNearestIndicator(e: React.DragEvent, indicators: HTMLElement[]) {
     const DISTANCE_OFFSET = 50;
-    const el = indicators.reduce(
+    return indicators.reduce(
       (closest, child) => {
-        const box = child.getBoundingClientRect();
+        const box    = child.getBoundingClientRect();
         const offset = e.clientY - (box.top + DISTANCE_OFFSET);
-        if (offset < 0 && offset > closest.offset) {
-          return { offset, element: child };
-        }
+        if (offset < 0 && offset > closest.offset) return { offset, element: child };
         return closest;
       },
       { offset: Number.NEGATIVE_INFINITY, element: indicators[indicators.length - 1] }
     );
-    return el;
   }
-
   function highlightIndicator(e: React.DragEvent) {
     const indicators = getIndicators();
     clearHighlights(indicators);
     const el = getNearestIndicator(e, indicators);
     el.element.style.opacity = "1";
   }
-
   function clearHighlights(els?: HTMLElement[]) {
-    const indicators = els ?? getIndicators();
-    indicators.forEach((i) => (i.style.opacity = "0"));
+    (els ?? getIndicators()).forEach((i) => (i.style.opacity = "0"));
   }
-
   function handleDragStart(e: React.DragEvent, wo: BajajWorkOrder) {
     e.dataTransfer.setData("workOrderId", wo.id);
     e.dataTransfer.setData("fromStatusId", wo.status_id ?? "");
   }
-
-  function handleDragOver(e: React.DragEvent) {
-    e.preventDefault();
-    highlightIndicator(e);
-    setActive(true);
-  }
-
-  function handleDragLeave() {
-    clearHighlights();
-    setActive(false);
-  }
-
+  function handleDragOver(e: React.DragEvent) { e.preventDefault(); highlightIndicator(e); setActive(true); }
+  function handleDragLeave() { clearHighlights(); setActive(false); }
   function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    clearHighlights();
-    setActive(false);
-
+    e.preventDefault(); clearHighlights(); setActive(false);
     const workOrderId = e.dataTransfer.getData("workOrderId");
     if (!workOrderId) return;
-
     const indicators = getIndicators();
     const { element } = getNearestIndicator(e, indicators);
     const before = element.dataset.before ?? "-1";
-
     if (before === workOrderId) return;
-
-    // Compute new column_order
     let newOrder: number;
     if (before === "-1") {
-      // Drop at end
       const last = workOrders[workOrders.length - 1];
       newOrder = last ? last.column_order + 1 : 1;
     } else {
       const beforeWo = workOrders.find((wo) => wo.id === before);
       const idx = workOrders.findIndex((wo) => wo.id === before);
       const prevWo = idx > 0 ? workOrders[idx - 1] : null;
-      newOrder = prevWo && beforeWo
-        ? (prevWo.column_order + beforeWo.column_order) / 2
-        : beforeWo
-        ? beforeWo.column_order - 0.5
-        : 1;
+      newOrder = prevWo && beforeWo ? (prevWo.column_order + beforeWo.column_order) / 2 : beforeWo ? beforeWo.column_order - 0.5 : 1;
     }
-
     onDrop(workOrderId, status.id, newOrder);
   }
 
-  const columnOrders = workOrders.sort((a, b) => a.column_order - b.column_order);
+  const columnOrders = [...workOrders].sort((a, b) => a.column_order - b.column_order);
 
   return (
-    <div className="flex flex-col w-72 flex-shrink-0">
-      {/* Column header */}
-      <div className="flex items-center gap-2 px-3 py-2.5 mb-2">
-        <span
-          className="size-3 rounded-full flex-shrink-0"
-          style={{ backgroundColor: `#${status.color_hex}` }}
-        />
-        <span className={cn("text-sm font-medium truncate", isLight ? "text-neutral-700" : "text-neutral-300")}>
-          {status.name}
-        </span>
-        <span className={cn("ml-auto text-xs rounded px-1.5 py-0.5", isLight ? "text-neutral-500 bg-neutral-100" : "text-neutral-600 bg-neutral-800")}>
-          {workOrders.length}
-        </span>
+    <div className="flex flex-col w-[272px] flex-shrink-0 border-r border-gray-100 last:border-r-0 min-h-full">
+      {/* Column header — Linear style */}
+      <div className="flex items-center gap-2 px-4 py-3 mb-0 group border-b border-gray-100">
+        <StatusIcon colorHex={status.color_hex} name={status.name} />
+        <span className="text-[13px] font-semibold text-gray-700 flex-1 truncate">{status.name}</span>
+        <span className="text-[11px] font-medium text-gray-400 tabular-nums">{workOrders.length}</span>
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button className="size-5 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400 transition-colors">
+            <Plus className="size-3.5" />
+          </button>
+          <button className="size-5 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400 transition-colors">
+            <MoreHorizontal className="size-3.5" />
+          </button>
+        </div>
       </div>
 
       {/* Drop zone */}
@@ -157,23 +130,15 @@ function Column({
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         className={cn(
-          "flex-1 rounded-xl p-2 transition-colors min-h-[120px]",
-          active
-            ? isLight
-              ? "bg-neutral-200/80"
-              : "bg-neutral-800/60"
-            : isLight
-              ? "bg-neutral-100/80"
-              : "bg-neutral-900/30",
+          "flex-1 p-2 transition-colors min-h-[120px]",
+          active ? "bg-amber-50" : "bg-transparent"
         )}
       >
         {columnOrders.map((wo) => (
           <React.Fragment key={wo.id}>
             <DropIndicator beforeId={wo.id} statusId={status.id} />
             <WorkOrderCard
-              workOrder={wo}
-              cardFaceFields={cardFaceFields}
-              isLight={isLight}
+              workOrder={wo} cardFaceFields={cardFaceFields} isLight={true}
               isSelected={selectedId === wo.id}
               onSelect={() => onSelectCard(wo.id)}
               onDragStart={(e) => handleDragStart(e, wo)}
@@ -182,32 +147,33 @@ function Column({
           </React.Fragment>
         ))}
         <DropIndicator beforeId={null} statusId={status.id} />
+
+        {columnOrders.length === 0 && (
+          <div className={cn(
+            "flex items-center justify-center h-16 rounded-lg border border-dashed text-[11px] transition-colors",
+            active ? "border-amber-300 text-amber-500" : "border-gray-200 text-gray-300"
+          )}>
+            {active ? "Drop here" : "No work orders"}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-// ─── Board ────────────────────────────────────────────────────────────────────
-export function WorkOrderBoard({
-  statuses,
-  workOrders,
-  cardFaceFields,
-  isLight = false,
-  isLoading,
-  selectedId,
-  onSelectCard,
-  onDrop,
-}: WorkOrderBoardProps) {
+export function WorkOrderBoard({ statuses, workOrders, cardFaceFields, isLoading, selectedId, onSelectCard, onDrop }: WorkOrderBoardProps) {
   if (isLoading) {
     return (
-      <div className={cn("flex flex-1 items-center justify-center text-sm", isLight ? "text-neutral-500" : "text-neutral-600")}>
-        Loading board…
+      <div className="flex flex-1 items-center justify-center gap-2.5">
+        <div className="size-1.5 rounded-full bg-gray-300 animate-pulse" />
+        <div className="size-1.5 rounded-full bg-gray-300 animate-pulse [animation-delay:150ms]" />
+        <div className="size-1.5 rounded-full bg-gray-300 animate-pulse [animation-delay:300ms]" />
       </div>
     );
   }
 
   return (
-      <div className="flex flex-1 gap-4 overflow-x-auto p-6 pb-8">
+    <div className="bajaj-board-bg flex flex-1 overflow-x-auto items-stretch bg-white">
       {statuses.map((status, idx) => (
         <Column
           key={status.id}
@@ -217,15 +183,13 @@ export function WorkOrderBoard({
             (idx === 0 && (wo.status_id === null || wo.status_id === undefined))
           )}
           cardFaceFields={cardFaceFields}
-            isLight={isLight}
           selectedId={selectedId}
           onSelectCard={onSelectCard}
           onDrop={onDrop}
         />
       ))}
-
       {statuses.length === 0 && (
-        <div className={cn("flex flex-1 items-center justify-center text-sm", isLight ? "text-neutral-500" : "text-neutral-600")}>
+        <div className="flex flex-1 items-center justify-center text-sm text-gray-400">
           No status columns defined. Import an Excel file to configure the board.
         </div>
       )}

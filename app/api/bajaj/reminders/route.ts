@@ -16,7 +16,11 @@ function rowToReminder(r: Record<string, unknown>) {
     created_at:          r.created_at,
     due_at:              r.due_at,
     days_offset:         r.days_offset,
-    recipients:          JSON.parse(String(r.recipients || "[]")),
+    recipients:          (() => {
+      if (!r.recipients) return [];
+      if (Array.isArray(r.recipients)) return r.recipients;
+      try { return JSON.parse(String(r.recipients)); } catch { return []; }
+    })(),
     message:             r.message,
     status:              r.status,
     sent_at:             r.sent_at ?? null,

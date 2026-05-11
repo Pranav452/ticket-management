@@ -5,55 +5,17 @@ import { Loader2, CheckCircle } from "lucide-react";
 import { useCreateWorkOrder } from "@/lib/queries/bajaj";
 
 const FIELD_NAMES: string[] = [
-  "WO",
-  "Port",
-  "Country",
-  "Veh",
-  "Qty",
-  "Cont",
-  "Type",
-  "Stuffing on",
-  "S/LINE",
-  "Vessel Name",
-  "Agent",
-  "TRANSPORTER",
-  "Plant",
-  "PO NO",
-  "LC NO",
-  "LC DATE",
-  "HAZ",
-  "CONSIGNEE",
-  "REMARK 1",
-  "D/O GIVEN DT",
-  "BOOKING NO",
-  "CONTAINER NO",
-  "POL GATE",
-  "GATE OPEN",
-  "GATE CUT OFF",
-  "SI CUT OFF",
-  "DO ETD",
-  "CURRENT ETD",
-  "ETA AT DESTINATION",
-  "PICK UP DT",
-  "CNTR DISPATCH",
-  "CNTR REPORT NHAVA SHEVA",
-  "CNTR GATED IN PORT",
-  "FINAL VSL SOB",
-  "VGM SUBMITTED",
-  "SI SUBMITTED",
-  "BL NO",
-  "BL DT",
-  "BL HAND OVER TIME",
-  "FF JOB",
-  "CLEARANCE POINT",
-  "OPEN ORDER",
-  "BUFFER YARD",
-  "S/LINE PAYMENT STATUS",
-  "E DOC STATUS",
-  "COURIER DT",
-  "SB NO",
-  "SB DATE",
-  "FOR HBL",
+  "WO", "Port", "Country", "Veh", "Qty", "Cont", "Type",
+  "Stuffing on", "S/LINE", "Vessel Name", "Agent", "TRANSPORTER",
+  "Plant", "PO NO", "LC NO", "LC DATE", "HAZ", "CONSIGNEE", "REMARK 1",
+  "D/O GIVEN DT", "BOOKING NO", "CONTAINER NO", "POL GATE",
+  "GATE OPEN", "GATE CUT OFF", "SI CUT OFF", "DO ETD", "CURRENT ETD",
+  "ETA AT DESTINATION", "PICK UP DT", "CNTR DISPATCH",
+  "CNTR REPORT NHAVA SHEVA", "CNTR GATED IN PORT", "FINAL VSL SOB",
+  "VGM SUBMITTED", "SI SUBMITTED", "BL NO", "BL DT", "BL HAND OVER TIME",
+  "FF JOB", "CLEARANCE POINT", "OPEN ORDER", "BUFFER YARD",
+  "S/LINE PAYMENT STATUS", "E DOC STATUS", "COURIER DT",
+  "SB NO", "SB DATE", "FOR HBL",
 ];
 
 interface ManualWorkOrderFormProps {
@@ -72,10 +34,7 @@ export function ManualWorkOrderForm({ moduleSlug }: ManualWorkOrderFormProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setCreatedId(null);
-    await createWorkOrder.mutateAsync({
-      moduleSlug,
-      data: values,
-    });
+    await createWorkOrder.mutateAsync({ moduleSlug, data: values });
     setCreatedId(values["WO"] || null);
     setValues({});
   }
@@ -83,17 +42,17 @@ export function ManualWorkOrderForm({ moduleSlug }: ManualWorkOrderFormProps) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="h-full flex flex-col rounded-2xl border border-neutral-800 bg-neutral-950/60"
+      className="h-full flex flex-col rounded-2xl border border-gray-200 bg-white shadow-sm"
     >
-      <div className="px-5 py-4 border-b border-neutral-800 flex items-center justify-between">
+      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-neutral-100">Manual Work Order Entry</h2>
-          <p className="text-xs text-neutral-500">
+          <h2 className="text-sm font-semibold text-gray-900">Manual Work Order Entry</h2>
+          <p className="text-xs text-gray-400">
             New rows are added to the first lifecycle column for the selected board.
           </p>
         </div>
         {createdId && (
-          <div className="flex items-center gap-1 text-xs text-emerald-400">
+          <div className="flex items-center gap-1 text-xs text-emerald-600">
             <CheckCircle className="size-3.5" />
             <span>Saved: {createdId}</span>
           </div>
@@ -107,7 +66,7 @@ export function ManualWorkOrderForm({ moduleSlug }: ManualWorkOrderFormProps) {
             const value = values[field] ?? "";
             return (
               <div key={field} className="space-y-1">
-                <label className="block text-[11px] text-neutral-500 uppercase tracking-wide">
+                <label className="block text-[11px] text-gray-400 uppercase tracking-wide">
                   {field}
                 </label>
                 {isLongText ? (
@@ -115,14 +74,14 @@ export function ManualWorkOrderForm({ moduleSlug }: ManualWorkOrderFormProps) {
                     rows={2}
                     value={value}
                     onChange={(e) => handleChange(field, e.target.value)}
-                    className="w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2 text-xs text-neutral-100 placeholder:text-neutral-600 focus:outline-none focus:border-neutral-500 resize-none"
+                    className="w-full rounded-md bg-white border border-gray-200 px-3 py-2 text-xs text-gray-800 placeholder:text-gray-300 focus:outline-none focus:border-amber-500 resize-none transition-colors"
                   />
                 ) : (
                   <input
                     type="text"
                     value={value}
                     onChange={(e) => handleChange(field, e.target.value)}
-                    className="w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2 text-xs text-neutral-100 placeholder:text-neutral-600 focus:outline-none focus:border-neutral-500"
+                    className="w-full rounded-md bg-white border border-gray-200 px-3 py-2 text-xs text-gray-800 placeholder:text-gray-300 focus:outline-none focus:border-amber-500 transition-colors"
                   />
                 )}
               </div>
@@ -131,14 +90,14 @@ export function ManualWorkOrderForm({ moduleSlug }: ManualWorkOrderFormProps) {
         </div>
       </div>
 
-      <div className="px-5 py-3 border-t border-neutral-800 flex items-center justify-between">
-        <p className="text-[11px] text-neutral-600">
-          Minimum recommended fields: <span className="text-neutral-300">WO, Port, Country, Veh, Qty, CONTAINER NO, Vessel Name, S/LINE, HAZ</span>.
+      <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
+        <p className="text-[11px] text-gray-400">
+          Minimum recommended: <span className="text-gray-600">WO, Port, Country, Veh, Qty, CONTAINER NO, Vessel Name, S/LINE, HAZ</span>.
         </p>
         <button
           type="submit"
           disabled={createWorkOrder.isPending}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-neutral-900 text-xs font-medium text-neutral-100 border border-neutral-700 hover:bg-neutral-800 disabled:opacity-50"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-amber-500 text-xs font-semibold text-white hover:bg-amber-600 disabled:opacity-50 transition-colors"
         >
           {createWorkOrder.isPending && <Loader2 className="size-3.5 animate-spin" />}
           Add to Board
@@ -147,4 +106,3 @@ export function ManualWorkOrderForm({ moduleSlug }: ManualWorkOrderFormProps) {
     </form>
   );
 }
-

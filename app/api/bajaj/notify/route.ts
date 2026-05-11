@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 // POST /api/bajaj/notify
 // Body: { to: string, subject?: string, workOrderId: string, workOrderSummary: string, message: string, senderName: string }
 export async function POST(req: NextRequest) {
@@ -17,6 +15,8 @@ export async function POST(req: NextRequest) {
   if (!process.env.RESEND_API_KEY) {
     return NextResponse.json({ success: true, demo: true });
   }
+
+  const resend = new Resend(process.env.RESEND_API_KEY);
 
   const subject = body.subject ?? `Work Order Update — ${workOrderSummary ?? workOrderId}`;
 

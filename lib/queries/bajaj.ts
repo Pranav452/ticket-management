@@ -232,7 +232,7 @@ export function useRejectBajajUser() {
 // ─── Audit Logs ───────────────────────────────────────────────────────────────
 // Components call: useBajajAuditLogs({ actorEmail, action, limit })
 
-export function useBajajAuditLogs(params?: { actorEmail?: string; action?: string; limit?: number } | number) {
+export function useBajajAuditLogs(params?: { actorEmail?: string; action?: string; limit?: number; targetId?: string } | number) {
   const resolved = typeof params === "number"
     ? { limit: params }
     : (params ?? {});
@@ -245,6 +245,7 @@ export function useBajajAuditLogs(params?: { actorEmail?: string; action?: strin
           limit:       resolved.limit ?? 50,
           actor_email: (resolved as { actorEmail?: string }).actorEmail,
           action:      (resolved as { action?: string }).action,
+          target_id:   (resolved as { targetId?: string }).targetId,
         })}`
       ),
   });

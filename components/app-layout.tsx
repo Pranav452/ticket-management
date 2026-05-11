@@ -6,17 +6,13 @@ import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import {
-  BarChart2,
-  Upload,
-  ShieldCheck,
-  LogOut,
-  ChevronLeft,
-  ChevronRight,
-  Globe,
+  LayoutGrid, BarChart2, Upload, ShieldCheck, LogOut,
+  Search, ChevronDown, ChevronRight as ChevronRightIcon,
+  PanelLeft, HelpCircle, Settings, Globe,
+  Inbox, MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// ─── Module config ────────────────────────────────────────────────────────────
 const MODULES = [
   { slug: "vipar",      name: "VIPAR",      flag: "🌏", desc: "Myanmar · Brazil · Others" },
   { slug: "srilanka",   name: "Sri Lanka",  flag: "🇱🇰", desc: "Colombo · CMNBO" },
@@ -25,51 +21,112 @@ const MODULES = [
   { slug: "triumph",    name: "Triumph",    flag: "🇬🇧", desc: "United Kingdom" },
 ];
 
-const UTILS: { href: string; label: string; icon: React.ElementType }[] = [
-  { href: "/bajaj/dashboard", label: "Analytics", icon: BarChart2 },
-  { href: "/bajaj/import",    label: "Import",    icon: Upload },
-  { href: "/bajaj/admin",     label: "Admin",     icon: ShieldCheck },
-];
+// Sidebar background + item palette (Linear-style warm beige)
+const SB_BG      = "#EDECEA";
+const SB_ACTIVE  = "rgba(0,0,0,0.07)";
+const SB_HOVER   = "rgba(0,0,0,0.04)";
+const SB_TEXT    = "#1C1C1E";
+const SB_MUTED   = "#8A8A8E";
+const SB_BORDER  = "rgba(0,0,0,0.07)";
 
-// ─── NavItem ──────────────────────────────────────────────────────────────────
 function NavItem({
   href,
+  label,
+  icon: Icon,
+  emoji,
+  badge,
+  depth = 0,
   active,
-  collapsed,
-  children,
-  title,
 }: {
   href: string;
+  label: string;
+  icon?: React.ElementType;
+  emoji?: string;
+  badge?: number;
+  depth?: number;
   active?: boolean;
-  collapsed: boolean;
-  children: React.ReactNode;
-  title?: string;
 }) {
   return (
     <Link
       href={href}
-      title={collapsed ? title : undefined}
-      className={cn(
-        "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-all duration-150 group relative",
-        active
-          ? "bg-amber-600/15 text-amber-300 border border-amber-700/40"
-          : "text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 border border-transparent"
-      )}
+      className="group flex items-center gap-2 rounded-md px-2 py-[5px] text-[13px] font-medium transition-colors select-none w-full"
+      style={{
+        paddingLeft: depth === 1 ? 28 : depth === 2 ? 44 : 8,
+        background: active ? SB_ACTIVE : "transparent",
+        color: active ? SB_TEXT : SB_MUTED,
+      }}
+      onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = SB_HOVER; }}
+      onMouseLeave={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
     >
-      {active && (
-        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-amber-500 rounded-r" />
+      {emoji && <span className="text-[14px] leading-none w-4 text-center flex-shrink-0">{emoji}</span>}
+      {Icon && !emoji && <Icon className="size-[15px] flex-shrink-0" style={{ color: active ? SB_TEXT : SB_MUTED }} />}
+      <span className="flex-1 truncate" style={{ color: active ? SB_TEXT : SB_MUTED }}>{label}</span>
+      {badge != null && badge > 0 && (
+        <span className="ml-auto text-[11px] font-semibold tabular-nums rounded-full px-1.5 py-0.5 min-w-[18px] text-center"
+          style={{ background: "rgba(0,0,0,0.08)", color: SB_MUTED }}>
+          {badge}
+        </span>
       )}
-      {children}
     </Link>
   );
 }
 
-// ─── AppLayout ────────────────────────────────────────────────────────────────
+function SectionHeader({ label }: { label: string }) {
+  return (
+    <p className="px-2 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wider select-none"
+      style={{ color: SB_MUTED }}>
+      {label}
+    </p>
+  );
+}
+
+function Divider() {
+  return <div className="mx-2 my-1" style={{ borderTop: `1px solid ${SB_BORDER}` }} />;
+}
+
+function ModuleGroup({ module, isActiveBoard }: { module: typeof MODULES[0]; isActiveBoard: boolean }) {
+  const [open, setOpen] = useState(isActiveBoard);
+  const pathname = usePathname();
+  const isBoardActive = pathname === `/bajaj/boards/${module.slug}`;
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="group flex items-center gap-2 rounded-md px-2 py-[5px] w-full transition-colors select-none"
+        style={{
+          background: isActiveBoard && !open ? SB_ACTIVE : "transparent",
+          color: SB_TEXT,
+        }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = SB_HOVER; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = isActiveBoard && !open ? SB_ACTIVE : "transparent"; }}
+      >
+        <span className="text-[14px] leading-none w-4 text-center flex-shrink-0">{module.flag}</span>
+        <span className="flex-1 text-left text-[13px] font-medium truncate">{module.name}</span>
+        {open
+          ? <ChevronDown className="size-3.5 flex-shrink-0" style={{ color: SB_MUTED }} />
+          : <ChevronRightIcon className="size-3.5 flex-shrink-0" style={{ color: SB_MUTED }} />
+        }
+      </button>
+
+      {open && (
+        <div>
+          <NavItem href={`/bajaj/boards/${module.slug}`} label="Board" icon={LayoutGrid} depth={1} active={isBoardActive} />
+          <NavItem href={`/bajaj/import?module=${module.slug}`} label="Import" icon={Upload} depth={1}
+            active={pathname.startsWith("/bajaj/import") && (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("module") === module.slug : false)} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const [collapsed, setCollapsed] = useState(false);
-  const pathname   = usePathname();
-  const router     = useRouter();
-  const clearAuth  = useAuthStore((s) => s.clearAuth);
+  const [collapsed,    setCollapsed]    = useState(false);
+  const [searchQuery,  setSearchQuery]  = useState("");
+  const pathname  = usePathname();
+  const router    = useRouter();
+  const clearAuth = useAuthStore((s) => s.clearAuth);
+  const bajajUser = useAuthStore((s) => s.bajajUser);
 
   async function handleSignOut() {
     const supabase = createClient();
@@ -79,149 +136,136 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     router.push("/login");
   }
 
-  const activeModule = MODULES.find(
-    (m) => pathname.includes(`/bajaj/boards/${m.slug}`)
-  )?.slug;
+  const activeModule = MODULES.find((m) => pathname.includes(`/bajaj/boards/${m.slug}`))?.slug;
+
+  if (collapsed) {
+    return (
+      <div className="flex h-dvh overflow-hidden" style={{ background: "#F5F5F5" }}>
+        {/* Collapsed sidebar */}
+        <aside className="flex flex-col flex-shrink-0 w-12 items-center py-3 gap-3" style={{ background: SB_BG, borderRight: `1px solid ${SB_BORDER}` }}>
+          <button onClick={() => setCollapsed(false)} className="size-7 flex items-center justify-center rounded-md transition-colors hover:bg-black/5">
+            <PanelLeft className="size-4" style={{ color: SB_MUTED }} />
+          </button>
+          <div className="flex size-7 items-center justify-center rounded-md bg-amber-500 flex-shrink-0">
+            <Globe className="size-3.5 text-white" />
+          </div>
+          <Divider />
+          {MODULES.map((m) => (
+            <Link key={m.slug} href={`/bajaj/boards/${m.slug}`} title={m.name}
+              className="size-7 flex items-center justify-center rounded-md transition-colors hover:bg-black/5 text-sm"
+              style={{ background: activeModule === m.slug ? SB_ACTIVE : "transparent" }}>
+              {m.flag}
+            </Link>
+          ))}
+        </aside>
+        <main className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-tl-[18px] bg-white">{children}</main>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex h-dvh bg-neutral-950 text-neutral-50 overflow-hidden">
+    <div className="flex h-dvh overflow-hidden" style={{ background: "#EDECEA" }}>
 
-      {/* ── Sidebar ──────────────────────────────────────────────────────── */}
+      {/* ── Sidebar ─────────────────────────────────────────────────── */}
       <aside
-        className={cn(
-          "flex flex-col flex-shrink-0 border-r border-neutral-800/60 bg-[#0a0a0a] transition-all duration-200 overflow-hidden",
-          collapsed ? "w-[52px]" : "w-52"
-        )}
+        className="bajaj-sidebar flex flex-col flex-shrink-0 w-[220px] overflow-hidden"
+        style={{ background: SB_BG, borderRight: `1px solid ${SB_BORDER}` }}
       >
-        {/* Brand header */}
-        <div className={cn(
-          "flex items-center border-b border-neutral-800/60 px-3",
-          collapsed ? "justify-center py-4" : "justify-between py-3.5"
-        )}>
-          {!collapsed && (
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="flex size-7 items-center justify-center rounded-md bg-amber-600 flex-shrink-0">
-                <Globe className="size-3.5 text-white" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-neutral-100 leading-none tracking-tight">
-                  Bajaj Logistics
-                </p>
-                <p className="text-[10px] text-neutral-500 leading-none mt-0.5">
-                  Links · Operations
-                </p>
-              </div>
-            </div>
-          )}
-          {collapsed && (
-            <div className="flex size-7 items-center justify-center rounded-md bg-amber-600">
+
+        {/* ── Workspace header ──────────────────────────────────────── */}
+        <div className="flex items-center justify-between px-3 py-3" style={{ borderBottom: `1px solid ${SB_BORDER}` }}>
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="flex size-6 items-center justify-center rounded-md bg-amber-500 flex-shrink-0">
               <Globe className="size-3.5 text-white" />
             </div>
-          )}
-          {!collapsed && (
-            <button
-              onClick={() => setCollapsed(true)}
-              className="size-6 flex items-center justify-center rounded text-neutral-600 hover:text-neutral-300 hover:bg-neutral-800 transition-colors flex-shrink-0"
-            >
-              <ChevronLeft className="size-3.5" />
-            </button>
-          )}
+            <div className="min-w-0">
+              <p className="text-[13px] font-semibold leading-none truncate" style={{ color: SB_TEXT }}>Bajaj Logistics</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setCollapsed(true)}
+            className="size-6 flex items-center justify-center rounded-md transition-colors hover:bg-black/5 flex-shrink-0"
+          >
+            <PanelLeft className="size-4" style={{ color: SB_MUTED }} />
+          </button>
         </div>
 
-        {/* Expand button when collapsed */}
-        {collapsed && (
-          <button
-            onClick={() => setCollapsed(false)}
-            className="mx-auto mt-2 size-7 flex items-center justify-center rounded text-neutral-600 hover:text-neutral-300 hover:bg-neutral-800 transition-colors"
-          >
-            <ChevronRight className="size-3.5" />
-          </button>
-        )}
+        {/* ── Search ────────────────────────────────────────────────── */}
+        <div className="px-2 pt-2.5 pb-1">
+          <div className="flex items-center gap-2 rounded-md px-2.5 py-1.5 transition-colors"
+            style={{ background: "rgba(0,0,0,0.05)", color: SB_MUTED }}>
+            <Search className="size-3.5 flex-shrink-0" />
+            <input
+              type="text"
+              placeholder="Search…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="flex-1 bg-transparent text-[13px] outline-none placeholder-current min-w-0"
+              style={{ color: SB_MUTED }}
+            />
+            <span className="text-[11px] font-medium px-1 rounded" style={{ background: "rgba(0,0,0,0.08)", color: SB_MUTED }}>/</span>
+          </div>
+        </div>
 
-        {/* Nav */}
-        <nav className="flex flex-col flex-1 gap-0.5 px-1.5 py-3 overflow-y-auto overflow-x-hidden">
+        {/* ── Scrollable nav ────────────────────────────────────────── */}
+        <nav className="flex flex-col flex-1 px-1.5 pb-3 overflow-y-auto overflow-x-hidden">
 
-          {/* Modules */}
-          {!collapsed && (
-            <p className="px-2.5 mb-1 text-[9px] uppercase tracking-widest text-neutral-600 font-semibold select-none">
-              Modules
-            </p>
-          )}
-          {MODULES.map((m) => {
-            const isActive = activeModule === m.slug;
-            return (
-              <NavItem
-                key={m.slug}
-                href={`/bajaj/boards/${m.slug}`}
-                active={isActive}
-                collapsed={collapsed}
-                title={m.name}
-              >
-                <span className="text-sm leading-none flex-shrink-0 select-none">{m.flag}</span>
-                {!collapsed && (
-                  <div className="min-w-0 flex-1">
-                    <p className={cn(
-                      "text-[13px] font-medium leading-none",
-                      isActive ? "text-amber-300" : "text-neutral-200 group-hover:text-white"
-                    )}>
-                      {m.name}
-                    </p>
-                    <p className="text-[10px] text-neutral-600 leading-none mt-0.5 truncate">
-                      {m.desc}
-                    </p>
-                  </div>
-                )}
-              </NavItem>
-            );
-          })}
+          {/* Top-level */}
+          <div className="pt-1">
+            <NavItem href="/bajaj/import"    label="Import"       icon={Inbox}         active={pathname.startsWith("/bajaj/import")} />
+            <NavItem href="/bajaj/chat"      label="Chat"         icon={MessageSquare} active={pathname.startsWith("/bajaj/chat")} />
+            <NavItem href="/bajaj/dashboard" label="Analytics"    icon={BarChart2}     active={pathname.startsWith("/bajaj/dashboard")} />
+          </div>
 
-          <div className={cn("my-2 border-t border-neutral-800/60", collapsed && "mx-1")} />
+          <Divider />
+
+          {/* Modules section */}
+          <SectionHeader label="Modules" />
+
+          {MODULES.map((m) => (
+            <ModuleGroup
+              key={m.slug}
+              module={m}
+              isActiveBoard={activeModule === m.slug}
+            />
+          ))}
+
+          <Divider />
 
           {/* Tools */}
-          {!collapsed && (
-            <p className="px-2.5 mb-1 text-[9px] uppercase tracking-widest text-neutral-600 font-semibold select-none">
-              Tools
-            </p>
-          )}
-          {UTILS.map(({ href, label, icon: Icon }) => {
-            const isActive = pathname.startsWith(href);
-            return (
-              <NavItem key={href} href={href} active={isActive} collapsed={collapsed} title={label}>
-                <Icon className={cn(
-                  "size-4 flex-shrink-0",
-                  isActive ? "text-amber-400" : "text-neutral-500 group-hover:text-neutral-300"
-                )} />
-                {!collapsed && (
-                  <span className={cn(
-                    "text-[13px]",
-                    isActive ? "text-amber-300 font-medium" : "text-neutral-400 group-hover:text-neutral-100"
-                  )}>
-                    {label}
-                  </span>
-                )}
-              </NavItem>
-            );
-          })}
+          <SectionHeader label="Tools" />
+          <NavItem href="/bajaj/admin"    label="Admin"    icon={ShieldCheck}  active={pathname.startsWith("/bajaj/admin")} />
+          <NavItem href="/bajaj/settings" label="Settings" icon={Settings}     active={pathname.startsWith("/bajaj/settings")} />
+
         </nav>
 
-        {/* Sign out */}
-        <div className="px-1.5 py-3 border-t border-neutral-800/60">
-          <button
-            onClick={handleSignOut}
-            title={collapsed ? "Sign out" : undefined}
-            className={cn(
-              "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-neutral-600 hover:text-red-400 hover:bg-neutral-800 border border-transparent transition-all w-full",
-              collapsed && "justify-center"
-            )}
-          >
-            <LogOut className="size-4 flex-shrink-0" />
-            {!collapsed && <span className="text-[13px]">Sign out</span>}
-          </button>
+        {/* ── Bottom footer ─────────────────────────────────────────── */}
+        <div className="px-2 py-2" style={{ borderTop: `1px solid ${SB_BORDER}` }}>
+          {bajajUser && (
+            <Link
+              href="/bajaj/settings"
+              className="flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors w-full group"
+              style={{ color: SB_TEXT }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = SB_HOVER; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+            >
+              <div className="size-6 rounded-full bg-amber-500 flex items-center justify-center flex-shrink-0">
+                <span className="text-[11px] font-bold text-white">
+                  {(bajajUser.full_name ?? bajajUser.email ?? "?")[0].toUpperCase()}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[12px] font-medium truncate" style={{ color: SB_TEXT }}>{bajajUser.full_name ?? bajajUser.email}</p>
+                <p className="text-[10px] truncate" style={{ color: SB_MUTED }}>{bajajUser.email}</p>
+              </div>
+              <Settings className="size-3.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: SB_MUTED }} />
+            </Link>
+          )}
         </div>
       </aside>
 
-      {/* ── Page content ─────────────────────────────────────────────────── */}
-      <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {/* ── Page content ────────────────────────────────────────────── */}
+      <main className="bajaj-main flex min-h-0 flex-1 flex-col overflow-hidden rounded-tl-[18px]" style={{ background: "#F8F8F7" }}>
         {children}
       </main>
     </div>

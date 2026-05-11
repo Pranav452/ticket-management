@@ -40,15 +40,20 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "module_id required" }, { status: 400 });
 
     const pool = await getLinksPool();
+    // Upsert: update if exists, insert if not
     await pool.request()
       .input("mid",    sql.VarChar,  module_id)
       .input("fields", sql.NVarChar, JSON.stringify(card_face_fields ?? []))
       .input("uk",     sql.NVarChar, unique_key_field ?? null)
       .input("now",    sql.DateTime, new Date())
       .query(`
-        UPDATE bajaj_board_config
-        SET card_face_fields=@fields, unique_key_field=@uk, updated_at=@now
-        WHERE module_id=@mid
+        IF EXISTS (SELECT 1 FROM bajaj_board_config WHERE module_id=@mid)
+          UPDATE bajaj_board_config
+          SET card_face_fields=@fields, unique_key_field=@uk, updated_at=@now
+          WHERE module_id=@mid
+        ELSE
+          INSERT INTO bajaj_board_config (module_id, card_face_fields, unique_key_field, updated_at)
+          VALUES (@mid, @fields, @uk, @now)
       `);
 
     return NextResponse.json({ success: true });
