@@ -6,28 +6,13 @@ import { ArrowUp, ArrowDown, ArrowUpDown, ExternalLink } from "lucide-react";
 import type { BajajWorkOrder, BajajStatus } from "@/lib/types/bajaj";
 import { cn } from "@/lib/utils";
 
-// ── Row stripe colours (SOLID — no opacity so sticky cols don't bleed) ────────
-const ROW_BG_EVEN  = "#ffffff";
-const ROW_BG_ODD   = "#f9fafb";
-const ROW_BG_HOVER = "#fffbeb"; // amber-50
-
-// ── Column definitions ────────────────────────────────────────────────────────
-interface ColDef {
-  key: string;
-  label: string;
-  defaultWidth: number;
-  type?: "text" | "number" | "boolean" | "date";
-  readOnly?: boolean;
-  sticky?: boolean;
-}
-
-const COLUMNS: ColDef[] = [
+const COLUMNS_DEF = [
   { key: "wo",           label: "WO No",        defaultWidth: 140, sticky: true, readOnly: true },
   { key: "_status",      label: "Status",        defaultWidth: 140, readOnly: true },
-  { key: "brand",        label: "Brand",         defaultWidth: 110 },
-  { key: "variant",      label: "Variant",       defaultWidth: 140 },
+  { key: "veh",          label: "Brand",         defaultWidth: 110 },
+  { key: "type",         label: "Variant",       defaultWidth: 140 },
   { key: "qty",          label: "Qty",           defaultWidth: 70,  type: "number" },
-  { key: "hc40",         label: "40 HC",         defaultWidth: 70,  type: "number" },
+  { key: "cont",         label: "40 HC",         defaultWidth: 70,  type: "number" },
   { key: "std20",        label: "20 STD",        defaultWidth: 70,  type: "number" },
   { key: "port",         label: "Port",          defaultWidth: 130 },
   { key: "country",      label: "Country",       defaultWidth: 100 },
@@ -45,9 +30,21 @@ const COLUMNS: ColDef[] = [
   { key: "vgm_submitted",label: "VGM",           defaultWidth: 52,  type: "boolean" },
   { key: "haz",          label: "HAZ",           defaultWidth: 52,  type: "boolean" },
   { key: "remark",       label: "Remark",        defaultWidth: 220 },
-];
+] as const;
 
-// ── Sort helper ───────────────────────────────────────────────────────────────
+type ColKey = typeof COLUMNS_DEF[number]["key"];
+
+interface ColDef {
+  key: string;
+  label: string;
+  defaultWidth: number;
+  type?: "text" | "number" | "boolean" | "date";
+  readOnly?: boolean;
+  sticky?: boolean;
+}
+
+const COLUMNS: ColDef[] = COLUMNS_DEF as unknown as ColDef[];
+
 type SortDir = "asc" | "desc" | null;
 
 function sortRows(rows: BajajWorkOrder[], key: string, dir: SortDir): BajajWorkOrder[] {
@@ -64,7 +61,6 @@ function sortRows(rows: BajajWorkOrder[], key: string, dir: SortDir): BajajWorkO
   });
 }
 
-// ── Resize handle ─────────────────────────────────────────────────────────────
 function ResizeHandle({ onResize }: { onResize: (dx: number) => void }) {
   const startX = useRef<number>(0);
 
@@ -90,20 +86,18 @@ function ResizeHandle({ onResize }: { onResize: (dx: number) => void }) {
       onMouseDown={onMouseDown}
       className="absolute right-0 top-0 h-full w-2 cursor-col-resize flex items-center justify-center group/resize z-10"
     >
-      <div className="w-px h-4 bg-gray-300 group-hover/resize:bg-amber-400 group-hover/resize:w-[2px] transition-all rounded-full" />
+      <div className="w-px h-4 bg-gray-300 dark:bg-white/20 group-hover/resize:bg-amber-400 group-hover/resize:w-[2px] transition-all rounded-full" />
     </div>
   );
 }
 
-// ── Inline cell editor ────────────────────────────────────────────────────────
 function EditCell({
-  col, value, isFocused, onFocus, onChange, onNavigate, bg,
+  col, value, isFocused, onFocus, onChange, onNavigate,
 }: {
   col: ColDef;
   value: unknown;
   isFocused: boolean;
   onFocus: () => void;
-  bg: string;
   onChange?: (val: string | boolean | number) => void;
   onNavigate?: (dir: "up" | "down" | "tab") => void;
 }) {
@@ -115,24 +109,22 @@ function EditCell({
     if (editing) inputRef.current?.focus();
   }, [editing]);
 
-  // Boolean toggle — single click
   if (col.type === "boolean") {
     const on = value === true || value === 1 || value === "true";
     return (
       <button
         onClick={() => { onFocus(); onChange?.(!on); }}
         className="w-full h-full flex items-center justify-center text-[12px] font-semibold transition-colors"
-        style={{ background: "transparent" }}
       >
-        <span className={on ? "text-amber-500" : "text-gray-300"}>{on ? "✓" : "—"}</span>
+        <span className={on ? "text-amber-500" : "text-gray-300 dark:text-white/20"}>{on ? "✓" : "—"}</span>
       </button>
     );
   }
 
   if (col.readOnly) {
     return (
-      <div className="w-full h-full flex items-center px-2.5 text-[12px] text-gray-600 truncate">
-        {value != null && value !== "" ? String(value) : <span className="text-gray-300">—</span>}
+      <div className="w-full h-full flex items-center px-2.5 text-[12px] text-gray-600 dark:text-white/60 truncate">
+        {value != null && value !== "" ? String(value) : <span className="text-gray-300 dark:text-white/20">—</span>}
       </div>
     );
   }
@@ -154,8 +146,7 @@ function EditCell({
         ref={inputRef}
         value={draft}
         type={col.type === "number" ? "number" : col.type === "date" ? "date" : "text"}
-        style={{ background: "#fffbf0" }}
-        className="w-full h-full px-2.5 text-[12px] text-gray-800 border-0 outline-none ring-2 ring-inset ring-amber-400"
+        className="w-full h-full px-2.5 text-[12px] text-gray-800 dark:text-white/90 bg-[#fffbf0] dark:bg-[#1a1a1a] border-0 outline-none ring-2 ring-inset ring-amber-400 dark:border-white/10"
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => commit(draft)}
         onKeyDown={(e) => {
@@ -171,16 +162,14 @@ function EditCell({
 
   return (
     <div
-      className="w-full h-full flex items-center px-2.5 text-[12px] text-gray-700 truncate cursor-text select-none"
-      style={{ background: "transparent" }}
+      className="w-full h-full flex items-center px-2.5 text-[12px] text-gray-700 dark:text-white/80 truncate cursor-text select-none"
       onClick={() => { onFocus(); setDraft(display); setEditing(true); }}
     >
-      {display || <span className="text-gray-300">—</span>}
+      {display || <span className="text-gray-300 dark:text-white/20">—</span>}
     </div>
   );
 }
 
-// ── Main spreadsheet ──────────────────────────────────────────────────────────
 interface WorkOrderSpreadsheetProps {
   workOrders: BajajWorkOrder[];
   statuses: BajajStatus[];
@@ -189,7 +178,6 @@ interface WorkOrderSpreadsheetProps {
 }
 
 const ROW_NUM_WIDTH = 40;
-const STICKY_LEFT   = ROW_NUM_WIDTH; // wo column starts at 40px
 
 export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate }: WorkOrderSpreadsheetProps) {
   const [sortKey,  setSortKey]  = useState<string>("wo");
@@ -230,18 +218,20 @@ export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate
     return (
       <div className="flex flex-1 items-center justify-center gap-2.5">
         {[0, 150, 300].map((d) => (
-          <div key={d} className="size-1.5 rounded-full bg-gray-300 animate-pulse" style={{ animationDelay: `${d}ms` }} />
+          <div key={d} className="size-1.5 rounded-full bg-gray-300 dark:bg-white/20 animate-pulse" style={{ animationDelay: `${d}ms` }} />
         ))}
       </div>
     );
   }
 
   if (!sorted.length) {
-    return <div className="flex flex-1 items-center justify-center text-sm text-gray-400">No work orders to display.</div>;
+    return <div className="flex flex-1 items-center justify-center text-sm text-gray-400 dark:text-white/40">No work orders to display.</div>;
   }
 
-  // Compute sticky wo-column left offset (after row-num col)
   const stickyWoLeft = ROW_NUM_WIDTH;
+
+  const headerBg    = "bg-gray-100 dark:bg-[#111]";
+  const headerBorder = "border-gray-200 dark:border-white/[0.06]";
 
   return (
     <div className="flex-1 overflow-auto" style={{ fontFamily: "inherit" }}>
@@ -252,20 +242,17 @@ export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate
           width: ROW_NUM_WIDTH + widths.reduce((a, b) => a + b, 0),
         }}
       >
-        {/* ── colgroup ──────────────────────────────────────────────── */}
         <colgroup>
           <col style={{ width: ROW_NUM_WIDTH }} />
           {widths.map((w, i) => <col key={i} style={{ width: w }} />)}
         </colgroup>
 
-        {/* ── Header ────────────────────────────────────────────────── */}
         <thead>
-          <tr style={{ height: 34, backgroundColor: "#f3f4f6", borderBottom: "1px solid #e5e7eb" }}>
-            {/* Row number */}
-            <th style={{
-              position: "sticky", left: 0, zIndex: 30, width: ROW_NUM_WIDTH,
-              backgroundColor: "#f3f4f6", borderRight: "1px solid #e5e7eb",
-            }} />
+          <tr className={cn("h-[34px]", headerBg, `border-b border-gray-200 dark:border-white/[0.06]`)}>
+            <th
+              className={cn("sticky left-0 z-30", headerBg, "border-r border-gray-200 dark:border-white/[0.06]")}
+              style={{ width: ROW_NUM_WIDTH }}
+            />
 
             {COLUMNS.map((col, colIdx) => {
               const isSorted = sortKey === col.key;
@@ -273,33 +260,30 @@ export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate
               return (
                 <th
                   key={col.key}
+                  className={cn(
+                    "relative border-r border-b border-gray-200 dark:border-white/[0.06]",
+                    headerBg,
+                    col.sticky ? "sticky z-20" : "",
+                  )}
                   style={{
-                    position: col.sticky ? "sticky" : undefined,
                     left: col.sticky ? stickyWoLeft : undefined,
-                    zIndex: col.sticky ? 20 : undefined,
                     width: widths[colIdx],
-                    backgroundColor: "#f3f4f6",
-                    borderRight: "1px solid #e5e7eb",
-                    borderBottom: "1px solid #e5e7eb",
                     padding: "0 10px",
                     textAlign: col.type === "boolean" ? "center" : "left",
                     whiteSpace: "nowrap",
                     userSelect: "none",
-                    // relative for resize handle
-                    position2: "relative" as never,
-                  } as React.CSSProperties}
-                  className="relative"
+                  }}
                 >
                   <button
-                    className="flex items-center gap-1 w-full group/sort"
-                    style={{ color: "#6b7280", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}
+                    className="flex items-center gap-1 w-full group/sort text-gray-500 dark:text-white/50"
+                    style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}
                     onClick={() => handleSort(col.key)}
                   >
                     <span className="truncate">{col.label}</span>
                     <Icon style={{
                       width: 11, height: 11, flexShrink: 0,
-                      color: isSorted && sortDir ? "#f59e0b" : "#d1d5db",
-                      opacity: isSorted && sortDir ? 1 : undefined,
+                      color: isSorted && sortDir ? "#f59e0b" : undefined,
+                      opacity: isSorted && sortDir ? 1 : 0.4,
                     }} />
                   </button>
                   <ResizeHandle onResize={(dx) => resizeCol(colIdx, dx)} />
@@ -309,80 +293,86 @@ export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate
           </tr>
         </thead>
 
-        {/* ── Body ──────────────────────────────────────────────────── */}
         <tbody>
           {sorted.map((wo, rowIdx) => {
             const d      = (wo.data ?? {}) as Record<string, unknown>;
             const status = statusMap[wo.status_id ?? ""];
             const isHov  = hovRow === rowIdx;
-            const rowBg  = isHov ? ROW_BG_HOVER : rowIdx % 2 === 0 ? ROW_BG_EVEN : ROW_BG_ODD;
+            const isEven = rowIdx % 2 === 0;
+
+            const rowClass = cn(
+              "h-8 border-b border-gray-100 dark:border-white/[0.04] transition-colors",
+              isHov
+                ? "bg-amber-50 dark:bg-amber-900/20"
+                : isEven
+                  ? "bg-white dark:bg-[#0d0d0d]"
+                  : "bg-gray-50 dark:bg-[#111]",
+            );
+
+            const stickyBgClass = isHov
+              ? "bg-amber-50 dark:bg-amber-900/20"
+              : isEven
+                ? "bg-white dark:bg-[#0d0d0d]"
+                : "bg-gray-50 dark:bg-[#111]";
 
             return (
               <tr
                 key={wo.id}
-                style={{ height: 32, borderBottom: "1px solid #f3f4f6", backgroundColor: rowBg }}
+                className={rowClass}
                 onMouseEnter={() => setHovRow(rowIdx)}
                 onMouseLeave={() => setHovRow(null)}
               >
-                {/* Row number */}
-                <td style={{
-                  position: "sticky", left: 0, zIndex: 10,
-                  backgroundColor: rowBg, // SOLID — matches row exactly
-                  borderRight: "1px solid #f3f4f6",
-                  textAlign: "center", color: "#d1d5db",
-                  fontSize: 10, userSelect: "none",
-                  fontVariantNumeric: "tabular-nums",
-                  // transition so hover colour follows smoothly
-                  transition: "background-color 150ms",
-                }}>
+                <td
+                  className={cn(
+                    "sticky left-0 z-10 border-r border-gray-100 dark:border-white/[0.04] text-center text-gray-300 dark:text-white/20 select-none transition-colors",
+                    stickyBgClass,
+                  )}
+                  style={{ fontSize: 10, userSelect: "none", fontVariantNumeric: "tabular-nums" }}
+                >
                   {rowIdx + 1}
                 </td>
 
                 {COLUMNS.map((col, colIdx) => {
                   const rawVal   = col.key === "_status" ? (status?.name ?? null) : d[col.key];
                   const isFocused= focusCell?.[0] === rowIdx && focusCell?.[1] === colIdx;
-                  const cellBg   = rowBg; // always solid
 
                   return (
                     <td
                       key={col.key}
                       onClick={() => setFocusCell([rowIdx, colIdx])}
+                      className={cn(
+                        "border-r border-gray-100 dark:border-white/[0.04] overflow-hidden transition-colors",
+                        col.sticky ? cn("sticky z-10", stickyBgClass) : "",
+                      )}
                       style={{
-                        position: col.sticky ? "sticky" : undefined,
                         left: col.sticky ? stickyWoLeft : undefined,
-                        zIndex: col.sticky ? 10 : undefined,
-                        backgroundColor: cellBg, // SOLID
-                        borderRight: "1px solid #f3f4f6",
                         padding: 0,
-                        overflow: "hidden",
                         maxWidth: widths[colIdx],
-                        transition: "background-color 150ms",
                         outline: isFocused ? "2px solid #f59e0b" : undefined,
                         outlineOffset: isFocused ? "-2px" : undefined,
                       }}
                     >
-                      {/* WO No — link that opens detail */}
                       {col.key === "wo" ? (
                         <Link
                           href={`/bajaj/work-orders/${wo.id}`}
-                          className="flex items-center gap-1.5 w-full h-full px-2.5 group/link"
-                          style={{ color: "#1d4ed8", fontSize: 12, fontWeight: 500, textDecoration: "none" }}
+                          className="flex items-center gap-1.5 w-full h-full px-2.5 group/link text-blue-700 dark:text-blue-400 hover:underline"
+                          style={{ fontSize: 12, fontWeight: 500, textDecoration: "none" }}
                           onClick={(e) => e.stopPropagation()}
                         >
                           <span className="truncate">{d.wo ? String(d.wo) : wo.id}</span>
                           <ExternalLink style={{
-                            width: 10, height: 10, flexShrink: 0, color: "#93c5fd",
+                            width: 10, height: 10, flexShrink: 0,
                             opacity: isHov ? 1 : 0, transition: "opacity 150ms",
-                          }} />
+                          }} className="text-blue-300 dark:text-blue-500" />
                         </Link>
                       ) : col.key === "_status" ? (
                         <div className="flex items-center gap-1.5 px-2.5 h-full truncate">
                           {status
                             ? <>
                                 <span style={{ width: 6, height: 6, borderRadius: "50%", flexShrink: 0, backgroundColor: `#${status.color_hex}` }} />
-                                <span style={{ fontSize: 12, color: "#374151" }} className="truncate">{status.name}</span>
+                                <span className="text-gray-700 dark:text-white/80 truncate" style={{ fontSize: 12 }}>{status.name}</span>
                               </>
-                            : <span style={{ fontSize: 12, color: "#d1d5db" }}>—</span>
+                            : <span className="text-gray-300 dark:text-white/20" style={{ fontSize: 12 }}>—</span>
                           }
                         </div>
                       ) : (
@@ -390,7 +380,6 @@ export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate
                           col={col}
                           value={rawVal}
                           isFocused={isFocused}
-                          bg={cellBg}
                           onFocus={() => setFocusCell([rowIdx, colIdx])}
                           onChange={(val) => handleCellChange(wo.id, col.key, val)}
                           onNavigate={(dir) => handleNavigate(rowIdx, colIdx, dir)}
