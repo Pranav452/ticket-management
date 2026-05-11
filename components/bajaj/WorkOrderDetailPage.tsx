@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Loader2, Check,
@@ -158,6 +158,15 @@ function ActivityItem({ log }: { log: BajajAuditLog }) {
   );
 }
 
+function countryToSlug(country: string): string {
+  const c = country?.toLowerCase() ?? "";
+  if (c === "sri lanka") return "srilanka";
+  if (c === "nigeria") return "nigeria";
+  if (c === "bangladesh" || c === "bangaldesh") return "bangladesh";
+  if (c === "united kingdom") return "triumph";
+  return "vipar";
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
   const router = useRouter();
@@ -169,26 +178,17 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
   const addComment      = useAddBajajComment();
   const { bajajUser }   = useAuthStore();
 
-  const [allStatuses,        setAllStatuses]        = useState<{ id: string; name: string; color_hex: string }[]>([]);
+  // Derive module slug from work order country so we fetch the right status IDs
+  const moduleSlug = workOrder
+    ? countryToSlug(String((workOrder.data as Record<string, unknown>)?.country ?? ""))
+    : undefined;
+  const { data: allStatuses = [] } = useBajajStatuses(moduleSlug);
+
   const [showStatusPicker,   setShowStatusPicker]   = useState(false);
   const [showAssigneePicker, setShowAssigneePicker] = useState(false);
   const [commentText,        setCommentText]        = useState("");
   const [savingField,        setSavingField]        = useState<string | null>(null);
   const [autoAdvanced,       setAutoAdvanced]       = useState(false);
-
-  useEffect(() => {
-    fetch("/api/bajaj/statuses")
-      .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data)) {
-          // Deduplicate by name — all modules share the same status names
-          const seen = new Set<string>();
-          const unique = data.filter((s: { name: string }) => seen.has(s.name) ? false : (seen.add(s.name), true));
-          setAllStatuses(unique);
-        }
-      })
-      .catch(() => {});
-  }, []);
 
   const handleFieldSave = useCallback((key: string, val: string | boolean) => {
     setSavingField(key);
@@ -198,9 +198,8 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
       {
         onSettled: () => setSavingField(null),
         onSuccess: () => {
-          // Resolve currentStatus inside callback to avoid TDZ
           const resolvedStatus = allStatuses.find((s) => s.id === workOrder?.status_id);
-          const statusName = resolvedStatus?.name ?? "";
+          const statusName = resolvedStatus?.name ?? workOrder?.status?.name ?? "";
           const required = getRequiredFields(statusName);
           const allFilled = required.every((f) => {
             const v = merged[f];
@@ -239,7 +238,9 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
   const brand        = d.brand   ? String(d.brand)   : "";
   const variant      = d.variant ? String(d.variant) : "";
   const title        = [brand, variant].filter(Boolean).join(" · ") || `WO ${wo}`;
-  const currentStatus = allStatuses.find((s) => s.id === workOrder.status_id);
+  // workOrder.status is returned directly by the API — always correct
+  // allStatuses lookup is fallback for after a status change (optimistic update)
+  const currentStatus = workOrder.status ?? allStatuses.find((s) => s.id === workOrder.status_id) ?? null;
   const assignedUser  = bajajUsers.find((u) => u.id === workOrder.assigned_to || u.email === workOrder.assigned_to);
 
   return (

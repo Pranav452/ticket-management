@@ -8,13 +8,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getLinksPool } from "@/lib/db";
 
-const ADMIN_EMAIL = "pranavnairop090@gmail.com";
+const ADMIN_EMAILS = new Set(["pranavnairop090@gmail.com", "superadmin@links.com"]);
 
 export async function DELETE(_req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user || user.email !== ADMIN_EMAIL) {
+  if (!user || !ADMIN_EMAILS.has(user.email ?? "")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

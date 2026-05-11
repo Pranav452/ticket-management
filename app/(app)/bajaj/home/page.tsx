@@ -350,7 +350,7 @@ export default function BajajHomePage() {
 
   return (
     <div
-      className="min-h-screen text-gray-900 dark:text-white"
+      className="h-full overflow-y-auto text-gray-900 dark:text-white"
       style={{ background: "var(--main-bg)" }}
     >
       <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">

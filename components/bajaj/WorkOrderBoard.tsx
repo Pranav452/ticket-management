@@ -130,7 +130,7 @@ function Column({
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         className={cn(
-          "flex-1 p-2 transition-colors min-h-[120px]",
+          "flex-1 p-2 transition-colors min-h-[120px] overflow-y-auto",
           active ? "bg-amber-50 dark:bg-amber-500/10" : "bg-transparent"
         )}
       >
