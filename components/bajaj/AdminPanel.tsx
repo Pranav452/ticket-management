@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { CheckCircle, XCircle, Loader2, Search, Filter, ShieldCheck, Wrench, RefreshCw, CheckCircle2, AlertTriangle } from "lucide-react";
+import { CheckCircle, XCircle, Loader2, Search, Filter, ShieldCheck, Wrench, RefreshCw, CheckCircle2, AlertTriangle, Trash2 } from "lucide-react";
 import {
   useBajajUsers,
   useApproveBajajUser,
@@ -328,8 +328,52 @@ function DataToolsTab() {
       </div>
 
       <p className="text-xs text-gray-400 leading-relaxed">
-        Repair fixes rows in <code className="text-gray-500">TMP_TBL_BAJAJ_WO</code> (and <code className="text-gray-500">bajaj_work_orders</code>) where <code className="text-gray-500">country</code> is NULL, empty, or a spelling variant — assigning them the canonical country for that module. Run dry first to preview, then flip the toggle and run live.
+        Repair fixes rows in <code className="text-gray-500">bajaj_work_orders</code> where <code className="text-gray-500">country</code> is NULL, empty, or a spelling variant — assigning them the canonical country for that module. Run dry first to preview, then flip the toggle and run live.
       </p>
+
+      {/* ── Danger: Clear all data ─────────────────────────────────── */}
+      <ClearDataSection />
+    </div>
+  );
+}
+
+function ClearDataSection() {
+  const [clearing, setClearing] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  return (
+    <div className="rounded-xl border border-red-200 bg-red-50 p-5">
+      <div className="flex items-center gap-2 mb-2">
+        <Trash2 className="size-4 text-red-500" />
+        <p className="text-sm font-semibold text-red-700">Clear All Work Orders</p>
+      </div>
+      <p className="text-xs text-red-500 mb-4">
+        Permanently deletes every row in <code>bajaj_work_orders</code> and <code>bajaj_wo_meta</code>. Cannot be undone. Use before re-importing fresh data.
+      </p>
+      {msg && (
+        <p className={`text-xs mb-3 ${msg.startsWith("✓") ? "text-emerald-600" : "text-red-600"}`}>{msg}</p>
+      )}
+      <button
+        disabled={clearing}
+        onClick={async () => {
+          if (!confirm("Delete ALL work orders? This cannot be undone.")) return;
+          setClearing(true);
+          setMsg(null);
+          try {
+            const res = await fetch("/api/bajaj/work-orders/clear", { method: "DELETE" });
+            if (!res.ok) throw new Error(await res.text());
+            setMsg("✓ All work orders deleted. You can now re-import.");
+          } catch (e: unknown) {
+            setMsg(`✗ ${e instanceof Error ? e.message : "Unknown error"}`);
+          } finally {
+            setClearing(false);
+          }
+        }}
+        className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-semibold transition-colors"
+      >
+        {clearing ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+        {clearing ? "Clearing…" : "Clear All Data"}
+      </button>
     </div>
   );
 }
