@@ -204,11 +204,11 @@ export function MessageInput({ roomId, members, currentUserId }: Props) {
             onPaste={handlePaste}
             className={cn(
               "min-h-[40px] max-h-[160px] overflow-y-auto",
-              "w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5",
-              "text-sm leading-relaxed text-gray-800",
+              "w-full rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] px-3.5 py-2.5",
+              "text-sm leading-relaxed text-gray-800 dark:text-white/90",
               "focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-300",
               "break-words whitespace-pre-wrap",
-              "empty:before:content-[attr(data-placeholder)] empty:before:text-gray-300 empty:before:pointer-events-none"
+              "empty:before:content-[attr(data-placeholder)] empty:before:text-gray-300 dark:empty:before:text-white/25 empty:before:pointer-events-none"
             )}
             data-placeholder="Message… (@ to mention)"
           />
@@ -233,7 +233,7 @@ export function MessageInput({ roomId, members, currentUserId }: Props) {
           Failed to send — {sendMessage.error?.message}
         </p>
       )}
-      <p className="text-[10px] text-gray-300 mt-1 px-0.5">
+      <p className="text-[10px] text-gray-300 dark:text-white/25 mt-1 px-0.5">
         Enter to send · Shift+Enter for new line
       </p>
     </div>

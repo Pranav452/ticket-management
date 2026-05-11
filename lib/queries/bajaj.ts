@@ -317,6 +317,51 @@ export function useBajajRolePermissions() {
   });
 }
 
+// ─── Column-level Permissions ─────────────────────────────────────────────────
+
+export function useBajajColumnPerms(moduleSlug?: string) {
+  return useQuery<import("@/lib/types/bajaj").BajajColumnPerm[]>({
+    queryKey: ["bajaj", "column-perms", moduleSlug],
+    queryFn:  () => apiFetch(`/api/bajaj/column-perms${moduleSlug ? `?module=${moduleSlug}` : ""}`),
+    staleTime: 30_000,
+  });
+}
+
+export function useUpsertColumnPerm() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      module_slug: string; status_id?: string | null;
+      grantee_type: "role" | "user"; grantee: string;
+      can_view?: boolean; can_edit_fields?: boolean; can_move_cards?: boolean; can_assign?: boolean;
+    }) =>
+      apiFetch("/api/bajaj/column-perms", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["bajaj", "column-perms"] }),
+  });
+}
+
+export function useDeleteColumnPerm() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/api/bajaj/column-perms?id=${id}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["bajaj", "column-perms"] }),
+  });
+}
+
+export function useUpdateUserRole() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: string }) =>
+      apiFetch(`/api/bajaj/users/${userId}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set_role", role }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["bajaj", "users"] }),
+  });
+}
+
 export function useUpdateBajajRolePermission() {
   const qc = useQueryClient();
   return useMutation({

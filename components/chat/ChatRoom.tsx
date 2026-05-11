@@ -95,23 +95,23 @@ export function ChatRoom({ roomId }: Props) {
   const avatarColor = isGroup ? "bg-amber-500" : avatarColors[roomDisplayName.charCodeAt(0) % avatarColors.length]
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-white">
+    <div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-white dark:bg-[#0d0d0d]">
       {/* Header */}
-      <div className="flex items-center gap-3 px-5 py-3.5 border-b border-gray-100 flex-shrink-0 bg-white">
+      <div className="flex items-center gap-3 px-5 py-3.5 border-b border-gray-100 dark:border-white/6 flex-shrink-0 bg-white dark:bg-[#111]">
         <div className={`h-9 w-9 rounded-${isGroup ? "xl" : "full"} ${avatarColor} flex items-center justify-center flex-shrink-0 text-white font-bold text-sm`}>
           {isGroup ? <Users className="h-4 w-4" /> : initials}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-[14px] font-semibold text-gray-900 leading-tight">{roomDisplayName}</p>
-          {roomSubtitle && <p className="text-[11px] text-gray-400 leading-tight">{roomSubtitle}</p>}
+          <p className="text-[14px] font-semibold text-gray-900 dark:text-white/90 leading-tight">{roomDisplayName}</p>
+          {roomSubtitle && <p className="text-[11px] text-gray-400 dark:text-white/40 leading-tight">{roomSubtitle}</p>}
         </div>
-        <button className="size-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 transition-colors">
+        <button className="size-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-white/8 text-gray-400 dark:text-white/40 transition-colors">
           <MoreHorizontal className="h-4 w-4" />
         </button>
       </div>
 
       {/* Messages */}
-      <ScrollArea.Root className="flex-1 overflow-hidden" style={{ background: "#FAFAFA" }}>
+      <ScrollArea.Root className="flex-1 overflow-hidden bg-[#FAFAFA] dark:bg-[#0d0d0d]">
         <ScrollArea.Viewport ref={viewportRef} className="h-full w-full">
           <div className="flex flex-col gap-2 px-5 py-5 min-h-full">
             <div ref={topSentinelRef} className="h-1" />
@@ -126,10 +126,10 @@ export function ChatRoom({ roomId }: Props) {
               </div>
             ) : allMessages.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center gap-3 py-12">
-                <div className="h-14 w-14 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center">
+                <div className="h-14 w-14 rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-500/20 flex items-center justify-center">
                   <span className="text-2xl">👋</span>
                 </div>
-                <p className="text-[13px] text-gray-400">No messages yet — say something!</p>
+                <p className="text-[13px] text-gray-400 dark:text-white/40">No messages yet — say something!</p>
               </div>
             ) : (
               allMessages.map((msg, idx) => {
@@ -149,12 +149,12 @@ export function ChatRoom({ roomId }: Props) {
           </div>
         </ScrollArea.Viewport>
         <ScrollArea.Scrollbar orientation="vertical" className="flex select-none touch-none p-0.5 w-2">
-          <ScrollArea.Thumb className="flex-1 bg-gray-200 rounded-full" />
+          <ScrollArea.Thumb className="flex-1 bg-gray-200 dark:bg-white/20 rounded-full" />
         </ScrollArea.Scrollbar>
       </ScrollArea.Root>
 
       {/* Input */}
-      <div className="flex-shrink-0 border-t border-gray-100 bg-white px-5 py-4">
+      <div className="flex-shrink-0 border-t border-gray-100 dark:border-white/6 bg-white dark:bg-[#111] px-5 py-4">
         <MessageInput roomId={roomId} members={members} currentUserId={currentUserId ?? ""} />
       </div>
     </div>

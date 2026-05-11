@@ -158,6 +158,24 @@ export interface BajajAnalytics {
   vesselsOverLimit: { vesselName: string; containerCount: number }[];
 }
 
+// ─── Column-level RBAC ───────────────────────────────────────────────────────
+
+export type BajajGranteeType = "role" | "user";
+export type BajajRole = "admin" | "manager" | "operator" | "viewer";
+
+export interface BajajColumnPerm {
+  id:              string;
+  module_slug:     string;
+  status_id:       string | null;
+  grantee_type:    BajajGranteeType;
+  grantee:         string;
+  can_view:        boolean;
+  can_edit_fields: boolean;
+  can_move_cards:  boolean;
+  can_assign:      boolean;
+  created_at:      string;
+}
+
 // ─── Board filters ────────────────────────────────────────────────────────────
 
 export interface WorkOrderFilters {

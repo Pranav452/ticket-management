@@ -38,7 +38,7 @@ const TT     = {
 /* ─── reusable primitives ────────────────────────────────────── */
 function Card({ className, children }: { className?: string; children: React.ReactNode }) {
   return (
-    <div className={cn("rounded-2xl border shadow-sm dark:border-white/[0.06]", className)}
+    <div className={cn("rounded-2xl border shadow-sm dark:border-white/[0.06] dark:bg-[#0d0d0d]", className)}
       style={{ background: "var(--card-bg, white)" }}>
       {children}
     </div>
@@ -75,9 +75,9 @@ function KpiCard({ icon, label, value, sub, accent = AMBER }: KpiProps) {
 function PieTooltip({ active, payload }: { active?: boolean; payload?: { name: string; value: number }[] }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white border border-gray-100 rounded-xl px-3 py-2 shadow-lg text-xs">
-      <p className="font-semibold text-gray-800">{payload[0].name}</p>
-      <p className="text-gray-500 tabular-nums">{payload[0].value} work orders</p>
+    <div className="bg-white dark:bg-[#0d0d0d] border border-gray-100 dark:border-white/6 rounded-xl px-3 py-2 shadow-lg text-xs">
+      <p className="font-semibold text-gray-800 dark:text-white/90">{payload[0].name}</p>
+      <p className="text-gray-500 dark:text-white/50 tabular-nums">{payload[0].value} work orders</p>
     </div>
   );
 }
@@ -110,10 +110,10 @@ export function BajajDashboard() {
   }
 
   return (
-    <div className="flex h-full flex-col overflow-hidden" style={{ background: "var(--main-bg, #F7F7F8)" }}>
+    <div className="flex h-full flex-col overflow-hidden bg-gray-50 dark:bg-[#111]" style={{ background: "var(--main-bg, #F7F7F8)" }}>
 
       {/* ── top bar ─────────────────────────────────────────── */}
-      <div className="bajaj-topbar flex items-center justify-between gap-4 px-6 py-4 border-b flex-shrink-0" style={{ background: "var(--card-bg, white)", borderColor: "var(--border-color)" }}>
+      <div className="bajaj-topbar flex items-center justify-between gap-4 px-6 py-4 border-b border-gray-200 dark:border-white/10 flex-shrink-0 dark:bg-[#0d0d0d]" style={{ background: "var(--card-bg, white)", borderColor: "var(--border-color)" }}>
         <div>
           <h1 className="text-[15px] font-semibold text-gray-900 dark:text-white leading-none tracking-tight">Analytics</h1>
           <p className="text-[11px] text-gray-400 dark:text-white/40 mt-0.5 leading-none">Bajaj Auto · Shipment Overview</p>
@@ -125,16 +125,16 @@ export function BajajDashboard() {
             <select
               value={mod}
               onChange={e => setMod(e.target.value)}
-              className="appearance-none bg-white border border-gray-200 rounded-xl pl-3 pr-8 py-1.5 text-[13px] text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400 transition-all cursor-pointer"
+              className="appearance-none bg-white dark:bg-[#1a1a1a] dark:text-white/80 dark:border-white/10 border border-gray-200 rounded-xl pl-3 pr-8 py-1.5 text-[13px] text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400 transition-all cursor-pointer"
             >
               {MODULES.map(m => <option key={m.slug} value={m.slug}>{m.name}</option>)}
             </select>
-            <ChevronRight className="size-3 text-gray-400 absolute right-2.5 top-1/2 -translate-y-1/2 rotate-90 pointer-events-none" />
+            <ChevronRight className="size-3 text-gray-400 dark:text-white/40 absolute right-2.5 top-1/2 -translate-y-1/2 rotate-90 pointer-events-none" />
           </div>
 
           <button
             onClick={() => refetch()}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-xl text-[13px] text-gray-500 hover:text-gray-800 hover:border-gray-300 transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-xl text-[13px] text-gray-500 dark:text-white/50 hover:text-gray-800 dark:hover:text-white/80 hover:border-gray-300 dark:hover:border-white/20 transition-all"
           >
             <RefreshCw className="size-3.5" />
             Refresh
@@ -153,15 +153,15 @@ export function BajajDashboard() {
       {/* ── scrollable body ──────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
         {isLoading ? (
-          <div className="flex items-center justify-center h-64 text-gray-400 text-sm">
+          <div className="flex items-center justify-center h-64 text-gray-400 dark:text-white/40 text-sm">
             <RefreshCw className="size-4 mr-2 animate-spin" />
             Loading analytics…
           </div>
         ) : isError ? (
           <div className="flex flex-col items-center justify-center h-64 gap-3">
             <AlertTriangle className="size-8 text-red-400" />
-            <p className="text-sm font-medium text-gray-700">Failed to load analytics</p>
-            <p className="text-xs text-gray-400 max-w-sm text-center">{String((error as Error)?.message ?? "Unknown error")}</p>
+            <p className="text-sm font-medium text-gray-700 dark:text-white/80">Failed to load analytics</p>
+            <p className="text-xs text-gray-400 dark:text-white/40 max-w-sm text-center">{String((error as Error)?.message ?? "Unknown error")}</p>
             <button onClick={() => refetch()} className="mt-2 px-4 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 transition-colors">
               Retry
             </button>
@@ -258,14 +258,14 @@ export function BajajDashboard() {
                       {data.byStatus.map((s, i) => (
                         <div key={s.statusName} className="flex items-center gap-2">
                           <span className="size-2 rounded-full flex-shrink-0" style={{ backgroundColor: pieColors[i] ?? "#6b7280" }} />
-                          <span className="text-[12px] text-gray-600 truncate flex-1">{s.statusName}</span>
-                          <span className="text-[12px] text-gray-400 tabular-nums font-medium">{s.count}</span>
+                          <span className="text-[12px] text-gray-600 dark:text-white/70 truncate flex-1">{s.statusName}</span>
+                          <span className="text-[12px] text-gray-400 dark:text-white/40 tabular-nums font-medium">{s.count}</span>
                         </div>
                       ))}
                     </div>
                   </>
                 ) : (
-                  <p className="text-sm text-gray-300 text-center py-16">No data yet.</p>
+                  <p className="text-sm text-gray-300 dark:text-white/25 text-center py-16">No data yet.</p>
                 )}
               </Card>
 
@@ -283,7 +283,7 @@ export function BajajDashboard() {
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
-                  <p className="text-sm text-gray-300 text-center py-16">No data yet.</p>
+                  <p className="text-sm text-gray-300 dark:text-white/25 text-center py-16">No data yet.</p>
                 )}
 
                 {/* Module progress bars */}
@@ -293,10 +293,10 @@ export function BajajDashboard() {
                     return (
                       <div key={m.slug}>
                         <div className="flex items-center justify-between text-[12px] mb-1">
-                          <span className="text-gray-600 font-medium">{m.moduleName}</span>
-                          <span className="text-gray-400 tabular-nums">{m.count} · {pct}%</span>
+                          <span className="text-gray-600 dark:text-white/70 font-medium">{m.moduleName}</span>
+                          <span className="text-gray-400 dark:text-white/40 tabular-nums">{m.count} · {pct}%</span>
                         </div>
-                        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-1.5 bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden">
                           <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, background: AMBER }} />
                         </div>
                       </div>
@@ -355,7 +355,7 @@ export function BajajDashboard() {
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
-                  <p className="text-sm text-gray-300 text-center py-16">No container data yet.</p>
+                  <p className="text-sm text-gray-300 dark:text-white/25 text-center py-16">No container data yet.</p>
                 )}
               </Card>
 
@@ -369,7 +369,7 @@ export function BajajDashboard() {
                       return (
                         <div key={v.vesselName} className={cn(
                           "flex items-center justify-between px-3 py-2 rounded-xl text-[12px] transition-colors",
-                          isOver ? "bg-red-50 text-red-600" : "bg-gray-50 text-gray-700 hover:bg-gray-100"
+                          isOver ? "bg-red-50 text-red-600" : "bg-gray-50 dark:bg-white/5 text-gray-700 dark:text-white/80 hover:bg-gray-100 dark:hover:bg-white/8"
                         )}>
                           <div className="flex items-center gap-2 min-w-0">
                             {isOver && <AlertTriangle className="size-3 flex-shrink-0 text-red-500" />}
@@ -383,7 +383,7 @@ export function BajajDashboard() {
                     })}
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-300 text-center py-16">No vessel data yet.</p>
+                  <p className="text-sm text-gray-300 dark:text-white/25 text-center py-16">No vessel data yet.</p>
                 )}
               </Card>
             </div>

@@ -40,7 +40,7 @@ const FIELD_LABELS: Record<string, string> = {
 };
 
 const SECTIONS = [
-  { title: "Cargo",         fields: ["brand", "variant", "qty", "hc40", "std20", "plant", "type", "veh", "cont"] },
+  { title: "Cargo",         fields: ["veh", "type", "qty", "cont", "std20", "plant"] },
   { title: "Shipping",      fields: ["s_line", "vessel_name", "agent", "transporter", "consignee", "booking_no", "container_no"] },
   { title: "Route & Dates", fields: ["port", "country", "wodt", "stuffing_on", "gate_open", "gate_cut_off", "do_etd", "current_etd", "eta_at_destination", "sailingdt"] },
   { title: "Documents",     fields: ["po_no", "lc_no", "lc_date", "ff_job", "booking_no", "sbno", "sb_date", "blno", "bldt", "bl_handover_time", "for_hbl"] },
@@ -50,7 +50,7 @@ const SECTIONS = [
 ];
 
 const STAGE_REQUIRED_FIELDS: Array<{ match: string; fields: string[] }> = [
-  { match: "planning",    fields: ["wo", "plant", "brand", "variant", "qty", "country"] },
+  { match: "planning",    fields: ["wo", "plant", "veh", "type", "qty", "country"] },
   { match: "booking req", fields: ["s_line", "vessel_name", "agent"] },
   { match: "booking",     fields: ["booking_no", "s_line", "vessel_name"] },
   { match: "container",   fields: ["container_no", "transporter"] },
@@ -235,8 +235,8 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
 
   const d            = workOrder.data as Record<string, unknown>;
   const wo           = String(d.wo ?? workOrderId);
-  const brand        = d.brand   ? String(d.brand)   : "";
-  const variant      = d.variant ? String(d.variant) : "";
+  const brand        = d.veh  ? String(d.veh)  : (d.brand   ? String(d.brand)   : "");
+  const variant      = d.type ? String(d.type) : (d.variant ? String(d.variant) : "");
   const title        = [brand, variant].filter(Boolean).join(" · ") || `WO ${wo}`;
   // workOrder.status is returned directly by the API — always correct
   // allStatuses lookup is fallback for after a status change (optimistic update)
@@ -506,7 +506,7 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
             </div>
             <div className="bg-gray-50 dark:bg-[#1a1a1a] rounded-lg px-3 py-2.5">
               <p className="text-[10px] text-gray-400 dark:text-white/40 uppercase tracking-wider">40 HC</p>
-              <p className="text-[18px] font-bold text-gray-900 dark:text-white tabular-nums">{String(d.hc40 ?? "—")}</p>
+              <p className="text-[18px] font-bold text-gray-900 dark:text-white tabular-nums">{String(d.cont ?? "—")}</p>
             </div>
           </div>
         </div>

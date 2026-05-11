@@ -67,7 +67,7 @@ function parseEmailTable(text: string): {
       if (cols.length < 2) continue;
       const row: Record<string, string> = {};
       mappedHeaders.forEach((header, idx) => { row[header] = cols[idx] ?? ""; });
-      if (!row["wo"]) continue;
+      if (!row["wo"] || !/^\d+/.test(row["wo"].trim())) continue;
       rows.push(row);
     }
     return { headers: mappedHeaders, rows, rawHeaders };
@@ -117,7 +117,7 @@ function parseEmailTable(text: string): {
     const cells = merged.slice(i, i + colCount).map((c) => c);
     const row: Record<string, string> = {};
     mappedHeaders.forEach((header, idx) => { row[header] = cells[idx] ?? ""; });
-    if (!row["wo"] || row["wo"].trim() === "") continue;
+    if (!row["wo"] || !/^\d+/.test(row["wo"].trim())) continue;
     rows.push(row);
   }
 

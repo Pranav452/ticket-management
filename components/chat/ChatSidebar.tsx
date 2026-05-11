@@ -94,13 +94,13 @@ export function ChatSidebar({ selectedRoomId, onSelectRoom }: Props) {
 
   return (
     <>
-      <div className="w-72 flex-shrink-0 flex flex-col min-h-0 overflow-hidden" style={{ background: "#FAFAFA", borderRight: "1px solid #EBEBEB" }}>
+      <div className="w-72 flex-shrink-0 flex flex-col min-h-0 overflow-hidden bg-[#FAFAFA] dark:bg-[#111] border-r border-[#EBEBEB] dark:border-white/6">
 
         {/* Header */}
         <div className="px-4 pt-4 pb-3 flex-shrink-0">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <span className="text-[15px] font-semibold text-gray-900">Messages</span>
+              <span className="text-[15px] font-semibold text-gray-900 dark:text-white/90">Messages</span>
               {totalUnread > 0 && (
                 <span className="h-5 min-w-5 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center px-1">
                   {totalUnread}
@@ -125,7 +125,7 @@ export function ChatSidebar({ selectedRoomId, onSelectRoom }: Props) {
               placeholder="Search…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full h-8 rounded-lg border border-gray-200 bg-white pl-8 pr-3 text-[12px] text-gray-700 placeholder-gray-400 focus:outline-none focus:border-amber-300 focus:ring-1 focus:ring-amber-200 transition-colors"
+              className="w-full h-8 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] pl-8 pr-3 text-[12px] text-gray-700 dark:text-white/80 placeholder-gray-400 dark:placeholder-white/30 focus:outline-none focus:border-amber-300 focus:ring-1 focus:ring-amber-200 dark:focus:ring-amber-500/20 transition-colors"
             />
           </div>
         </div>
@@ -136,7 +136,7 @@ export function ChatSidebar({ selectedRoomId, onSelectRoom }: Props) {
           {(rl || sortedRooms.length > 0) && (
             <div className="px-2 mb-2">
               {sortedRooms.length > 0 && (
-                <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400">Conversations</p>
+                <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-white/40">Conversations</p>
               )}
               {rl ? <LoadingRows count={3} /> : sortedRooms.map((room) => (
                 <ConversationRow
@@ -154,7 +154,7 @@ export function ChatSidebar({ selectedRoomId, onSelectRoom }: Props) {
           {/* New conversations */}
           {(ul || usersForNew.length > 0) && (
             <div className="px-2">
-              <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+              <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-white/40">
                 {sortedRooms.length > 0 ? "Start New" : "People"}
               </p>
               {ul ? <LoadingRows count={4} /> : usersForNew.map((user) => (
@@ -165,7 +165,7 @@ export function ChatSidebar({ selectedRoomId, onSelectRoom }: Props) {
 
           {!rl && !ul && sortedRooms.length === 0 && usersForNew.length === 0 && (
             <div className="px-4 py-12 text-center">
-              <p className="text-sm text-gray-500">No users found</p>
+              <p className="text-sm text-gray-500 dark:text-white/50">No users found</p>
             </div>
           )}
         </div>
@@ -214,14 +214,14 @@ function ConversationRow({
         onClick={onClick}
         className={cn(
           "w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-left transition-all",
-          isActive ? "bg-amber-50 ring-1 ring-amber-100" : "hover:bg-white hover:shadow-sm"
+          isActive ? "bg-amber-50 dark:bg-amber-900/20 ring-1 ring-amber-100 dark:ring-amber-500/20" : "hover:bg-white dark:hover:bg-white/5 hover:shadow-sm"
         )}
       >
         {/* Avatar */}
         {isGroup ? (
           <div className={cn(
             "h-9 w-9 rounded-xl flex items-center justify-center flex-shrink-0 font-bold text-xs",
-            isActive ? "bg-amber-500 text-white" : "bg-gray-200 text-gray-600"
+            isActive ? "bg-amber-500 text-white" : "bg-gray-200 dark:bg-white/10 text-gray-600 dark:text-white/60"
           )}>
             <Users className="h-4 w-4" />
           </div>
@@ -234,7 +234,7 @@ function ConversationRow({
           <div className="flex items-center justify-between gap-1 mb-0.5">
             <p className={cn(
               "text-[13px] truncate",
-              unread > 0 ? "font-semibold text-gray-900" : "font-medium text-gray-700"
+              unread > 0 ? "font-semibold text-gray-900 dark:text-white" : "font-medium text-gray-700 dark:text-white/80"
             )}>
               {displayName}
             </p>
@@ -250,7 +250,7 @@ function ConversationRow({
           <div className="flex items-center justify-between gap-1">
             <p className={cn(
               "text-[11px] truncate",
-              unread > 0 ? "text-gray-700" : "text-gray-400"
+              unread > 0 ? "text-gray-700 dark:text-white/70" : "text-gray-400 dark:text-white/40"
             )}>
               {preview}
             </p>
@@ -267,7 +267,7 @@ function ConversationRow({
         type="button"
         title="Pop out"
         onClick={(e) => { e.stopPropagation(); onPopOut() }}
-        className="absolute right-2 top-1/2 -translate-y-1/2 h-6 w-6 flex items-center justify-center rounded-md opacity-0 group-hover/row:opacity-100 transition-opacity bg-white hover:bg-amber-50 border border-gray-200 text-gray-400 hover:text-amber-600"
+        className="absolute right-2 top-1/2 -translate-y-1/2 h-6 w-6 flex items-center justify-center rounded-md opacity-0 group-hover/row:opacity-100 transition-opacity bg-white dark:bg-[#1a1a1a] hover:bg-amber-50 dark:hover:bg-amber-900/20 border border-gray-200 dark:border-white/10 text-gray-400 dark:text-white/40 hover:text-amber-600"
       >
         <ExternalLink className="h-3 w-3" />
       </button>
@@ -280,12 +280,12 @@ function NewUserRow({ user, onClick }: { user: ChatUser; onClick: () => void }) 
     <button
       type="button"
       onClick={onClick}
-      className="w-full flex items-center gap-3 px-2 py-2 rounded-xl text-left transition-all hover:bg-white hover:shadow-sm"
+      className="w-full flex items-center gap-3 px-2 py-2 rounded-xl text-left transition-all hover:bg-white dark:hover:bg-white/5 hover:shadow-sm"
     >
       <Avatar name={user.full_name || user.email} size="sm" />
       <div className="flex-1 min-w-0">
-        <p className="text-[13px] font-medium text-gray-800 truncate">{user.full_name || user.email}</p>
-        <p className="text-[11px] text-gray-400 truncate capitalize">{user.department || user.role}</p>
+        <p className="text-[13px] font-medium text-gray-800 dark:text-white/90 truncate">{user.full_name || user.email}</p>
+        <p className="text-[11px] text-gray-400 dark:text-white/40 truncate capitalize">{user.department || user.role}</p>
       </div>
     </button>
   )
@@ -296,10 +296,10 @@ function LoadingRows({ count }: { count: number }) {
     <>
       {Array.from({ length: count }).map((_, i) => (
         <div key={i} className="flex items-center gap-3 px-2 py-2.5">
-          <div className="h-9 w-9 rounded-full bg-gray-100 animate-pulse flex-shrink-0" />
+          <div className="h-9 w-9 rounded-full bg-gray-100 dark:bg-white/10 animate-pulse flex-shrink-0" />
           <div className="flex-1 space-y-1.5">
-            <div className="h-3 w-28 bg-gray-100 animate-pulse rounded-full" />
-            <div className="h-2.5 w-36 bg-gray-100 animate-pulse rounded-full" />
+            <div className="h-3 w-28 bg-gray-100 dark:bg-white/10 animate-pulse rounded-full" />
+            <div className="h-2.5 w-36 bg-gray-100 dark:bg-white/10 animate-pulse rounded-full" />
           </div>
         </div>
       ))}

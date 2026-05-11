@@ -4,22 +4,8 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getLinksPool, sql } from "@/lib/db";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
-
-async function getCurrentUserEmail(): Promise<string | null> {
-  try {
-    const cookieStore = await cookies();
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
-    );
-    const { data: { user } } = await supabase.auth.getUser();
-    return user?.email ?? null;
-  } catch { return null; }
-}
+import { getLinksPool } from "@/lib/db";
+import { checkColumnAccess, getCurrentUserEmail, isAdmin } from "@/lib/bajaj/permissions";
 
 export async function GET(
   _req: NextRequest,
@@ -33,7 +19,7 @@ export async function GET(
     const pool = await getLinksPool();
     const result = await pool
       .request()
-      .input("id", sql.Int, woId)
+      .input("id", woId)
       .query(`
         SELECT
           w.*,
@@ -98,35 +84,60 @@ export async function PATCH(
     const pool = await getLinksPool();
     const actorEmail = await getCurrentUserEmail();
 
+    // ── 0. Permission checks (skip for admin) ────────────────────────────────
+    const actorEmail = await getCurrentUserEmail();
+    if (!isAdmin(actorEmail)) {
+      const metaRow = await pool.request().input("wo_id", woId)
+        .query("SELECT module_slug, status_id FROM bajaj_wo_meta WHERE wo_id=@wo_id");
+      const currentMeta = metaRow.recordset[0] as { module_slug: string | null; status_id: string | null } | undefined;
+      const moduleSlug  = currentMeta?.module_slug ?? null;
+      const curStatusId = currentMeta?.status_id   ?? null;
+
+      if (moduleSlug) {
+        if ("data" in body) {
+          const perm = await checkColumnAccess("can_edit", moduleSlug, curStatusId);
+          if (!perm.allowed) return NextResponse.json({ error: perm.reason ?? "Not assigned to this column — cannot edit fields" }, { status: 403 });
+        }
+        if ("status_id" in body && body.status_id) {
+          const perm = await checkColumnAccess("can_move", moduleSlug, body.status_id);
+          if (!perm.allowed) return NextResponse.json({ error: perm.reason ?? "Not assigned to target column — cannot move card" }, { status: 403 });
+        }
+        if ("assigned_to" in body) {
+          const perm = await checkColumnAccess("can_assign", moduleSlug, curStatusId);
+          if (!perm.allowed) return NextResponse.json({ error: perm.reason ?? "Not assigned to this column — cannot reassign" }, { status: 403 });
+        }
+      }
+    }
+
     // ── 1. Update meta (status, assignee, column_order) ───────────────────────
     const hasMeta = "status_id" in body || "assigned_to" in body || "column_order" in body;
     if (hasMeta) {
       const existing = await pool.request()
-        .input("wo_id", sql.Int, woId)
+        .input("wo_id", woId)
         .query("SELECT id FROM bajaj_wo_meta WHERE wo_id=@wo_id");
 
-      const metaReq = pool.request().input("wo_id", sql.Int, woId);
+      const metaReq = pool.request().input("wo_id", woId);
 
       if (existing.recordset.length === 0) {
         metaReq
-          .input("status_id",    sql.VarChar,  body.status_id    ?? null)
-          .input("assigned_to",  sql.NVarChar, body.assigned_to  ?? null)
-          .input("column_order", sql.Int,       body.column_order ?? 0);
+          .input("status_id",    body.status_id    ?? null)
+          .input("assigned_to",  body.assigned_to  ?? null)
+          .input("column_order", body.column_order ?? 0);
         await metaReq.query(
           "INSERT INTO bajaj_wo_meta (wo_id,status_id,assigned_to,column_order) VALUES (@wo_id,@status_id,@assigned_to,@column_order)"
         );
       } else {
         const sets: string[] = ["updated_at = GETDATE()"];
-        if ("status_id"    in body) { metaReq.input("status_id",    sql.VarChar,  body.status_id    ?? null); sets.push("status_id=@status_id"); }
-        if ("assigned_to"  in body) { metaReq.input("assigned_to",  sql.NVarChar, body.assigned_to  ?? null); sets.push("assigned_to=@assigned_to"); }
-        if ("column_order" in body) { metaReq.input("column_order", sql.Int,       body.column_order);         sets.push("column_order=@column_order"); }
+        if ("status_id"    in body) { metaReq.input("status_id",    body.status_id    ?? null); sets.push("status_id=@status_id"); }
+        if ("assigned_to"  in body) { metaReq.input("assigned_to",  body.assigned_to  ?? null); sets.push("assigned_to=@assigned_to"); }
+        if ("column_order" in body) { metaReq.input("column_order", body.column_order);          sets.push("column_order=@column_order"); }
         await metaReq.query(`UPDATE bajaj_wo_meta SET ${sets.join(",")} WHERE wo_id=@wo_id`);
       }
     }
 
     // ── 2. Update data fields in bajaj_work_orders ────────────────────────────
     if (body.data && Object.keys(body.data).length > 0) {
-      const dataReq = pool.request().input("wo_id", sql.Int, woId);
+      const dataReq = pool.request().input("wo_id", woId);
       const setClauses: string[] = [];
 
       // Get existing columns to avoid writing unknown columns
@@ -141,12 +152,12 @@ export async function PATCH(
         if (colName === "id" || !validCols.has(colName)) continue;
 
         const paramName = `f${paramIdx++}`;
-        if (["qty", "hc40", "std20"].includes(colName)) {
-          dataReq.input(paramName, sql.Int, val === "" || val === null ? null : Number(val));
+        if (["qty", "cont", "std20"].includes(colName)) {
+          dataReq.input(paramName, val === "" || val === null ? null : Number(val));
         } else if (["haz", "vgm_submitted", "si_submitted"].includes(colName)) {
-          dataReq.input(paramName, sql.Bit, val === true || val === "true" || val === 1 ? 1 : 0);
+          dataReq.input(paramName, val === true || val === "true" || val === 1 ? 1 : 0);
         } else {
-          dataReq.input(paramName, sql.NVarChar, val == null ? null : String(val));
+          dataReq.input(paramName, val == null ? null : String(val));
         }
         setClauses.push(`${colName} = @${paramName}`);
       }
@@ -166,10 +177,10 @@ export async function PATCH(
                    : "work_order.update";
 
       await pool.request()
-        .input("actor_email", sql.NVarChar, actorEmail ?? "system")
-        .input("action",      sql.NVarChar, action)
-        .input("target_id",   sql.NVarChar, String(woId))
-        .input("new_value",   sql.NVarChar, JSON.stringify(body))
+        .input("actor_email", actorEmail ?? "system")
+        .input("action",      action)
+        .input("target_id",   String(woId))
+        .input("new_value",   JSON.stringify(body))
         .query(
           "INSERT INTO bajaj_audit_log (actor_email,action,target_type,target_id,new_value) VALUES (@actor_email,@action,'work_order',@target_id,@new_value)"
         );

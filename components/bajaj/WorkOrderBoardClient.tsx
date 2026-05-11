@@ -114,14 +114,14 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
           <span className="text-gray-400 font-medium">{meta.flag} {meta.name}</span>
           <span className="text-gray-300 select-none">/</span>
           {/* View toggle */}
-          <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
+          <div className="flex items-center gap-0.5 bg-gray-100 dark:bg-white/10 rounded-lg p-0.5">
             <button
               onClick={() => setViewMode("board")}
               className={cn(
                 "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-medium transition-all",
                 viewMode === "board"
-                  ? "bg-white text-gray-800 shadow-sm"
-                  : "text-gray-500 hover:text-gray-700"
+                  ? "bg-white dark:bg-[#1a1a1a] text-gray-800 dark:text-white/90 shadow-sm"
+                  : "text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80"
               )}
             >
               <LayoutGrid className="size-3.5" />
@@ -132,8 +132,8 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
               className={cn(
                 "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-medium transition-all",
                 viewMode === "spreadsheet"
-                  ? "bg-white text-gray-800 shadow-sm"
-                  : "text-gray-500 hover:text-gray-700"
+                  ? "bg-white dark:bg-[#1a1a1a] text-gray-800 dark:text-white/90 shadow-sm"
+                  : "text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80"
               )}
             >
               <Table2 className="size-3.5" />
@@ -171,8 +171,8 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
             className={cn(
               "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] font-medium border transition-colors",
               showFilters || hasActiveFilter
-                ? "bg-amber-50 border-amber-200 text-amber-700"
-                : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300"
+                ? "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-500/30 text-amber-700 dark:text-amber-400"
+                : "bg-white dark:bg-[#1a1a1a] border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/50 hover:bg-gray-50 dark:hover:bg-white/5 hover:border-gray-300 dark:hover:border-white/20"
             )}
           >
             <SlidersHorizontal className="size-3.5" />
@@ -184,7 +184,7 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
             onClick={() => setShowViewPanel((v) => !v)}
             className={cn(
               "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] font-medium border transition-colors",
-              showViewPanel ? "bg-gray-100 border-gray-300 text-gray-800" : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300"
+              showViewPanel ? "bg-gray-100 dark:bg-white/10 border-gray-300 dark:border-white/20 text-gray-800 dark:text-white/90" : "bg-white dark:bg-[#1a1a1a] border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/50 hover:bg-gray-50 dark:hover:bg-white/5 hover:border-gray-300 dark:hover:border-white/20"
             )}
           >
             <Eye className="size-3.5" />
@@ -193,7 +193,7 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
 
           <button
             onClick={() => refetch()}
-            className="size-[30px] flex items-center justify-center rounded-lg bg-white border border-gray-200 text-gray-400 hover:text-gray-700 hover:border-gray-300 transition-colors"
+            className="size-[30px] flex items-center justify-center rounded-lg bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 text-gray-400 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/80 hover:border-gray-300 dark:hover:border-white/20 transition-colors"
             title="Refresh"
           >
             <RefreshCw className={cn("size-3.5", woLoading && "animate-spin")} />
@@ -211,22 +211,22 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
 
       {/* ── Filter bar ───────────────────────────────────────────────── */}
       {showFilters && (
-        <div className="flex items-center gap-2.5 px-5 py-2 border-b border-gray-100 bg-gray-50 flex-shrink-0">
+        <div className="flex items-center gap-2.5 px-5 py-2 border-b border-gray-100 dark:border-white/6 bg-gray-50 dark:bg-[#111] flex-shrink-0">
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-gray-400 pointer-events-none" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-gray-400 dark:text-white/40 pointer-events-none" />
             <input
               type="text" placeholder="Search WO, vessel, port…"
               value={searchInput} onChange={(e) => setSearchInput(e.target.value)}
-              className="rounded-lg border border-gray-200 bg-white pl-8 pr-3 py-1.5 text-[12px] text-gray-800 placeholder-gray-400 focus:border-amber-500 focus:outline-none transition-colors w-56"
+              className="rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] pl-8 pr-3 py-1.5 text-[12px] text-gray-800 dark:text-white/90 placeholder-gray-400 dark:placeholder-white/30 focus:border-amber-500 focus:outline-none transition-colors w-56"
             />
           </div>
-          <div className="flex items-center gap-1.5 text-[12px] text-gray-400">
+          <div className="flex items-center gap-1.5 text-[12px] text-gray-400 dark:text-white/40">
             <span>From</span>
             <input type="date" value={filters.dateFrom ?? ""} onChange={(e) => setFilters((f) => ({ ...f, dateFrom: e.target.value || undefined }))}
-              className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-[12px] text-gray-700 focus:border-amber-500 focus:outline-none" />
+              className="rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] px-2 py-1.5 text-[12px] text-gray-700 dark:text-white/80 focus:border-amber-500 focus:outline-none" />
             <span>to</span>
             <input type="date" value={filters.dateTo ?? ""} onChange={(e) => setFilters((f) => ({ ...f, dateTo: e.target.value || undefined }))}
-              className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-[12px] text-gray-700 focus:border-amber-500 focus:outline-none" />
+              className="rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] px-2 py-1.5 text-[12px] text-gray-700 dark:text-white/80 focus:border-amber-500 focus:outline-none" />
           </div>
           {hasActiveFilter && (
             <button onClick={() => { setSearchInput(""); setFilters({}); }} className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-amber-600 transition-colors">
@@ -239,30 +239,30 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
 
       {/* ── Field picker ─────────────────────────────────────────────── */}
       {showViewPanel && (
-        <div className="px-5 py-3 border-b border-gray-100 bg-gray-50 flex-shrink-0">
+        <div className="px-5 py-3 border-b border-gray-100 dark:border-white/6 bg-gray-50 dark:bg-[#111] flex-shrink-0">
           <div className="flex items-start gap-4 max-w-2xl">
             <div className="flex-1">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Card fields <span className="text-gray-400 normal-case font-normal">(up to 5)</span></p>
+                <p className="text-[11px] font-semibold text-gray-500 dark:text-white/50 uppercase tracking-wider">Card fields <span className="text-gray-400 dark:text-white/30 normal-case font-normal">(up to 5)</span></p>
                 <button onClick={() => { setCustomFields([]); if (typeof window !== "undefined") window.localStorage.removeItem(`bajaj-card-fields-${slug}`); }}
-                  className="text-[11px] text-gray-400 hover:text-amber-600 transition-colors">Reset</button>
+                  className="text-[11px] text-gray-400 dark:text-white/40 hover:text-amber-600 transition-colors">Reset</button>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {availableFields.length === 0
-                  ? <span className="text-[12px] text-gray-400">Load data first to see available fields.</span>
+                  ? <span className="text-[12px] text-gray-400 dark:text-white/40">Load data first to see available fields.</span>
                   : availableFields.map((field) => {
                     const selected = cardFaceFields.includes(field);
                     return (
                       <button key={field} onClick={() => toggleField(field)}
                         className={cn("px-2 py-0.5 rounded-md text-[11px] font-medium border transition-colors",
-                          selected ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-white text-gray-500 border-gray-200 hover:text-gray-700 hover:border-gray-300")}>
+                          selected ? "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/30" : "bg-white dark:bg-white/5 text-gray-500 dark:text-white/50 border-gray-200 dark:border-white/10 hover:text-gray-700 dark:hover:text-white/80 hover:border-gray-300 dark:hover:border-white/20")}>
                         {field}
                       </button>
                     );
                   })}
               </div>
             </div>
-            <button onClick={() => setShowViewPanel(false)} className="text-gray-400 hover:text-gray-600 transition-colors mt-0.5"><X className="size-4" /></button>
+            <button onClick={() => setShowViewPanel(false)} className="text-gray-400 dark:text-white/40 hover:text-gray-600 dark:hover:text-white/70 transition-colors mt-0.5"><X className="size-4" /></button>
           </div>
         </div>
       )}
@@ -291,7 +291,7 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
           />
         </div>
       ) : (
-        <div className="flex flex-1 overflow-hidden bg-white">
+        <div className="flex flex-1 overflow-hidden bg-white dark:bg-[#0d0d0d]">
           <WorkOrderSpreadsheet
             workOrders={filteredOrders}
             statuses={statuses}

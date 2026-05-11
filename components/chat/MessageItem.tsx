@@ -23,7 +23,7 @@ export function MessageItem({ message, currentUserId, showSenderName }: Props) {
   return (
     <div className={cn("flex flex-col gap-0.5", isOwn ? "items-end" : "items-start")}>
       {showSenderName && !isOwn && message.sender_name && (
-        <span className="text-[11px] text-gray-400 px-1">{message.sender_name}</span>
+        <span className="text-[11px] text-gray-400 dark:text-white/40 px-1">{message.sender_name}</span>
       )}
 
       <div
@@ -31,7 +31,7 @@ export function MessageItem({ message, currentUserId, showSenderName }: Props) {
           "max-w-[72%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed break-words",
           isOwn
             ? "bg-amber-500 text-white rounded-br-sm"
-            : "bg-gray-100 text-gray-800 rounded-bl-sm"
+            : "bg-gray-100 dark:bg-white/10 text-gray-800 dark:text-white/90 rounded-bl-sm"
         )}
       >
         {segments.map((seg, i) => {
@@ -45,7 +45,7 @@ export function MessageItem({ message, currentUserId, showSenderName }: Props) {
                   "font-semibold rounded px-0.5",
                   isOwn
                     ? "text-white/90 underline decoration-dotted"
-                    : "text-amber-600 bg-amber-50"
+                    : "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20"
                 )}
               >
                 @{seg.name}
@@ -61,7 +61,7 @@ export function MessageItem({ message, currentUserId, showSenderName }: Props) {
                   "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium mx-0.5",
                   isOwn
                     ? "bg-white/20 text-white"
-                    : "bg-amber-50 text-amber-700 border border-amber-200"
+                    : "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/30"
                 )}
               >
                 ↗ {seg.refNo}
@@ -73,7 +73,7 @@ export function MessageItem({ message, currentUserId, showSenderName }: Props) {
         })}
       </div>
 
-      <span className="text-[10px] text-gray-400 px-1">{formatTime(message.created_at)}</span>
+      <span className="text-[10px] text-gray-400 dark:text-white/30 px-1">{formatTime(message.created_at)}</span>
     </div>
   )
 }
