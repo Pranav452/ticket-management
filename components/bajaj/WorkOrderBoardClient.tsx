@@ -59,9 +59,11 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
     });
   }
 
-  const filteredOrders = searchInput.trim()
-    ? workOrders.filter((wo) => JSON.stringify(wo.data).toLowerCase().includes(searchInput.toLowerCase()))
-    : workOrders;
+  const filteredOrders = workOrders.filter((wo) => {
+    if (filters.statusId && wo.status_id !== filters.statusId) return false;
+    if (searchInput.trim() && !JSON.stringify(wo.data).toLowerCase().includes(searchInput.toLowerCase())) return false;
+    return true;
+  });
 
   function handleDrop(workOrderId: string, newStatusId: string, newOrder: number) {
     updateWorkOrder.mutate({ id: workOrderId, updates: { status_id: newStatusId, column_order: newOrder } });
@@ -114,7 +116,7 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
         {/* Right actions */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {/* Status filter chips — desktop */}
-          <div className="hidden md:flex items-center gap-1 mr-2 overflow-x-auto max-w-xs">
+          <div className="hidden md:flex items-center gap-1 mr-2 flex-wrap">
             {statuses.map((s) => (
               <button
                 key={s.id}

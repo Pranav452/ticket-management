@@ -108,17 +108,17 @@ function Column({
   const columnOrders = [...workOrders].sort((a, b) => a.column_order - b.column_order);
 
   return (
-    <div className="flex flex-col w-[272px] flex-shrink-0 border-r border-gray-100 last:border-r-0 min-h-full">
+    <div className="flex flex-col flex-1 min-w-0 border-r border-gray-100 dark:border-white/[0.06] last:border-r-0 min-h-full" style={{ background: "var(--card-bg)" }}>
       {/* Column header — Linear style */}
-      <div className="flex items-center gap-2 px-4 py-3 mb-0 group border-b border-gray-100">
+      <div className="flex items-center gap-2 px-4 py-3 mb-0 group border-b border-gray-100 dark:border-white/[0.06]">
         <StatusIcon colorHex={status.color_hex} name={status.name} />
-        <span className="text-[13px] font-semibold text-gray-700 flex-1 truncate">{status.name}</span>
-        <span className="text-[11px] font-medium text-gray-400 tabular-nums">{workOrders.length}</span>
+        <span className="text-[13px] font-semibold text-gray-700 dark:text-white/80 flex-1 truncate">{status.name}</span>
+        <span className="text-[11px] font-medium text-gray-400 dark:text-white/30 tabular-nums">{workOrders.length}</span>
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button className="size-5 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400 transition-colors">
+          <button className="size-5 flex items-center justify-center rounded hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400 dark:text-white/30 transition-colors">
             <Plus className="size-3.5" />
           </button>
-          <button className="size-5 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400 transition-colors">
+          <button className="size-5 flex items-center justify-center rounded hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400 dark:text-white/30 transition-colors">
             <MoreHorizontal className="size-3.5" />
           </button>
         </div>
@@ -131,7 +131,7 @@ function Column({
         onDrop={handleDrop}
         className={cn(
           "flex-1 p-2 transition-colors min-h-[120px]",
-          active ? "bg-amber-50" : "bg-transparent"
+          active ? "bg-amber-50 dark:bg-amber-500/10" : "bg-transparent"
         )}
       >
         {columnOrders.map((wo) => (
@@ -151,7 +151,7 @@ function Column({
         {columnOrders.length === 0 && (
           <div className={cn(
             "flex items-center justify-center h-16 rounded-lg border border-dashed text-[11px] transition-colors",
-            active ? "border-amber-300 text-amber-500" : "border-gray-200 text-gray-300"
+            active ? "border-amber-300 text-amber-500 dark:border-amber-500/50" : "border-gray-200 dark:border-white/[0.08] text-gray-300 dark:text-white/20"
           )}>
             {active ? "Drop here" : "No work orders"}
           </div>
@@ -165,15 +165,15 @@ export function WorkOrderBoard({ statuses, workOrders, cardFaceFields, isLoading
   if (isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center gap-2.5">
-        <div className="size-1.5 rounded-full bg-gray-300 animate-pulse" />
-        <div className="size-1.5 rounded-full bg-gray-300 animate-pulse [animation-delay:150ms]" />
-        <div className="size-1.5 rounded-full bg-gray-300 animate-pulse [animation-delay:300ms]" />
+        <div className="size-1.5 rounded-full bg-gray-300 dark:bg-white/20 animate-pulse" />
+        <div className="size-1.5 rounded-full bg-gray-300 dark:bg-white/20 animate-pulse [animation-delay:150ms]" />
+        <div className="size-1.5 rounded-full bg-gray-300 dark:bg-white/20 animate-pulse [animation-delay:300ms]" />
       </div>
     );
   }
 
   return (
-    <div className="bajaj-board-bg flex flex-1 overflow-x-auto items-stretch bg-white">
+    <div className="bajaj-board-bg flex flex-1 overflow-hidden items-stretch" style={{ background: "var(--main-bg)" }}>
       {statuses.map((status, idx) => (
         <Column
           key={status.id}
