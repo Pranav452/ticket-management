@@ -38,14 +38,15 @@ const TT     = {
 /* ─── reusable primitives ────────────────────────────────────── */
 function Card({ className, children }: { className?: string; children: React.ReactNode }) {
   return (
-    <div className={cn("bg-white rounded-2xl border border-gray-100 shadow-sm", className)}>
+    <div className={cn("rounded-2xl border shadow-sm dark:border-white/[0.06]", className)}
+      style={{ background: "var(--card-bg, white)" }}>
       {children}
     </div>
   );
 }
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest mb-4">{children}</p>;
+  return <p className="text-[11px] font-semibold text-gray-400 dark:text-white/40 uppercase tracking-widest mb-4">{children}</p>;
 }
 
 interface KpiProps {
@@ -62,9 +63,9 @@ function KpiCard({ icon, label, value, sub, accent = AMBER }: KpiProps) {
         <div style={{ color: accent }} className="size-5">{icon}</div>
       </div>
       <div className="min-w-0">
-        <p className="text-[11px] text-gray-400 font-medium leading-none mb-1.5">{label}</p>
-        <p className="text-[26px] font-semibold text-gray-900 leading-none tabular-nums">{value}</p>
-        {sub && <p className="text-[11px] text-gray-400 mt-1.5 leading-none">{sub}</p>}
+        <p className="text-[11px] text-gray-400 dark:text-white/40 font-medium leading-none mb-1.5">{label}</p>
+        <p className="text-[26px] font-semibold text-gray-900 dark:text-white leading-none tabular-nums">{value}</p>
+        {sub && <p className="text-[11px] text-gray-400 dark:text-white/30 mt-1.5 leading-none">{sub}</p>}
       </div>
     </Card>
   );
@@ -84,7 +85,7 @@ function PieTooltip({ active, payload }: { active?: boolean; payload?: { name: s
 /* ─── main component ─────────────────────────────────────────── */
 export function BajajDashboard() {
   const [mod, setMod] = useState("");
-  const { data, isLoading, refetch } = useBajajAnalytics(mod || undefined);
+  const { data, isLoading, isError, error, refetch } = useBajajAnalytics(mod || undefined);
 
   /* derived counts */
   const totalWOs   = data?.totalWorkOrders ?? 0;
@@ -109,13 +110,13 @@ export function BajajDashboard() {
   }
 
   return (
-    <div className="flex h-full flex-col overflow-hidden" style={{ background: "#F7F7F8" }}>
+    <div className="flex h-full flex-col overflow-hidden" style={{ background: "var(--main-bg, #F7F7F8)" }}>
 
       {/* ── top bar ─────────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-4 px-6 py-4 bg-white border-b border-gray-100 flex-shrink-0">
+      <div className="bajaj-topbar flex items-center justify-between gap-4 px-6 py-4 border-b flex-shrink-0" style={{ background: "var(--card-bg, white)", borderColor: "var(--border-color)" }}>
         <div>
-          <h1 className="text-[15px] font-semibold text-gray-900 leading-none tracking-tight">Analytics</h1>
-          <p className="text-[11px] text-gray-400 mt-0.5 leading-none">Bajaj Auto · Shipment Overview</p>
+          <h1 className="text-[15px] font-semibold text-gray-900 dark:text-white leading-none tracking-tight">Analytics</h1>
+          <p className="text-[11px] text-gray-400 dark:text-white/40 mt-0.5 leading-none">Bajaj Auto · Shipment Overview</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -155,6 +156,15 @@ export function BajajDashboard() {
           <div className="flex items-center justify-center h-64 text-gray-400 text-sm">
             <RefreshCw className="size-4 mr-2 animate-spin" />
             Loading analytics…
+          </div>
+        ) : isError ? (
+          <div className="flex flex-col items-center justify-center h-64 gap-3">
+            <AlertTriangle className="size-8 text-red-400" />
+            <p className="text-sm font-medium text-gray-700">Failed to load analytics</p>
+            <p className="text-xs text-gray-400 max-w-sm text-center">{String((error as Error)?.message ?? "Unknown error")}</p>
+            <button onClick={() => refetch()} className="mt-2 px-4 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 transition-colors">
+              Retry
+            </button>
           </div>
         ) : (
           <>

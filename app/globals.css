@@ -1,54 +1,54 @@
 @import "tailwindcss";
 
+/* Enable class-based dark mode for Tailwind v4 */
+@variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Sidebar (light) */
+  --sb-bg: #EDECEA;
+  --sb-border: rgba(0,0,0,0.07);
+  --sb-text: #1C1C1E;
+  --sb-muted: #8A8A8E;
+  --sb-hover: rgba(0,0,0,0.04);
+  --sb-active: rgba(0,0,0,0.07);
+
+  /* Semantic page colors (light) */
+  --main-bg: #F5F5F5;
+  --card-bg: #FFFFFF;
+  --border-color: rgba(0,0,0,0.07);
+  --page-fg: #171717;
+  --muted-fg: #6b7280;
+  --input-bg: #f9fafb;
+  --input-border: #e5e7eb;
+  --hover-bg: rgba(0,0,0,0.04);
+  --section-border: #f3f4f6;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-/* Dark mode via next-themes (.dark class on <html>) */
 .dark {
-  --background: #111110;
-  --foreground: #eeeeec;
+  --background: #000000;
+  --foreground: #ffffff;
 
-  /* Sidebar */
-  --sb-bg: #1C1C1A;
-  --sb-border: rgba(255,255,255,0.06);
+  /* Sidebar (dark) */
+  --sb-bg: #0a0a0a;
+  --sb-border: rgba(255,255,255,0.07);
   --sb-text: #EEEEEC;
-  --sb-muted: #888884;
+  --sb-muted: #666664;
   --sb-hover: rgba(255,255,255,0.04);
-  --sb-active: rgba(255,255,255,0.07);
+  --sb-active: rgba(255,255,255,0.08);
 
-  /* Main content */
-  --main-bg: #161614;
-  --card-bg: #1E1E1C;
+  /* Semantic page colors (dark — pure black) */
+  --main-bg: #000000;
+  --card-bg: #0d0d0d;
   --border-color: rgba(255,255,255,0.07);
-}
-
-/* Dark mode overrides for the Bajaj app layout */
-.dark .bajaj-sidebar {
-  background: var(--sb-bg) !important;
-  border-right-color: var(--sb-border) !important;
-}
-.dark .bajaj-main {
-  background: var(--main-bg) !important;
-}
-.dark .bajaj-board-bg {
-  background: var(--main-bg) !important;
-}
-.dark .bajaj-card {
-  background: var(--card-bg) !important;
-  border-color: var(--border-color) !important;
-}
-.dark .bajaj-topbar {
-  background: var(--main-bg) !important;
-  border-bottom-color: var(--border-color) !important;
+  --page-fg: #f5f5f5;
+  --muted-fg: #888884;
+  --input-bg: #111111;
+  --input-border: rgba(255,255,255,0.12);
+  --hover-bg: rgba(255,255,255,0.04);
+  --section-border: rgba(255,255,255,0.06);
 }
 
 body {
@@ -57,12 +57,23 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* Hide scrollbars but keep scrolling (vertical + horizontal) */
-* {
-  scrollbar-width: none; /* Firefox */
+/* Hide scrollbars but keep scrolling */
+* { scrollbar-width: none; }
+*::-webkit-scrollbar { width: 0; height: 0; }
+
+/* ── Bajaj sidebar dark overrides ── */
+.dark .bajaj-sidebar {
+  background: var(--sb-bg) !important;
+  border-right-color: var(--sb-border) !important;
+}
+.dark .bajaj-main      { background: var(--main-bg) !important; }
+.dark .bajaj-board-bg  { background: var(--main-bg) !important; }
+.dark .bajaj-topbar {
+  background: var(--card-bg) !important;
+  border-bottom-color: var(--border-color) !important;
+}
+.dark .bajaj-card {
+  background: var(--card-bg) !important;
+  border-color: var(--border-color) !important;
 }
 
-*::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-}

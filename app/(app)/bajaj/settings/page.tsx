@@ -1,12 +1,15 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { createClient } from "@/lib/supabase/client";
 import { useAuthStore } from "@/lib/stores/auth-store";
-import { LogOut, User, Shield, Bell, Palette, ChevronRight, Check, Globe, Moon, Sun } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  LogOut, User, Shield, Bell, Palette, ChevronRight, Check,
+  Globe, Moon, Sun,
+} from "lucide-react";
 
 type Tab = "profile" | "appearance" | "notifications" | "security";
 
@@ -17,12 +20,16 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "security",      label: "Security",      icon: Shield  },
 ];
 
+const NOTIF_KEY = "bajaj-notif-prefs";
+type NotifPrefs = { reminders: boolean; updates: boolean; digest: boolean };
+const DEFAULT_NOTIF: NotifPrefs = { reminders: true, updates: false, digest: true };
+
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
-    <div className="border-b border-gray-100 py-8 first:pt-0 last:border-0">
+    <div className="border-b border-gray-100 dark:border-white/[0.06] py-8 first:pt-0 last:border-0">
       <div className="mb-5">
-        <h3 className="text-[15px] font-semibold text-gray-900">{title}</h3>
-        {description && <p className="text-[13px] text-gray-500 mt-0.5">{description}</p>}
+        <h3 className="text-[15px] font-semibold text-gray-900 dark:text-white">{title}</h3>
+        {description && <p className="text-[13px] text-gray-500 dark:text-white/40 mt-0.5">{description}</p>}
       </div>
       {children}
     </div>
@@ -33,8 +40,8 @@ function Field({ label, description, children }: { label: string; description?: 
   return (
     <div className="flex items-start justify-between gap-8 py-3">
       <div className="flex-1">
-        <p className="text-[13px] font-medium text-gray-800">{label}</p>
-        {description && <p className="text-[12px] text-gray-400 mt-0.5">{description}</p>}
+        <p className="text-[13px] font-medium text-gray-800 dark:text-white/80">{label}</p>
+        {description && <p className="text-[12px] text-gray-400 dark:text-white/30 mt-0.5">{description}</p>}
       </div>
       <div className="flex-shrink-0">{children}</div>
     </div>
@@ -42,13 +49,31 @@ function Field({ label, description, children }: { label: string; description?: 
 }
 
 export default function SettingsPage() {
-  const router   = useRouter();
+  const router    = useRouter();
   const clearAuth = useAuthStore((s) => s.clearAuth);
   const bajajUser = useAuthStore((s) => s.bajajUser);
   const { theme, setTheme } = useTheme();
+
   const [tab, setTab] = useState<Tab>("profile");
-  const [notifications, setNotifications] = useState({ reminders: true, updates: false, digest: true });
+  const [notifications, setNotifications] = useState<NotifPrefs>(DEFAULT_NOTIF);
   const [signOutLoading, setSignOutLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetMsg, setResetMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(NOTIF_KEY);
+      if (stored) setNotifications(JSON.parse(stored));
+    } catch {}
+  }, []);
+
+  function toggleNotif(key: keyof NotifPrefs) {
+    setNotifications((n) => {
+      const next = { ...n, [key]: !n[key] };
+      try { localStorage.setItem(NOTIF_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
 
   async function handleSignOut() {
     setSignOutLoading(true);
@@ -59,19 +84,45 @@ export default function SettingsPage() {
     router.push("/login");
   }
 
+  async function handlePasswordReset() {
+    setResetLoading(true);
+    setResetMsg(null);
+    const supabase = createClient();
+    const { error } = await supabase.auth.resetPasswordForEmail(bajajUser?.email ?? "", {
+      redirectTo: `${window.location.origin}/bajaj/settings`,
+    });
+    setResetLoading(false);
+    if (error) {
+      setResetMsg({ type: "error", text: error.message });
+    } else {
+      setResetMsg({ type: "success", text: "Reset email sent!" });
+    }
+  }
+
+  const inputCls = "w-52 rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] text-gray-800 placeholder-gray-400 focus:border-amber-400 focus:outline-none transition-colors dark:bg-[#111] dark:border-white/10 dark:text-white dark:placeholder-white/30";
+
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-white">
+    <div
+      className="flex flex-1 flex-col overflow-hidden"
+      style={{ background: "var(--main-bg, white)" }}
+    >
       {/* Header */}
-      <div className="flex items-center gap-3 px-8 py-5 border-b border-gray-100 flex-shrink-0">
+      <div
+        className="flex items-center gap-3 px-8 py-5 border-b border-gray-100 dark:border-white/[0.06] flex-shrink-0"
+        style={{ background: "var(--card-bg)" }}
+      >
         <div>
-          <h1 className="text-[18px] font-semibold text-gray-900">Settings</h1>
-          <p className="text-[13px] text-gray-400 mt-0.5">Manage your account and preferences</p>
+          <h1 className="text-[18px] font-semibold text-gray-900 dark:text-white">Settings</h1>
+          <p className="text-[13px] text-gray-400 dark:text-white/40 mt-0.5">Manage your account and preferences</p>
         </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
         {/* Left tab list */}
-        <aside className="w-52 flex-shrink-0 border-r border-gray-100 py-4 px-3 overflow-y-auto">
+        <aside
+          className="w-52 flex-shrink-0 border-r border-gray-100 dark:border-white/[0.06] py-4 px-3 overflow-y-auto"
+          style={{ background: "var(--card-bg)" }}
+        >
           {TABS.map((t) => {
             const Icon = t.icon;
             const active = tab === t.id;
@@ -81,7 +132,9 @@ export default function SettingsPage() {
                 onClick={() => setTab(t.id)}
                 className={cn(
                   "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors mb-0.5",
-                  active ? "bg-gray-100 text-gray-900" : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                  active
+                    ? "bg-gray-100 text-gray-900 dark:bg-white/8 dark:text-white"
+                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-700 dark:text-white/50 dark:hover:bg-white/5"
                 )}
               >
                 <Icon className="size-4 flex-shrink-0" />
@@ -90,11 +143,11 @@ export default function SettingsPage() {
             );
           })}
 
-          <div className="mt-4 pt-4 border-t border-gray-100">
+          <div className="mt-4 pt-4 border-t border-gray-100 dark:border-white/[0.06]">
             <button
               onClick={handleSignOut}
               disabled={signOutLoading}
-              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium text-red-500 hover:bg-red-50 transition-colors"
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
             >
               <LogOut className="size-4 flex-shrink-0" />
               {signOutLoading ? "Signing out…" : "Sign out"}
@@ -109,7 +162,6 @@ export default function SettingsPage() {
           {tab === "profile" && (
             <div>
               <Section title="Personal information" description="Update your display name and contact details.">
-                {/* Avatar */}
                 <div className="flex items-center gap-4 mb-6">
                   <div className="size-16 rounded-full bg-amber-500 flex items-center justify-center flex-shrink-0">
                     <span className="text-2xl font-bold text-white">
@@ -117,16 +169,16 @@ export default function SettingsPage() {
                     </span>
                   </div>
                   <div>
-                    <p className="text-[14px] font-semibold text-gray-900">{bajajUser?.full_name ?? "—"}</p>
-                    <p className="text-[13px] text-gray-500">{bajajUser?.email}</p>
-                    <p className="text-[12px] text-gray-400 mt-1 capitalize">{bajajUser?.role ?? "user"} · Bajaj Logistics</p>
+                    <p className="text-[14px] font-semibold text-gray-900 dark:text-white">{bajajUser?.full_name ?? "—"}</p>
+                    <p className="text-[13px] text-gray-500 dark:text-white/50">{bajajUser?.email}</p>
+                    <p className="text-[12px] text-gray-400 dark:text-white/30 mt-1 capitalize">{bajajUser?.role ?? "user"} · Bajaj Logistics</p>
                   </div>
                 </div>
 
                 <Field label="Full name">
                   <input
                     defaultValue={bajajUser?.full_name ?? ""}
-                    className="w-52 rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] text-gray-800 placeholder-gray-400 focus:border-amber-400 focus:outline-none transition-colors"
+                    className={inputCls}
                     placeholder="Your name"
                   />
                 </Field>
@@ -134,11 +186,11 @@ export default function SettingsPage() {
                   <input
                     defaultValue={bajajUser?.email ?? ""}
                     readOnly
-                    className="w-52 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-[13px] text-gray-400 cursor-not-allowed"
+                    className="w-52 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-[13px] text-gray-400 cursor-not-allowed dark:bg-[#111] dark:border-white/10 dark:text-white/30"
                   />
                 </Field>
                 <Field label="Role" description="Your assigned role in the system.">
-                  <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-amber-50 text-amber-700 text-[12px] font-semibold border border-amber-100 capitalize">
+                  <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-amber-50 text-amber-700 text-[12px] font-semibold border border-amber-100 capitalize dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20">
                     {bajajUser?.role ?? "user"}
                   </span>
                 </Field>
@@ -166,31 +218,23 @@ export default function SettingsPage() {
                         onClick={() => setTheme(t)}
                         className={cn(
                           "flex flex-col items-center gap-2 rounded-xl border-2 p-4 transition-all",
-                          active ? "border-amber-400 bg-amber-50" : "border-gray-200 hover:border-gray-300"
+                          active
+                            ? "border-amber-400 bg-amber-50 dark:bg-amber-500/10"
+                            : "border-gray-200 hover:border-gray-300 dark:border-white/10 dark:hover:border-white/20"
                         )}
                       >
-                        <div className={cn("size-10 rounded-lg flex items-center justify-center", active ? "bg-amber-100" : "bg-gray-100")}>
-                          <Icon className={cn("size-5", active ? "text-amber-600" : "text-gray-500")} />
+                        <div className={cn("size-10 rounded-lg flex items-center justify-center", active ? "bg-amber-100 dark:bg-amber-500/20" : "bg-gray-100 dark:bg-white/5")}>
+                          <Icon className={cn("size-5", active ? "text-amber-600 dark:text-amber-400" : "text-gray-500 dark:text-white/40")} />
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <span className="text-[12px] font-medium capitalize text-gray-700">{t}</span>
+                          <span className={cn("text-[12px] font-medium capitalize", active ? "text-gray-700 dark:text-white" : "text-gray-500 dark:text-white/50")}>{t}</span>
                           {active && <Check className="size-3 text-amber-500" />}
                         </div>
                       </button>
                     );
                   })}
                 </div>
-                <p className="mt-4 text-[12px] text-gray-400">Changes apply immediately across the entire app.</p>
-              </Section>
-
-              <Section title="Display density" description="Control how compact the interface feels.">
-                <div className="flex items-center gap-3">
-                  {["Comfortable", "Compact"].map((d) => (
-                    <button key={d} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 text-[13px] text-gray-600 hover:border-amber-300 hover:text-amber-700 transition-colors">
-                      {d}
-                    </button>
-                  ))}
-                </div>
+                <p className="mt-4 text-[12px] text-gray-400 dark:text-white/30">Changes apply immediately across the entire app.</p>
               </Section>
             </div>
           )}
@@ -199,17 +243,17 @@ export default function SettingsPage() {
           {tab === "notifications" && (
             <div>
               <Section title="Email notifications" description="Choose what you want to be notified about.">
-                {[
+                {([
                   { key: "reminders" as const, label: "Shipment reminders", description: "Get alerted when sailing dates approach" },
                   { key: "updates"   as const, label: "Status updates",     description: "Notify when a work order status changes" },
                   { key: "digest"    as const, label: "Daily digest",        description: "A daily summary of all active work orders" },
-                ].map(({ key, label, description }) => (
+                ] as const).map(({ key, label, description }) => (
                   <Field key={key} label={label} description={description}>
                     <button
-                      onClick={() => setNotifications((n) => ({ ...n, [key]: !n[key] }))}
+                      onClick={() => toggleNotif(key)}
                       className={cn(
                         "relative w-9 h-5 rounded-full transition-colors",
-                        notifications[key] ? "bg-amber-500" : "bg-gray-200"
+                        notifications[key] ? "bg-amber-500" : "bg-gray-200 dark:bg-white/10"
                       )}
                     >
                       <span className={cn(
@@ -227,21 +271,30 @@ export default function SettingsPage() {
           {tab === "security" && (
             <div>
               <Section title="Password" description="Manage your authentication settings.">
-                <p className="text-[13px] text-gray-500 mb-4">
+                <p className="text-[13px] text-gray-500 dark:text-white/40 mb-4">
                   Password changes are handled through your authentication provider. Use the link below to reset your password.
                 </p>
-                <button className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 text-[13px] font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors">
-                  Send password reset email
-                  <ChevronRight className="size-4 text-gray-400" />
+                <button
+                  onClick={handlePasswordReset}
+                  disabled={resetLoading}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 text-[13px] font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors dark:border-white/10 dark:text-white/80 dark:hover:bg-white/5 disabled:opacity-50"
+                >
+                  {resetLoading ? "Sending…" : "Send password reset email"}
+                  <ChevronRight className="size-4 text-gray-400 dark:text-white/30" />
                 </button>
+                {resetMsg && (
+                  <p className={cn("mt-3 text-[13px]", resetMsg.type === "success" ? "text-emerald-600 dark:text-emerald-400" : "text-red-500 dark:text-red-400")}>
+                    {resetMsg.text}
+                  </p>
+                )}
               </Section>
 
               <Section title="Sessions" description="Manage where you're logged in.">
-                <div className="rounded-xl border border-gray-100 overflow-hidden">
-                  <div className="flex items-center justify-between px-4 py-3 bg-gray-50">
+                <div className="rounded-xl border border-gray-100 dark:border-white/[0.06] overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-white/[0.03]">
                     <div>
-                      <p className="text-[13px] font-medium text-gray-800">Current session</p>
-                      <p className="text-[11px] text-gray-400 mt-0.5">Active now · {typeof window !== "undefined" ? window.location.hostname : "localhost"}</p>
+                      <p className="text-[13px] font-medium text-gray-800 dark:text-white/80">Current session</p>
+                      <p className="text-[11px] text-gray-400 dark:text-white/30 mt-0.5">Active now · {typeof window !== "undefined" ? window.location.hostname : "localhost"}</p>
                     </div>
                     <span className="size-2 rounded-full bg-emerald-400" />
                   </div>
@@ -249,13 +302,13 @@ export default function SettingsPage() {
               </Section>
 
               <Section title="Danger zone">
-                <div className="rounded-xl border border-red-100 p-4">
-                  <p className="text-[13px] font-semibold text-gray-800 mb-1">Sign out everywhere</p>
-                  <p className="text-[12px] text-gray-500 mb-3">This will sign you out of all active sessions.</p>
+                <div className="rounded-xl border border-red-100 dark:border-red-500/20 p-4">
+                  <p className="text-[13px] font-semibold text-gray-800 dark:text-white/80 mb-1">Sign out everywhere</p>
+                  <p className="text-[12px] text-gray-500 dark:text-white/30 mb-3">This will sign you out of all active sessions.</p>
                   <button
                     onClick={handleSignOut}
                     disabled={signOutLoading}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-50 border border-red-200 text-red-600 text-[13px] font-medium hover:bg-red-100 transition-colors"
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-50 border border-red-200 text-red-600 text-[13px] font-medium hover:bg-red-100 transition-colors dark:bg-red-500/10 dark:border-red-500/20 dark:text-red-400 dark:hover:bg-red-500/20"
                   >
                     <LogOut className="size-4" />
                     {signOutLoading ? "Signing out…" : "Sign out"}

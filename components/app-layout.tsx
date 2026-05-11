@@ -8,26 +8,26 @@ import { useAuthStore } from "@/lib/stores/auth-store";
 import {
   LayoutGrid, BarChart2, Upload, ShieldCheck, LogOut,
   Search, ChevronDown, ChevronRight as ChevronRightIcon,
-  PanelLeft, HelpCircle, Settings, Globe,
-  Inbox, MessageSquare,
+  PanelLeft, Settings, Globe,
+  Inbox, MessageSquare, Home,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const MODULES = [
-  { slug: "vipar",      name: "VIPAR",      flag: "🌏", desc: "Myanmar · Brazil · Others" },
-  { slug: "srilanka",   name: "Sri Lanka",  flag: "🇱🇰", desc: "Colombo · CMNBO" },
-  { slug: "nigeria",    name: "Nigeria",    flag: "🇳🇬", desc: "Apapa Lagos" },
-  { slug: "bangladesh", name: "Bangladesh", flag: "🇧🇩", desc: "Chattogram" },
-  { slug: "triumph",    name: "Triumph",    flag: "🇬🇧", desc: "United Kingdom" },
+  { slug: "vipar",      name: "VIPAR",      flag: "🌐", desc: "Myanmar · Brazil · Others" },
+  { slug: "srilanka",   name: "Sri Lanka",  flag: "🌴", desc: "Colombo · CMNBO" },
+  { slug: "nigeria",    name: "Nigeria",    flag: "🟢", desc: "Apapa Lagos" },
+  { slug: "bangladesh", name: "Bangladesh", flag: "🔴", desc: "Chattogram" },
+  { slug: "triumph",    name: "Triumph",    flag: "⚡", desc: "United Kingdom" },
 ];
 
-// Sidebar background + item palette (Linear-style warm beige)
-const SB_BG      = "#EDECEA";
-const SB_ACTIVE  = "rgba(0,0,0,0.07)";
-const SB_HOVER   = "rgba(0,0,0,0.04)";
-const SB_TEXT    = "#1C1C1E";
-const SB_MUTED   = "#8A8A8E";
-const SB_BORDER  = "rgba(0,0,0,0.07)";
+// Sidebar palette — use CSS vars so dark mode applies automatically
+const SB_BG      = "var(--sb-bg)";
+const SB_ACTIVE  = "var(--sb-active)";
+const SB_HOVER   = "var(--sb-hover)";
+const SB_TEXT    = "var(--sb-text)";
+const SB_MUTED   = "var(--sb-muted)";
+const SB_BORDER  = "var(--sb-border)";
 
 function NavItem({
   href,
@@ -140,7 +140,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (collapsed) {
     return (
-      <div className="flex h-dvh overflow-hidden" style={{ background: "#F5F5F5" }}>
+      <div className="flex h-dvh overflow-hidden" style={{ background: "var(--main-bg)" }}>
         {/* Collapsed sidebar */}
         <aside className="flex flex-col flex-shrink-0 w-12 items-center py-3 gap-3" style={{ background: SB_BG, borderRight: `1px solid ${SB_BORDER}` }}>
           <button onClick={() => setCollapsed(false)} className="size-7 flex items-center justify-center rounded-md transition-colors hover:bg-black/5">
@@ -158,13 +158,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             </Link>
           ))}
         </aside>
-        <main className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-tl-[18px] bg-white">{children}</main>
+        <main className="bajaj-main flex min-h-0 flex-1 flex-col overflow-hidden rounded-tl-[18px]" style={{ background: "var(--main-bg)" }}>{children}</main>
       </div>
     );
   }
 
   return (
-    <div className="flex h-dvh overflow-hidden" style={{ background: "#EDECEA" }}>
+    <div className="flex h-dvh overflow-hidden" style={{ background: "var(--sb-bg)" }}>
 
       {/* ── Sidebar ─────────────────────────────────────────────────── */}
       <aside
@@ -212,6 +212,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
           {/* Top-level */}
           <div className="pt-1">
+            <NavItem href="/bajaj/home"      label="Home"         icon={Home}          active={pathname === "/bajaj/home" || pathname === "/bajaj"} />
             <NavItem href="/bajaj/import"    label="Import"       icon={Inbox}         active={pathname.startsWith("/bajaj/import")} />
             <NavItem href="/bajaj/chat"      label="Chat"         icon={MessageSquare} active={pathname.startsWith("/bajaj/chat")} />
             <NavItem href="/bajaj/dashboard" label="Analytics"    icon={BarChart2}     active={pathname.startsWith("/bajaj/dashboard")} />
@@ -265,7 +266,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* ── Page content ────────────────────────────────────────────── */}
-      <main className="bajaj-main flex min-h-0 flex-1 flex-col overflow-hidden rounded-tl-[18px]" style={{ background: "#F8F8F7" }}>
+      <main className="bajaj-main flex min-h-0 flex-1 flex-col overflow-hidden rounded-tl-[18px]" style={{ background: "var(--main-bg)" }}>
         {children}
       </main>
     </div>

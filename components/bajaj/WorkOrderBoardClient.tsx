@@ -15,11 +15,11 @@ import { cn } from "@/lib/utils";
 type ViewMode = "board" | "spreadsheet";
 
 const MODULE_META: Record<string, { name: string; flag: string; port: string }> = {
-  vipar:      { name: "VIPAR",      flag: "🌏", port: "Multiple Ports" },
-  srilanka:   { name: "Sri Lanka",  flag: "🇱🇰", port: "Colombo / CMNBO" },
-  nigeria:    { name: "Nigeria",    flag: "🇳🇬", port: "Apapa Lagos" },
-  bangladesh: { name: "Bangladesh", flag: "🇧🇩", port: "Chattogram / BDCGP" },
-  triumph:    { name: "Triumph",    flag: "🇬🇧", port: "United Kingdom" },
+  vipar:      { name: "VIPAR",      flag: "🌐", port: "Multiple Ports" },
+  srilanka:   { name: "Sri Lanka",  flag: "🌴", port: "Colombo / CMNBO" },
+  nigeria:    { name: "Nigeria",    flag: "🟢", port: "Apapa Lagos" },
+  bangladesh: { name: "Bangladesh", flag: "🔴", port: "Chattogram / BDCGP" },
+  triumph:    { name: "Triumph",    flag: "⚡", port: "United Kingdom" },
 };
 
 interface WorkOrderBoardClientProps { slug: string; isAdmin: boolean; }
@@ -70,10 +70,10 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
   const hasActiveFilter = !!(searchInput || filters.dateFrom || filters.dateTo || filters.statusId);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-white">
+    <div className="bajaj-board-bg flex h-full flex-col overflow-hidden" style={{ background: "var(--card-bg)" }}>
 
       {/* ── Top bar — breadcrumb + actions (Linear-style) ─────────── */}
-      <div className="flex items-center justify-between gap-3 px-5 py-2.5 border-b border-gray-100 flex-shrink-0 bg-white">
+      <div className="bajaj-topbar flex items-center justify-between gap-3 px-5 py-2.5 border-b flex-shrink-0" style={{ background: "var(--card-bg)", borderColor: "var(--border-color)" }}>
 
         {/* Breadcrumb + View toggle */}
         <div className="flex items-center gap-1.5 text-[13px] min-w-0">
@@ -114,8 +114,8 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
         {/* Right actions */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {/* Status filter chips — desktop */}
-          <div className="hidden md:flex items-center gap-1 mr-2">
-            {statuses.slice(0, 4).map((s) => (
+          <div className="hidden md:flex items-center gap-1 mr-2 overflow-x-auto max-w-xs">
+            {statuses.map((s) => (
               <button
                 key={s.id}
                 onClick={() => setFilters((f) => ({ ...f, statusId: f.statusId === s.id ? undefined : s.id }))}

@@ -1,10 +1,10 @@
 /**
  * GET /api/bajaj/analytics?module=<slug>
- * Returns BajajAnalytics computed from TMP_TBL_BAJAJ_WO + bajaj_wo_meta + bajaj_statuses
+ * Queries bajaj_work_orders + bajaj_wo_meta + bajaj_statuses
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getLinksPool } from "@/lib/db";
+import { getLinksPool, sql } from "@/lib/db";
 
 const MODULE_COUNTRY_MAP: Record<string, string[]> = {
   srilanka:   ["Sri Lanka"],
@@ -13,186 +13,169 @@ const MODULE_COUNTRY_MAP: Record<string, string[]> = {
   triumph:    ["United Kingdom"],
 };
 
-function buildModuleFilter(moduleSlug: string | null): string {
+function buildModuleFilter(moduleSlug: string | null, req: import("mssql").Request): string {
   if (!moduleSlug) return "";
   if (moduleSlug === "vipar") {
-    const allOther = Object.values(MODULE_COUNTRY_MAP).flat()
-      .map(c => `'${c.replace(/'/g,"''")}'`)
-      .join(",");
-    return `AND w.country NOT IN (${allOther})`;
+    const allOther = Object.values(MODULE_COUNTRY_MAP).flat();
+    const placeholders = allOther.map((c, i) => {
+      req.input(`vipar_exc${i}`, sql.VarChar, c);
+      return `@vipar_exc${i}`;
+    }).join(",");
+    return `AND (w.country NOT IN (${placeholders}) OR w.country IS NULL)`;
   }
   const countries = MODULE_COUNTRY_MAP[moduleSlug];
   if (!countries) return "";
-  const list = countries.map(c => `'${c.replace(/'/g,"''")}'`).join(",");
-  return `AND w.country IN (${list})`;
+  const placeholders = countries.map((c, i) => {
+    req.input(`country${i}`, sql.VarChar, c);
+    return `@country${i}`;
+  }).join(",");
+  return `AND w.country IN (${placeholders})`;
 }
 
 export async function GET(req: NextRequest) {
   try {
-    const moduleSlug = req.nextUrl.searchParams.get("module");
-    const mf = buildModuleFilter(moduleSlug);
+    const moduleSlug = req.nextUrl.searchParams.get("module") || null;
     const pool = await getLinksPool();
+
+    // Build a dummy request just to add params — we'll reuse the filter string
+    // but each query needs its own request object with its own params
+    function makeFilter() {
+      const r = pool.request();
+      const f = buildModuleFilter(moduleSlug, r);
+      return { r, f };
+    }
+
+    const { r: r1, f: f1 } = makeFilter();
+    const { r: r2, f: f2 } = makeFilter();
+    const { r: r3, f: f3 } = makeFilter();
+    const { r: r4, f: f4 } = makeFilter();
+    const { r: r5, f: f5 } = makeFilter();
+    const { r: r6, f: f6 } = makeFilter();
+    const { r: r7, f: f7 } = makeFilter();
+    const { r: r8, f: f8 } = makeFilter();
+    const { r: r9, f: f9 } = makeFilter();
 
     const [
       totalRes, byStatusRes, byModuleRes, timelineRes,
-      blPendingRes, vesselRes, lineRes,
+      blPendingRes, containerRes, blTotalRes, lineRes, overLimitRes,
     ] = await Promise.all([
-      // Total WOs
-      pool.request().query(`SELECT COUNT(*) AS n FROM TMP_TBL_BAJAJ_WO w WHERE 1=1 ${mf}`),
 
-      // By status (joined)
-      pool.request().query(`
+      // Total WOs
+      r1.query(`
+        SELECT COUNT(*) AS n
+        FROM bajaj_work_orders w
+        LEFT JOIN bajaj_wo_meta m ON m.wo_id = w.id
+        WHERE 1=1 ${f1}
+      `),
+
+      // By status
+      r2.query(`
         SELECT
-          ISNULL(s.name,'Unassigned') AS statusName,
-          ISNULL(s.color_hex,'6b7280') AS colorHex,
+          ISNULL(s.name, 'Unassigned') AS statusName,
+          ISNULL(s.color_hex, '6b7280') AS colorHex,
           COUNT(*) AS cnt
-        FROM TMP_TBL_BAJAJ_WO w
-        LEFT JOIN bajaj_wo_meta    m ON m.pkid = w.PKID
-        LEFT JOIN bajaj_statuses   s ON s.id   = m.status_id
-        WHERE 1=1 ${mf}
+        FROM bajaj_work_orders w
+        LEFT JOIN bajaj_wo_meta  m ON m.wo_id = w.id
+        LEFT JOIN bajaj_statuses s ON s.id = m.status_id
+        WHERE 1=1 ${f2}
         GROUP BY s.name, s.color_hex
         ORDER BY cnt DESC
       `),
 
-      // By module — map country values to logical slugs
-      pool.request().query(`
+      // By module
+      r3.query(`
         SELECT
           CASE
-            WHEN country IN ('Sri Lanka')              THEN 'srilanka'
-            WHEN country IN ('Nigeria')                THEN 'nigeria'
-            WHEN country IN ('Bangladesh','BANGALDESH') THEN 'bangladesh'
-            WHEN country IN ('United Kingdom')         THEN 'triumph'
+            WHEN w.country IN ('Sri Lanka')               THEN 'srilanka'
+            WHEN w.country IN ('Nigeria')                 THEN 'nigeria'
+            WHEN w.country IN ('Bangladesh','BANGALDESH') THEN 'bangladesh'
+            WHEN w.country IN ('United Kingdom')          THEN 'triumph'
             ELSE 'vipar'
           END AS slug,
           CASE
-            WHEN country IN ('Sri Lanka')              THEN 'Sri Lanka'
-            WHEN country IN ('Nigeria')                THEN 'Nigeria'
-            WHEN country IN ('Bangladesh','BANGALDESH') THEN 'Bangladesh'
-            WHEN country IN ('United Kingdom')         THEN 'Triumph'
+            WHEN w.country IN ('Sri Lanka')               THEN 'Sri Lanka'
+            WHEN w.country IN ('Nigeria')                 THEN 'Nigeria'
+            WHEN w.country IN ('Bangladesh','BANGALDESH') THEN 'Bangladesh'
+            WHEN w.country IN ('United Kingdom')          THEN 'Triumph'
             ELSE 'VIPAR'
           END AS moduleName,
           COUNT(*) AS cnt
-        FROM TMP_TBL_BAJAJ_WO w WHERE 1=1 ${mf}
+        FROM bajaj_work_orders w
+        LEFT JOIN bajaj_wo_meta m ON m.wo_id = w.id
+        WHERE 1=1 ${f3}
         GROUP BY
-          CASE
-            WHEN country IN ('Sri Lanka')              THEN 'srilanka'
-            WHEN country IN ('Nigeria')                THEN 'nigeria'
-            WHEN country IN ('Bangladesh','BANGALDESH') THEN 'bangladesh'
-            WHEN country IN ('United Kingdom')         THEN 'triumph'
-            ELSE 'vipar'
-          END,
-          CASE
-            WHEN country IN ('Sri Lanka')              THEN 'Sri Lanka'
-            WHEN country IN ('Nigeria')                THEN 'Nigeria'
-            WHEN country IN ('Bangladesh','BANGALDESH') THEN 'Bangladesh'
-            WHEN country IN ('United Kingdom')         THEN 'Triumph'
-            ELSE 'VIPAR'
-          END
+          CASE WHEN w.country IN ('Sri Lanka') THEN 'srilanka' WHEN w.country IN ('Nigeria') THEN 'nigeria' WHEN w.country IN ('Bangladesh','BANGALDESH') THEN 'bangladesh' WHEN w.country IN ('United Kingdom') THEN 'triumph' ELSE 'vipar' END,
+          CASE WHEN w.country IN ('Sri Lanka') THEN 'Sri Lanka' WHEN w.country IN ('Nigeria') THEN 'Nigeria' WHEN w.country IN ('Bangladesh','BANGALDESH') THEN 'Bangladesh' WHEN w.country IN ('United Kingdom') THEN 'Triumph' ELSE 'VIPAR' END
         ORDER BY cnt DESC
       `),
 
-      // Import timeline (by WODT month)
-      pool.request().query(`
+      // Import timeline by wodt month
+      r4.query(`
         SELECT
-          LEFT(WODT,7) AS date,
-          COUNT(*) AS addedCount,
-          '' AS batchId
-        FROM TMP_TBL_BAJAJ_WO w
-        WHERE WODT IS NOT NULL AND WODT != '' ${mf}
-        GROUP BY LEFT(WODT,7)
-        ORDER BY LEFT(WODT,7) DESC
+          LEFT(CONVERT(varchar(10), w.wodt, 23), 7) AS date,
+          COUNT(*) AS addedCount
+        FROM bajaj_work_orders w
+        LEFT JOIN bajaj_wo_meta m ON m.wo_id = w.id
+        WHERE w.wodt IS NOT NULL ${f4}
+        GROUP BY LEFT(CONVERT(varchar(10), w.wodt, 23), 7)
+        ORDER BY LEFT(CONVERT(varchar(10), w.wodt, 23), 7) DESC
       `),
 
-      // BL pending after ETD (BLNO is empty but SAILINGDT is set)
-      pool.request().query(`
+      // BL pending after sailing (no blno but sailingdt set)
+      r5.query(`
         SELECT COUNT(*) AS n
-        FROM TMP_TBL_BAJAJ_WO w
-        WHERE (BLNO IS NULL OR BLNO='')
-          AND SAILINGDT IS NOT NULL AND SAILINGDT != ''
-          ${mf}
+        FROM bajaj_work_orders w
+        LEFT JOIN bajaj_wo_meta m ON m.wo_id = w.id
+        WHERE (w.blno IS NULL OR LTRIM(RTRIM(ISNULL(w.blno,'')))='')
+          AND w.sailingdt IS NOT NULL
+          ${f5}
       `),
 
-      // Containers by vessel
-      pool.request().query(`
-        SELECT TOP 20
-          vslname AS vesselName,
-          SUM(
-            CASE WHEN containerno IS NULL OR containerno='' THEN 0
-                 ELSE LEN(RTRIM(containerno)) - LEN(REPLACE(RTRIM(containerno),' ','')) + 1
-            END
-          ) AS containerCount
-        FROM TMP_TBL_BAJAJ_WO w WHERE 1=1 ${mf}
-        GROUP BY vslname
+      // Total containers (hc40 + std20)
+      r6.query(`
+        SELECT
+          ISNULL(SUM(ISNULL(w.hc40,0) + ISNULL(w.std20,0)), 0) AS n
+        FROM bajaj_work_orders w
+        LEFT JOIN bajaj_wo_meta m ON m.wo_id = w.id
+        WHERE 1=1 ${f6}
+      `),
+
+      // Total BLs
+      r7.query(`
+        SELECT COUNT(*) AS n
+        FROM bajaj_work_orders w
+        LEFT JOIN bajaj_wo_meta m ON m.wo_id = w.id
+        WHERE w.blno IS NOT NULL AND LTRIM(RTRIM(w.blno)) != '' ${f7}
+      `),
+
+      // WOs by brand (used as "by line" equivalent)
+      r8.query(`
+        SELECT TOP 10
+          ISNULL(w.brand, 'Unknown') AS lineName,
+          COUNT(*) AS containerCount
+        FROM bajaj_work_orders w
+        LEFT JOIN bajaj_wo_meta m ON m.wo_id = w.id
+        WHERE 1=1 ${f8}
+        GROUP BY w.brand
         ORDER BY containerCount DESC
       `),
 
-      // Containers by shipping line (extracted from vessel name prefix)
-      pool.request().query(`
+      // Variants with high qty (equivalent to "over limit")
+      r9.query(`
         SELECT TOP 10
-          CASE
-            WHEN vslname LIKE 'APL%'    THEN 'APL'
-            WHEN vslname LIKE 'MSC%'    THEN 'MSC'
-            WHEN vslname LIKE 'MAERSK%' THEN 'MAERSK'
-            WHEN vslname LIKE 'CMA%'    THEN 'CMA CGM'
-            WHEN vslname LIKE 'HAPAG%'  THEN 'HAPAG-LLOYD'
-            WHEN vslname LIKE 'EVER%'   THEN 'EVERGREEN'
-            WHEN vslname LIKE 'ONE%'    THEN 'ONE'
-            WHEN vslname LIKE 'COSCO%'  THEN 'COSCO'
-            ELSE 'OTHER'
-          END AS lineName,
-          COUNT(*) AS containerCount
-        FROM TMP_TBL_BAJAJ_WO w WHERE 1=1 ${mf}
-        GROUP BY
-          CASE
-            WHEN vslname LIKE 'APL%'    THEN 'APL'
-            WHEN vslname LIKE 'MSC%'    THEN 'MSC'
-            WHEN vslname LIKE 'MAERSK%' THEN 'MAERSK'
-            WHEN vslname LIKE 'CMA%'    THEN 'CMA CGM'
-            WHEN vslname LIKE 'HAPAG%'  THEN 'HAPAG-LLOYD'
-            WHEN vslname LIKE 'EVER%'   THEN 'EVERGREEN'
-            WHEN vslname LIKE 'ONE%'    THEN 'ONE'
-            WHEN vslname LIKE 'COSCO%'  THEN 'COSCO'
-            ELSE 'OTHER'
-          END
+          ISNULL(w.variant, 'Unknown') AS vesselName,
+          ISNULL(SUM(ISNULL(w.hc40,0) + ISNULL(w.std20,0)), 0) AS containerCount
+        FROM bajaj_work_orders w
+        LEFT JOIN bajaj_wo_meta m ON m.wo_id = w.id
+        WHERE 1=1 ${f9}
+        GROUP BY w.variant
+        HAVING ISNULL(SUM(ISNULL(w.hc40,0) + ISNULL(w.std20,0)), 0) > 5
         ORDER BY containerCount DESC
       `),
     ]);
 
-    // Total containers (count space-separated values in containerno)
-    const containerTotal = await pool.request().query(`
-      SELECT SUM(
-        CASE WHEN containerno IS NULL OR containerno='' THEN 0
-             ELSE LEN(RTRIM(containerno)) - LEN(REPLACE(RTRIM(containerno),' ','')) + 1
-        END
-      ) AS n FROM TMP_TBL_BAJAJ_WO w WHERE 1=1 ${mf}
-    `);
-
-    // Total BLs (non-empty BLNO)
-    const blTotal = await pool.request().query(`
-      SELECT COUNT(*) AS n FROM TMP_TBL_BAJAJ_WO w
-      WHERE BLNO IS NOT NULL AND BLNO != '' ${mf}
-    `);
-
-    // Vessels over 25 containers
-    const overLimitRes = await pool.request().query(`
-      SELECT vslname AS vesselName,
-        SUM(
-          CASE WHEN containerno IS NULL OR containerno='' THEN 0
-               ELSE LEN(RTRIM(containerno)) - LEN(REPLACE(RTRIM(containerno),' ','')) + 1
-          END
-        ) AS containerCount
-      FROM TMP_TBL_BAJAJ_WO w WHERE 1=1 ${mf}
-      GROUP BY vslname
-      HAVING SUM(
-          CASE WHEN containerno IS NULL OR containerno='' THEN 0
-               ELSE LEN(RTRIM(containerno)) - LEN(REPLACE(RTRIM(containerno),' ','')) + 1
-          END
-        ) > 25
-      ORDER BY containerCount DESC
-    `);
-
     return NextResponse.json({
-      totalWorkOrders: totalRes.recordset[0].n,
+      totalWorkOrders:   totalRes.recordset[0].n,
       byStatus: byStatusRes.recordset.map((r) => ({
         statusName: r.statusName,
         colorHex:   r.colorHex,
@@ -206,14 +189,14 @@ export async function GET(req: NextRequest) {
       importTimeline: timelineRes.recordset.map((r) => ({
         date:       r.date,
         addedCount: r.addedCount,
-        batchId:    r.batchId,
+        batchId:    "",
       })),
-      totalContainers:      containerTotal.recordset[0].n ?? 0,
-      totalBLs:             blTotal.recordset[0].n,
-      containersByVessel:   vesselRes.recordset,
-      containersByLine:     lineRes.recordset,
-      blPendingAfterETD:    blPendingRes.recordset[0].n,
-      vesselsOverLimit:     overLimitRes.recordset,
+      totalContainers:    containerRes.recordset[0].n ?? 0,
+      totalBLs:           blTotalRes.recordset[0].n ?? 0,
+      containersByVessel: overLimitRes.recordset,
+      containersByLine:   lineRes.recordset,
+      blPendingAfterETD:  blPendingRes.recordset[0].n ?? 0,
+      vesselsOverLimit:   overLimitRes.recordset,
     });
   } catch (err) {
     console.error("[GET /api/bajaj/analytics]", err);
