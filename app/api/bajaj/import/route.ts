@@ -70,16 +70,35 @@ export async function POST(req: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await workbook.xlsx.load(uint8 as any);
 
-    const sheet = workbook.worksheets[0];
+    // Find the first sheet that actually has a "wo" / "work order" header column
+    // (some Excel files put a Color Legend as the first sheet)
+    let sheet = workbook.worksheets[0];
+    let colMap: Record<number, string> = {};
+    for (const ws of workbook.worksheets) {
+      const hdr = ws.getRow(1).values as (string | undefined)[];
+      const map: Record<number, string> = {};
+      hdr.forEach((h, idx) => {
+        if (!h) return;
+        const mapped = matchHeader(String(h));
+        if (mapped) map[idx] = mapped;
+      });
+      if (map[Object.keys(map).find((k) => map[parseInt(k)] === "wo") ? 1 : -1] !== undefined || Object.values(map).includes("wo")) {
+        sheet = ws;
+        colMap = map;
+        break;
+      }
+    }
     if (!sheet) return NextResponse.json({ error: "No worksheet found" }, { status: 400 });
-
-    const headerRow = sheet.getRow(1).values as (string | undefined)[];
-    const colMap: Record<number, string> = {};
-    headerRow.forEach((h, idx) => {
-      if (!h) return;
-      const mapped = matchHeader(String(h));
-      if (mapped) colMap[idx] = mapped;
-    });
+    // If colMap still empty (no wo column found), fall back to first sheet anyway
+    if (!Object.values(colMap).includes("wo")) {
+      sheet = workbook.worksheets[0];
+      const hdr = sheet.getRow(1).values as (string | undefined)[];
+      hdr.forEach((h, idx) => {
+        if (!h) return;
+        const mapped = matchHeader(String(h));
+        if (mapped) colMap[idx] = mapped;
+      });
+    }
 
     const pool = await getLinksPool();
     let addedCount = 0;

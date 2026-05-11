@@ -34,7 +34,36 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
   const [customFields,  setCustomFields]  = useState<string[]>([]);
   const [viewMode,      setViewMode]      = useState<ViewMode>("board");
 
-  const { data: statuses = [], isLoading: statusLoading } = useBajajStatuses(slug);
+  const { data: dbStatuses = [], isLoading: statusLoading } = useBajajStatuses(slug);
+
+  // Fixed 10-stage lifecycle — always shown regardless of DB rows
+  const LIFECYCLE: { name: string; color_hex: string }[] = [
+    { name: "Planning",            color_hex: "3b82f6" },
+    { name: "Booking Request",     color_hex: "06b6d4" },
+    { name: "Booking",             color_hex: "8b5cf6" },
+    { name: "Container Allocation",color_hex: "f59e0b" },
+    { name: "SI Filing",           color_hex: "f97316" },
+    { name: "Custom Clearance",    color_hex: "ef4444" },
+    { name: "Gate Open",           color_hex: "ec4899" },
+    { name: "Billing",             color_hex: "6366f1" },
+    { name: "BL Release",          color_hex: "10b981" },
+    { name: "Completed",           color_hex: "22c55e" },
+  ];
+
+  // Merge: if DB has a matching status (by name substring), use its id; else use placeholder
+  const statuses = LIFECYCLE.map((stage, i) => {
+    const match = dbStatuses.find((s) =>
+      s.name.toLowerCase().includes(stage.name.split(" ")[0].toLowerCase()) ||
+      stage.name.toLowerCase().includes(s.name.toLowerCase().split(" ")[0])
+    );
+    return match ?? {
+      id: `__placeholder_${i}`,
+      module_id: null,
+      name: stage.name,
+      color_hex: stage.color_hex,
+      display_order: i,
+    };
+  });
   const { data: boardConfig }                              = useBajajBoardConfig(slug);
   const { data: workOrders = [], isLoading: woLoading, refetch } = useWorkOrders(slug, filters);
   const updateWorkOrder = useUpdateWorkOrder();
