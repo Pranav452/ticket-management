@@ -18,32 +18,27 @@ const MODULES = [
 ];
 
 // ── Dispatch-plan email column headers → DB column names ──────────────────
+// Maps to exact bajaj_work_orders column names. Unknown headers are dropped.
 const EMAIL_COL_MAP: Record<string, string> = {
-  "cha":                       "CHA",
-  "wo no":                     "WO",
-  "wo":                        "WO",
-  "work order":                "WO",
-  "country":                   "country",
-  "plant":                     "Plant",
-  "brand":                     "Brand",
-  "variant":                   "Variant",
-  "qty":                       "QTY",
-  "40 hc":                     "40HC",
-  "40hc":                      "40HC",
-  "std 20":                    "STD20",
-  "std20":                     "STD20",
-  "plant ready / dispatch date":"WODT",
-  "plant ready":               "WODT",
-  "lsd":                       "SAILINGDT",
-  "assy config":                "AssyConfig",
-  "port (wo/pod)":             "port",
-  "port":                      "port",
-  "quotation no/ref":          "bookingno",
-  "quotation no":              "bookingno",
-  "po no":                     "SBNO",
-  "po":                        "SBNO",
-  "plan-add/rvsd":             "PLAN_STATUS",
-  "ib plan-zord":              "BLDT",
+  "cha":                        "agent",
+  "wo no":                      "wo",
+  "wo":                         "wo",
+  "work order":                 "wo",
+  "country":                    "country",
+  "plant":                      "plant",
+  "brand":                      "veh",
+  "variant":                    "type",
+  "qty":                        "qty",
+  "40 hc":                      "cont",
+  "40hc":                       "cont",
+  "port (wo/pod)":              "port",
+  "port":                       "port",
+  "quotation no/ref":           "lc_no",
+  "quotation no":               "lc_no",
+  "po no":                      "po_no",
+  "plant ready / dispatch date":"do_given_dt",
+  "plant ready":                "do_given_dt",
+  // std 20, lsd, assy config, plan-add/rvsd, ib plan-zord → no DB column, dropped
 };
 
 const SPLIT_HEADER_JOINS: string[] = [
@@ -191,58 +186,41 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
     if (!pastePreview) return [];
     if (!filterCHA) return pastePreview.rows;
     return pastePreview.rows.filter(
-      (r) => !r["CHA"] || r["CHA"].toUpperCase() === "LINKS"
+      (r) => !r["agent"] || r["agent"].toUpperCase() === "LINKS"
     );
   }
 
   async function handlePasteImport() {
-    const rows = getPasteRows();
-    if (!rows.length) return;
+    const rawRows = getPasteRows();
+    if (!rawRows.length) return;
     setStep("importing");
     setErrorMsg(null);
 
-    let added = 0;
-    let skipped = 0;
-
     try {
-      for (const row of rows) {
-        const body = {
-          FFJOBNO:    row["bookingno"]  ?? "",
-          WO:         row["WO"]         ?? "",
-          WODT:       row["WODT"]       ?? "",
-          port:       row["port"]       ?? "",
-          country:    row["country"]    ?? "",
-          bookingno:  row["bookingno"]  ?? "",
-          SBNO:       row["SBNO"]       ?? "",
-          SBDT:       "",
-          BLNO:       "",
-          BLDT:       row["BLDT"]       ?? "",
-          containerno:"",
-          vslname:    "",
-          SAILINGDT:  row["SAILINGDT"]  ?? "",
-          REMARK:     [
-            row["Brand"] ? `Brand: ${row["Brand"]}` : "",
-            row["Variant"] ? `Variant: ${row["Variant"]}` : "",
-            row["AssyConfig"] ? `Assy: ${row["AssyConfig"]}` : "",
-            row["QTY"] ? `Qty: ${row["QTY"]}` : "",
-            row["40HC"] ? `40HC: ${row["40HC"]}` : "",
-            row["PLAN_STATUS"] ? `Plan: ${row["PLAN_STATUS"]}` : "",
-          ].filter(Boolean).join(" | "),
-        };
+      const rows = rawRows.map((row) => ({
+        wo:          row["wo"]          ?? "",
+        country:     row["country"]     ?? "",
+        port:        row["port"]        ?? "",
+        agent:       row["agent"]       ?? "",
+        plant:       row["plant"]       ?? "",
+        veh:         row["veh"]         ?? "",
+        type:        row["type"]        ?? "",
+        qty:         row["qty"]         ?? "",
+        cont:        row["cont"]        ?? "",
+        po_no:       row["po_no"]       ?? "",
+        lc_no:       row["lc_no"]       ?? "",
+        do_given_dt: row["do_given_dt"] ?? "",
+      }));
 
-        const res  = await fetch("/api/bajaj/work-orders/paste", {
-          method:  "POST",
-          headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({ ...body, moduleSlug }),
-        });
+      const res  = await fetch("/api/bajaj/work-orders/paste", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ rows, moduleSlug }),
+      });
 
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Insert failed");
-        if (data.skipped) skipped++;
-        else added++;
-      }
-
-      setResult({ added, skipped });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Insert failed");
+      setResult({ added: data.added, skipped: data.skipped });
       setStep("done");
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : "Import failed");
@@ -368,7 +346,7 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
             <table className="text-[12px] min-w-full">
               <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
                 <tr>
-                  {pastePreview.headers.filter(h => h !== "CHA").map((h, idx) => (
+                  {pastePreview.headers.filter(h => h !== "agent").map((h, idx) => (
                     <th key={`h-${idx}-${h}`} className="px-3 py-2 text-left font-medium text-gray-500 whitespace-nowrap">
                       {h || <span className="text-gray-300 italic">col{idx}</span>}
                     </th>
@@ -381,7 +359,7 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
                     "border-b border-gray-100",
                     i % 2 === 0 ? "bg-white" : "bg-gray-50"
                   )}>
-                    {pastePreview.headers.filter(h => h !== "CHA").map((h, idx) => (
+                    {pastePreview.headers.filter(h => h !== "agent").map((h, idx) => (
                       <td key={`c-${i}-${idx}`} className="px-3 py-1.5 text-gray-700 whitespace-nowrap max-w-[140px] truncate">
                         {row[h] ?? ""}
                       </td>
