@@ -235,7 +235,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
           {/* Tools */}
           <SectionHeader label="Tools" />
-          <NavItem href="/bajaj/admin"    label="Admin"    icon={ShieldCheck}  active={pathname.startsWith("/bajaj/admin")} />
+          {(bajajUser?.role === "superadmin" || bajajUser?.role === "admin") && (
+            <NavItem href="/bajaj/admin" label="Admin" icon={ShieldCheck} active={pathname.startsWith("/bajaj/admin")} />
+          )}
           <NavItem href="/bajaj/settings" label="Settings" icon={Settings}     active={pathname.startsWith("/bajaj/settings")} />
 
         </nav>

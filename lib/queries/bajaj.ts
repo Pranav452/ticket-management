@@ -127,12 +127,38 @@ export function useWorkOrder(id: string | null) {
 export function useUpdateWorkOrder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, updates }: { id: string; updates: Partial<BajajWorkOrder> & { status_id?: string | null; column_order?: number; assigned_to?: string | null } }) =>
-      apiFetch(`/api/bajaj/work-orders/${id}`, {
+    mutationFn: async ({ id, updates, force }: {
+      id:      string;
+      updates: Partial<BajajWorkOrder> & { status_id?: string | null; column_order?: number; assigned_to?: string | null };
+      force?:  boolean;
+    }) => {
+      const res = await fetch(`/api/bajaj/work-orders/${id}`, {
         method:  "PATCH",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(updates),
-      }),
+        body:    JSON.stringify(force ? { ...updates, force: true } : updates),
+      });
+
+      // 409 = soft block — warnings returned, ask user to confirm
+      if (res.status === 409) {
+        const json = await res.json();
+        const msgs: string[] = (json.warnings ?? []).map((w: { message: string }) => w.message);
+        const confirmed = window.confirm(
+          `⚠️ Business rule warning:\n\n${msgs.join("\n\n")}\n\nOverride and save anyway?`
+        );
+        if (!confirmed) throw new Error("Cancelled by user");
+        // Retry with force flag
+        const retry = await fetch(`/api/bajaj/work-orders/${id}`, {
+          method:  "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ ...updates, force: true }),
+        });
+        if (!retry.ok) throw new Error(await retry.text());
+        return retry.json();
+      }
+
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["bajaj", "work-orders"] });
       qc.invalidateQueries({ queryKey: ["bajaj", "work-order"] });

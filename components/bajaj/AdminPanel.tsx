@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import {
   CheckCircle, XCircle, Loader2, Search, Filter,
   Trash2, Plus, ShieldCheck, ShieldOff, Check,
+  AlertTriangle, CheckCircle2, RefreshCw, Wrench, ChevronDown, ExternalLink,
 } from "lucide-react";
 import {
   useBajajUsers, useApproveBajajUser, useRejectBajajUser, useBajajAuditLogs,
@@ -514,6 +515,221 @@ function ColumnRulesTab() {
   );
 }
 
+// ─── Violations Audit ─────────────────────────────────────────────────────────
+interface WOSummary { id: string; wo: string; qty: number; containers: string[] }
+interface VesselViolation { vesselName: string; containerCount: number; workOrders: WOSummary[] }
+interface ContainerConflict { woId: string; woA: string; woB: string; containers: string[]; assyA: string; assyB: string }
+interface AuditResult {
+  containerConflicts: ContainerConflict[];
+  vesselViolations:   VesselViolation[];
+}
+
+function VesselViolationRow({ v }: { v: VesselViolation }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-lg border border-orange-900/40 overflow-hidden">
+      {/* summary row */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-2 bg-orange-950/30 hover:bg-orange-950/50 px-3 py-2 text-xs transition-colors"
+      >
+        <AlertTriangle className="size-3.5 text-orange-400 flex-shrink-0" />
+        <span className="font-medium text-orange-300 text-left flex-1">{v.vesselName}</span>
+        <span className="tabular-nums font-semibold text-orange-400">{v.containerCount}</span>
+        <span className="text-orange-600 mr-1">/ 25</span>
+        <ChevronDown className={`size-3.5 text-orange-500 transition-transform flex-shrink-0 ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {/* expanded WO list */}
+      {open && (
+        <div className="bg-neutral-950/60 border-t border-orange-900/30 divide-y divide-neutral-800/50">
+          {v.workOrders.map(wo => (
+            <a
+              key={wo.id}
+              href={`/bajaj/work-orders/${wo.id}`}
+              className="flex items-center gap-3 px-3 py-2 hover:bg-orange-950/20 transition-colors group"
+            >
+              <span className="text-[11px] font-mono text-neutral-400 group-hover:text-orange-300 transition-colors">
+                WO {wo.wo}
+              </span>
+              <span className="text-[11px] text-neutral-600 flex-1 truncate">
+                {wo.containers.length} container{wo.containers.length !== 1 ? "s" : ""}
+                {wo.containers.length > 0 && (
+                  <span className="text-neutral-700 ml-1">· {wo.containers.slice(0, 3).join(", ")}{wo.containers.length > 3 ? "…" : ""}</span>
+                )}
+              </span>
+              <ExternalLink className="size-3 text-neutral-700 group-hover:text-orange-400 transition-colors flex-shrink-0" />
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ViolationsAuditPanel() {
+  const [result,  setResult]  = useState<AuditResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err,     setErr]     = useState<string | null>(null);
+
+  async function run() {
+    setLoading(true); setErr(null); setResult(null);
+    try {
+      const res  = await fetch("/api/bajaj/validation");
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Audit failed");
+      setResult(json);
+    } catch (e: unknown) { setErr(e instanceof Error ? e.message : String(e)); }
+    finally { setLoading(false); }
+  }
+
+  const total = (result?.containerConflicts.length ?? 0) + (result?.vesselViolations.length ?? 0);
+
+  return (
+    <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-neutral-100">Existing Violations Audit</p>
+          <p className="text-xs text-neutral-500 mt-0.5">Sri Lanka · LINKS only — container conflicts &amp; vessel over-limit</p>
+        </div>
+        <button onClick={run} disabled={loading}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-xs font-medium text-neutral-300 disabled:opacity-50 transition-all">
+          {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+          Run Audit
+        </button>
+      </div>
+
+      {err && <p className="text-xs text-red-400 bg-red-950/40 border border-red-900/50 px-3 py-2 rounded-lg">{err}</p>}
+
+      {result && total === 0 && (
+        <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-950/40 border border-emerald-900/50 px-3 py-2 rounded-lg">
+          <CheckCircle2 className="size-3.5" /> No violations — all LINKS Sri Lanka data is clean.
+        </div>
+      )}
+
+      {/* Container conflicts */}
+      {(result?.containerConflicts.length ?? 0) > 0 && (
+        <div>
+          <p className="text-[11px] font-semibold text-neutral-500 uppercase tracking-widest mb-2">
+            Spare/Frame Container Conflicts ({result!.containerConflicts.length})
+          </p>
+          <div className="space-y-1.5 max-h-56 overflow-y-auto">
+            {result!.containerConflicts.map((c, i) => (
+              <div key={i} className="rounded-lg border border-red-900/40 bg-red-950/30 px-3 py-2 text-xs">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="size-3.5 text-red-400 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <a href={`/bajaj/work-orders/${c.woId}`}
+                        className="font-medium text-red-300 hover:text-red-200 hover:underline transition-colors">
+                        WO {c.woA}
+                      </a>
+                      <span className="text-red-600">↔</span>
+                      <span className="font-medium text-red-300">WO {c.woB}</span>
+                    </div>
+                    <p className="text-red-500 mt-0.5 truncate">
+                      Container: {c.containers.join(", ")} · {c.assyA} vs {c.assyB}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Vessel violations — expandable */}
+      {(result?.vesselViolations.length ?? 0) > 0 && (
+        <div>
+          <p className="text-[11px] font-semibold text-neutral-500 uppercase tracking-widest mb-2">
+            Vessels Over 25 Containers ({result!.vesselViolations.length}) · click to expand
+          </p>
+          <div className="space-y-1.5">
+            {result!.vesselViolations.map((v, i) => (
+              <VesselViolationRow key={i} v={v} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Repair Modules ───────────────────────────────────────────────────────────
+const REPAIR_MODULES = [
+  { slug: "bangladesh", label: "Bangladesh",   country: "Bangladesh" },
+  { slug: "srilanka",   label: "Sri Lanka",    country: "Sri Lanka" },
+  { slug: "nigeria",    label: "Nigeria",      country: "Nigeria" },
+  { slug: "triumph",    label: "Triumph (UK)", country: "United Kingdom" },
+  { slug: "vipar",      label: "VIPAR",        country: "VIPAR" },
+];
+
+type RepairState = { status: "idle" | "running" | "done" | "error"; result?: string };
+
+function RepairModulesPanel() {
+  const [states,  setStates]  = useState<Record<string, RepairState>>(
+    Object.fromEntries(REPAIR_MODULES.map(m => [m.slug, { status: "idle" }]))
+  );
+  const [dryRun, setDryRun] = useState(true);
+
+  async function runRepair(slug: string) {
+    setStates(prev => ({ ...prev, [slug]: { status: "running" } }));
+    try {
+      const res  = await fetch("/api/bajaj/repair", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ moduleSlug: slug, dryRun }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Unknown error");
+      const msg = dryRun
+        ? `Dry run: ${json.wouldUpdateNullRows} null + ${json.wouldFixSpellingVariants} variants`
+        : `Updated ${json.updatedNullRows ?? 0} rows, fixed ${json.fixedVariants ?? 0} variants`;
+      setStates(prev => ({ ...prev, [slug]: { status: "done", result: msg } }));
+    } catch (e: unknown) {
+      setStates(prev => ({ ...prev, [slug]: { status: "error", result: e instanceof Error ? e.message : String(e) } }));
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-neutral-100">Country Repair</p>
+          <p className="text-xs text-neutral-500 mt-0.5">Fix NULL / misspelled country values per module</p>
+        </div>
+        <button onClick={() => setDryRun(d => !d)}
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${dryRun ? "bg-neutral-700" : "bg-amber-500"}`}>
+          <span className={`inline-block size-4 rounded-full bg-white shadow transition-transform ${dryRun ? "translate-x-1" : "translate-x-6"}`} />
+        </button>
+      </div>
+      <p className="text-xs text-neutral-500">{dryRun ? "Dry run mode — no writes" : "⚠ Live mode — will write to DB"}</p>
+      <div className="grid grid-cols-2 gap-3">
+        {REPAIR_MODULES.map(m => {
+          const st = states[m.slug];
+          return (
+            <div key={m.slug} className="rounded-lg border border-neutral-800 bg-neutral-900 p-3 space-y-2">
+              <div>
+                <p className="text-xs font-semibold text-neutral-200">{m.label}</p>
+                <p className="text-[10px] text-neutral-600">&quot;{m.country}&quot;</p>
+              </div>
+              {st.result && (
+                <p className={`text-[10px] rounded px-2 py-1 ${st.status === "error" ? "bg-red-950/40 text-red-400" : "bg-emerald-950/40 text-emerald-400"}`}>
+                  {st.result}
+                </p>
+              )}
+              <button onClick={() => runRepair(m.slug)} disabled={st.status === "running"}
+                className={`w-full flex items-center justify-center gap-1.5 py-1.5 rounded text-[11px] font-medium transition-all disabled:opacity-50 ${dryRun ? "bg-neutral-800 hover:bg-neutral-700 text-neutral-300" : "bg-amber-600 hover:bg-amber-500 text-white"}`}>
+                {st.status === "running" ? <><Loader2 className="size-3 animate-spin" />Running…</> : dryRun ? <><RefreshCw className="size-3" />Dry Run</> : <><Wrench className="size-3" />Run Repair</>}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Admin Panel ──────────────────────────────────────────────────────────────
 export function AdminPanel() {
   const [tab, setTab] = useState<"requests" | "columns" | "rules" | "audit" | "data">("requests");
@@ -628,7 +844,10 @@ export function AdminPanel() {
 
       {/* ── Data tab ─────────────────────────────────────────────── */}
       {tab === "data" && (
-        <div className="max-w-lg">
+        <div className="space-y-6 max-w-2xl">
+          <ViolationsAuditPanel />
+          <RepairModulesPanel />
+          <div className="max-w-lg">
           <div className="rounded-xl border border-red-900/50 bg-red-950/20 p-6">
             <div className="flex items-center gap-3 mb-3">
               <Trash2 className="size-5 text-red-400" />
@@ -664,6 +883,7 @@ export function AdminPanel() {
               {clearing ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
               {clearing ? "Clearing…" : "Clear All Data"}
             </button>
+          </div>
           </div>
         </div>
       )}

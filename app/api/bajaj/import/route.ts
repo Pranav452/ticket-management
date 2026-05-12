@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUserEmail } from "@/lib/bajaj/permissions";
+import { validateWorkOrderRules } from "@/lib/bajaj/validation";
 
 const HEADER_MAP: Record<string, string> = {
   "wo":             "wo",
@@ -133,19 +134,38 @@ export async function POST(req: NextRequest) {
       toInsert.push({ module_id: mod.id, module_slug: moduleSlug, data: record });
     }
 
+    // ── Validate business rules across all rows to insert ───────────────────
+    const violations: { wo: string; warnings: string[] }[] = [];
+    const clean: typeof toInsert = [];
+
+    for (const row of toInsert) {
+      const d = row.data as Record<string, unknown>;
+      const warnings = await validateWorkOrderRules(sb, [{
+        country:     d["country"]     ? String(d["country"])     : (defaultCountry ?? null),
+        containerno: d["containerno"] ? String(d["containerno"]) : null,
+        vslname:     d["vslname"]     ? String(d["vslname"])     : null,
+        assy_config: d["assy_config"] ? String(d["assy_config"]) : null,
+      }]);
+      if (warnings.length > 0) {
+        violations.push({ wo: String(d["wo"] ?? ""), warnings: warnings.map(w => w.message) });
+      } else {
+        clean.push(row);
+      }
+    }
+
     let addedCount   = 0;
     let skippedCount = 0;
 
-    if (toInsert.length > 0) {
+    if (clean.length > 0) {
       const { data: inserted, error } = await sb
         .from("bajaj_work_orders")
-        .insert(toInsert)
+        .insert(clean)
         .select("id");
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       addedCount   = inserted?.length ?? 0;
-      skippedCount = (sheet.rowCount - 1) - addedCount;
+      skippedCount = (sheet.rowCount - 1) - addedCount - violations.length;
     } else {
-      skippedCount = sheet.rowCount - 1;
+      skippedCount = sheet.rowCount - 1 - violations.length;
     }
 
     // Record import batch
@@ -159,7 +179,7 @@ export async function POST(req: NextRequest) {
       skipped_count: skippedCount,
     });
 
-    return NextResponse.json({ success: true, addedCount, skippedCount });
+    return NextResponse.json({ success: true, addedCount, skippedCount, violations });
   } catch (err) {
     console.error("[POST /api/bajaj/import]", err);
     return NextResponse.json({ error: "Import failed" }, { status: 500 });

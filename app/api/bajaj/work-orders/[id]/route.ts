@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkColumnAccess, getCurrentUserEmail, isAdmin } from "@/lib/bajaj/permissions";
+import { validateWorkOrderRules } from "@/lib/bajaj/validation";
 
 export async function GET(
   _req: NextRequest,
@@ -83,6 +84,43 @@ export async function PATCH(
         if ("status_id" in body && body.status_id) {
           const perm = await checkColumnAccess("can_move", moduleSlug, body.status_id);
           if (!perm.allowed) return NextResponse.json({ error: perm.reason ?? "Cannot move to target column" }, { status: 403 });
+        }
+      }
+    }
+
+    // ── Business rule validation (soft block — bypass with force=true) ──────
+    if (body.data && Object.keys(body.data).length > 0) {
+      const force = (body as Record<string, unknown>).force === true;
+      if (!force) {
+        const newData = body.data as Record<string, unknown>;
+        const containerno = String(newData["containerno"] ?? newData["container_no"] ?? "");
+        const vslname     = String(newData["vslname"]     ?? "");
+        const assy_config = String(newData["assy_config"] ?? "");
+
+        if (containerno || vslname) {
+          // Resolve country from incoming data OR existing WO record
+          let country = String(newData["country"] ?? "");
+          if (!country) {
+            const { data: existing } = await sb
+              .from("bajaj_work_orders")
+              .select("data, module_slug")
+              .eq("id", id)
+              .single();
+            country = String((existing?.data as Record<string, unknown>)?.["country"] ?? "");
+            // Fallback: if module_slug is srilanka, treat as Sri Lanka
+            if (!country && existing?.module_slug === "srilanka") country = "Sri Lanka";
+          }
+
+          const warnings = await validateWorkOrderRules(sb, [{
+            country:    country || null,
+            containerno: containerno || null,
+            vslname:     vslname     || null,
+            assy_config: assy_config || null,
+            excludeId:   id,
+          }]);
+          if (warnings.length > 0) {
+            return NextResponse.json({ warnings, requiresForce: true }, { status: 409 });
+          }
         }
       }
     }
