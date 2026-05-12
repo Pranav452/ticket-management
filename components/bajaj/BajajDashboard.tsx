@@ -2,216 +2,394 @@
 
 import React, { useState } from "react";
 import {
-  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip,
-  LineChart, Line, CartesianGrid, ResponsiveContainer, Legend,
+  AreaChart, Area,
+  PieChart, Pie, Cell,
+  BarChart, Bar,
+  XAxis, YAxis, Tooltip,
+  CartesianGrid, ResponsiveContainer,
 } from "recharts";
-import { Download, RefreshCw } from "lucide-react";
+import {
+  RefreshCw, Download, TrendingUp, Package, FileText,
+  Clock, AlertTriangle, Ship, Globe, ChevronRight,
+} from "lucide-react";
 import { useBajajAnalytics } from "@/lib/queries/bajaj";
+import { cn } from "@/lib/utils";
 
-const MODULE_SLUGS = [
-  { slug: "", name: "All Modules" },
-  { slug: "vipar", name: "Vipar" },
-  { slug: "srilanka", name: "Sri Lanka" },
-  { slug: "nigeria", name: "Nigeria" },
+/* ─── module filter ──────────────────────────────────────────── */
+const MODULES = [
+  { slug: "",           name: "All Modules" },
+  { slug: "vipar",      name: "Vipar" },
+  { slug: "srilanka",   name: "Sri Lanka" },
+  { slug: "nigeria",    name: "Nigeria" },
   { slug: "bangladesh", name: "Bangladesh" },
-  { slug: "triumph", name: "Triumph" },
+  { slug: "triumph",    name: "Triumph" },
 ];
 
-function KpiCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
+/* ─── palette ────────────────────────────────────────────────── */
+const AMBER  = "#F59E0B";
+const GRID   = "#F3F4F6";
+const AXIS   = { fill: "#9CA3AF", fontSize: 11 };
+const TT     = {
+  contentStyle: { background: "#fff", border: "1px solid #E5E7EB", borderRadius: 10, boxShadow: "0 4px 12px rgba(0,0,0,.06)" },
+  labelStyle:   { color: "#111827", fontWeight: 600, fontSize: 12 },
+  itemStyle:    { color: "#6B7280", fontSize: 12 },
+};
+
+/* ─── reusable primitives ────────────────────────────────────── */
+function Card({ className, children }: { className?: string; children: React.ReactNode }) {
   return (
-    <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-5 py-4">
-      <p className="text-xs text-neutral-500 uppercase tracking-wide mb-1">{label}</p>
-      <p className="text-3xl font-bold text-neutral-100">{value}</p>
-      {sub && <p className="text-xs text-neutral-600 mt-1">{sub}</p>}
+    <div className={cn("rounded-2xl border shadow-sm dark:border-white/[0.06] dark:bg-[#0d0d0d]", className)}
+      style={{ background: "var(--card-bg, white)" }}>
+      {children}
     </div>
   );
 }
 
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <p className="text-[11px] font-semibold text-gray-400 dark:text-white/40 uppercase tracking-widest mb-4">{children}</p>;
+}
+
+interface KpiProps {
+  icon: React.ReactNode;
+  label: string;
+  value: string | number;
+  sub?: string;
+  accent?: string;
+}
+function KpiCard({ icon, label, value, sub, accent = AMBER }: KpiProps) {
+  return (
+    <Card className="px-5 py-5 flex items-start gap-4">
+      <div className="rounded-xl p-2.5 flex-shrink-0" style={{ background: `${accent}18` }}>
+        <div style={{ color: accent }} className="size-5">{icon}</div>
+      </div>
+      <div className="min-w-0">
+        <p className="text-[11px] text-gray-400 dark:text-white/40 font-medium leading-none mb-1.5">{label}</p>
+        <p className="text-[26px] font-semibold text-gray-900 dark:text-white leading-none tabular-nums">{value}</p>
+        {sub && <p className="text-[11px] text-gray-400 dark:text-white/30 mt-1.5 leading-none">{sub}</p>}
+      </div>
+    </Card>
+  );
+}
+
+/* ─── custom tooltip ─────────────────────────────────────────── */
+function PieTooltip({ active, payload }: { active?: boolean; payload?: { name: string; value: number }[] }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-white dark:bg-[#0d0d0d] border border-gray-100 dark:border-white/6 rounded-xl px-3 py-2 shadow-lg text-xs">
+      <p className="font-semibold text-gray-800 dark:text-white/90">{payload[0].name}</p>
+      <p className="text-gray-500 dark:text-white/50 tabular-nums">{payload[0].value} work orders</p>
+    </div>
+  );
+}
+
+/* ─── main component ─────────────────────────────────────────── */
 export function BajajDashboard() {
-  const [selectedModule, setSelectedModule] = useState("");
-  const { data, isLoading, refetch } = useBajajAnalytics(selectedModule || undefined);
+  const [mod, setMod] = useState("");
+  const { data, isLoading, isError, error, refetch } = useBajajAnalytics(mod || undefined);
 
-  const totalWOs = data?.totalWorkOrders ?? 0;
-  const completedCount = data?.byStatus.find((s) =>
-    s.statusName.toLowerCase().includes("complet") || s.colorHex === "99CC00"
-  )?.count ?? 0;
-  const criticalCount = data?.byStatus.find((s) =>
-    s.statusName.toLowerCase().includes("critical") || s.statusName.toLowerCase().includes("issue") || s.colorHex === "FF0000"
-  )?.count ?? 0;
-  const inProgressCount = data?.byStatus.find((s) =>
-    s.colorHex === "FFFF00" || s.statusName.toLowerCase().includes("pending") || s.statusName.toLowerCase().includes("progress")
-  )?.count ?? 0;
+  /* derived counts */
+  const totalWOs   = data?.totalWorkOrders ?? 0;
+  const completed  = data?.byStatus.find(s => /complet/i.test(s.statusName))?.count ?? 0;
+  const critical   = data?.byStatus.find(s => /critical|issue/i.test(s.statusName))?.count ?? 0;
+  const inProgress = (data?.byStatus ?? [])
+    .filter(s => /pending|progress|booking|planned/i.test(s.statusName))
+    .reduce((acc, s) => acc + s.count, 0);
 
-  // Pie colors derived from status color_hex
-  const PIE_COLORS = data?.byStatus.map((s) => `#${s.colorHex}`) ?? [];
+  const pieColors = (data?.byStatus ?? []).map(s => `#${s.colorHex.replace(/^#/, "")}`);
 
-  function downloadCSV() {
+  /* CSV export */
+  function exportCSV() {
     if (!data) return;
-    const rows = [
-      ["Module", "Total Work Orders"],
-      ...data.byModule.map((m) => [m.moduleName, m.count]),
-    ];
-    const csv = rows.map((r) => r.join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "bajaj_analytics.csv";
+    const rows = [["Module","Work Orders"], ...data.byModule.map(m => [m.moduleName, m.count])];
+    const csv  = rows.map(r => r.join(",")).join("\n");
+    const a    = Object.assign(document.createElement("a"), {
+      href: URL.createObjectURL(new Blob([csv], { type: "text/csv" })),
+      download: "bajaj_analytics.csv",
+    });
     a.click();
-    URL.revokeObjectURL(url);
   }
 
   return (
-    <div className="min-h-full bg-neutral-950 px-8 py-8 overflow-y-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+    <div className="flex h-full flex-col overflow-hidden bg-gray-50 dark:bg-[#111]" style={{ background: "var(--main-bg, #F7F7F8)" }}>
+
+      {/* ── top bar ─────────────────────────────────────────── */}
+      <div className="bajaj-topbar flex items-center justify-between gap-4 px-6 py-4 border-b border-gray-200 dark:border-white/10 flex-shrink-0 dark:bg-[#0d0d0d]" style={{ background: "var(--card-bg, white)", borderColor: "var(--border-color)" }}>
         <div>
-          <h1 className="text-2xl font-bold text-neutral-100">Analytics Dashboard</h1>
-          <p className="text-sm text-neutral-500 mt-1">Bajaj Auto Shipment — Work Order Overview</p>
+          <h1 className="text-[15px] font-semibold text-gray-900 dark:text-white leading-none tracking-tight">Analytics</h1>
+          <p className="text-[11px] text-gray-400 dark:text-white/40 mt-0.5 leading-none">Bajaj Auto · Shipment Overview</p>
         </div>
+
         <div className="flex items-center gap-2">
-          <select
-            value={selectedModule}
-            onChange={(e) => setSelectedModule(e.target.value)}
-            className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-amber-600"
-          >
-            {MODULE_SLUGS.map((m) => (
-              <option key={m.slug} value={m.slug}>{m.name}</option>
-            ))}
-          </select>
+          {/* module selector */}
+          <div className="relative">
+            <select
+              value={mod}
+              onChange={e => setMod(e.target.value)}
+              className="appearance-none bg-white dark:bg-[#1a1a1a] dark:text-white/80 dark:border-white/10 border border-gray-200 rounded-xl pl-3 pr-8 py-1.5 text-[13px] text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400 transition-all cursor-pointer"
+            >
+              {MODULES.map(m => <option key={m.slug} value={m.slug}>{m.name}</option>)}
+            </select>
+            <ChevronRight className="size-3 text-gray-400 dark:text-white/40 absolute right-2.5 top-1/2 -translate-y-1/2 rotate-90 pointer-events-none" />
+          </div>
+
           <button
             onClick={() => refetch()}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-neutral-800 text-sm text-neutral-400 hover:text-neutral-200 border border-neutral-700 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-xl text-[13px] text-gray-500 dark:text-white/50 hover:text-gray-800 dark:hover:text-white/80 hover:border-gray-300 dark:hover:border-white/20 transition-all"
           >
-            <RefreshCw className="size-4" />
+            <RefreshCw className="size-3.5" />
             Refresh
           </button>
+
           <button
-            onClick={downloadCSV}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-600 text-sm text-white hover:bg-amber-500 transition-colors"
+            onClick={exportCSV}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-[13px] font-medium transition-all shadow-sm"
           >
-            <Download className="size-4" />
-            Export CSV
+            <Download className="size-3.5" />
+            Export
           </button>
         </div>
       </div>
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-32 text-neutral-600">Loading analytics…</div>
-      ) : (
-        <>
-          {/* KPI Row */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-            <KpiCard label="Total Work Orders" value={totalWOs} />
-            <KpiCard label="Completed" value={completedCount} sub={totalWOs ? `${Math.round((completedCount / totalWOs) * 100)}% of total` : ""} />
-            <KpiCard label="In Progress / Pending" value={inProgressCount} />
-            <KpiCard label="Critical / Issues" value={criticalCount} />
+      {/* ── scrollable body ──────────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+        {isLoading ? (
+          <div className="flex items-center justify-center h-64 text-gray-400 dark:text-white/40 text-sm">
+            <RefreshCw className="size-4 mr-2 animate-spin" />
+            Loading analytics…
           </div>
+        ) : isError ? (
+          <div className="flex flex-col items-center justify-center h-64 gap-3">
+            <AlertTriangle className="size-8 text-red-400" />
+            <p className="text-sm font-medium text-gray-700 dark:text-white/80">Failed to load analytics</p>
+            <p className="text-xs text-gray-400 dark:text-white/40 max-w-sm text-center">{String((error as Error)?.message ?? "Unknown error")}</p>
+            <button onClick={() => refetch()} className="mt-2 px-4 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 transition-colors">
+              Retry
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* ── KPI row 1 ────────────────────────────────── */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <KpiCard
+                icon={<TrendingUp className="size-full" />}
+                label="Total Work Orders"
+                value={totalWOs.toLocaleString()}
+              />
+              <KpiCard
+                icon={<Package className="size-full" />}
+                label="Total Containers"
+                value={(data?.totalContainers ?? 0).toLocaleString()}
+                accent="#3B82F6"
+              />
+              <KpiCard
+                icon={<FileText className="size-full" />}
+                label="Total BLs"
+                value={(data?.totalBLs ?? 0).toLocaleString()}
+                accent="#10B981"
+              />
+              <KpiCard
+                icon={<Clock className="size-full" />}
+                label="BL Pending after ETD"
+                value={data?.blPendingAfterETD ?? 0}
+                sub="Shipped but no BL number"
+                accent="#EF4444"
+              />
+            </div>
 
-          {/* Charts grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            {/* Status distribution — Pie */}
-            <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6">
-              <h3 className="text-sm font-semibold text-neutral-300 mb-4">Status Distribution</h3>
-              {data?.byStatus && data.byStatus.length > 0 ? (
-                <ResponsiveContainer width="100%" height={240}>
-                  <PieChart>
-                    <Pie
-                      data={data.byStatus}
-                      dataKey="count"
-                      nameKey="statusName"
-                      isAnimationActive={false}
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={90}
-                      label={false}
-                      labelLine={false}
-                    >
-                      {data.byStatus.map((entry, index) => (
-                        <Cell key={entry.statusName} fill={PIE_COLORS[index] ?? "#6b7280"} />
+            {/* ── KPI row 2 ────────────────────────────────── */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <KpiCard
+                icon={<Globe className="size-full" />}
+                label="Completed"
+                value={completed.toLocaleString()}
+                sub={totalWOs ? `${Math.round((completed / totalWOs) * 100)}% of total` : ""}
+                accent="#10B981"
+              />
+              <KpiCard
+                icon={<TrendingUp className="size-full" />}
+                label="In Progress"
+                value={inProgress.toLocaleString()}
+                accent="#3B82F6"
+              />
+              <KpiCard
+                icon={<AlertTriangle className="size-full" />}
+                label="Critical / Issues"
+                value={critical.toLocaleString()}
+                accent="#EF4444"
+              />
+              <KpiCard
+                icon={<Ship className="size-full" />}
+                label="Vessels Over 25 Containers"
+                value={data?.vesselsOverLimit.length ?? 0}
+                sub="Exceeding capacity limit"
+                accent="#8B5CF6"
+              />
+            </div>
+
+            {/* ── charts row 1 ─────────────────────────────── */}
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+              {/* Status pie — 2 cols */}
+              <Card className="lg:col-span-2 p-6">
+                <SectionTitle>Status Distribution</SectionTitle>
+                {data?.byStatus?.length ? (
+                  <>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <PieChart>
+                        <Pie
+                          data={data.byStatus}
+                          dataKey="count"
+                          nameKey="statusName"
+                          cx="50%" cy="50%"
+                          innerRadius={55}
+                          outerRadius={90}
+                          isAnimationActive={false}
+                          strokeWidth={0}
+                        >
+                          {data.byStatus.map((entry, i) => (
+                            <Cell key={entry.statusName} fill={pieColors[i] ?? "#6b7280"} />
+                          ))}
+                        </Pie>
+                        <Tooltip content={<PieTooltip />} />
+                      </PieChart>
+                    </ResponsiveContainer>
+
+                    {/* donut centre label */}
+                    <div className="mt-4 space-y-2">
+                      {data.byStatus.map((s, i) => (
+                        <div key={s.statusName} className="flex items-center gap-2">
+                          <span className="size-2 rounded-full flex-shrink-0" style={{ backgroundColor: pieColors[i] ?? "#6b7280" }} />
+                          <span className="text-[12px] text-gray-600 dark:text-white/70 truncate flex-1">{s.statusName}</span>
+                          <span className="text-[12px] text-gray-400 dark:text-white/40 tabular-nums font-medium">{s.count}</span>
+                        </div>
                       ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{ background: "#171717", border: "1px solid #404040", borderRadius: 8 }}
-                      labelStyle={{ color: "#e5e5e5" }}
-                      itemStyle={{ color: "#a3a3a3" }}
-                    />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <p className="text-sm text-neutral-600 text-center py-16">No data yet.</p>
-              )}
-            </div>
-
-            {/* Work orders per module — Bar */}
-            <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6">
-              <h3 className="text-sm font-semibold text-neutral-300 mb-4">Work Orders by Module</h3>
-              {data?.byModule && data.byModule.some((m) => m.count > 0) ? (
-                <ResponsiveContainer width="100%" height={240}>
-                  <BarChart data={data.byModule} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
-                    <XAxis dataKey="moduleName" tick={{ fill: "#737373", fontSize: 11 }} />
-                    <YAxis tick={{ fill: "#737373", fontSize: 11 }} />
-                    <Tooltip
-                      contentStyle={{ background: "#171717", border: "1px solid #404040", borderRadius: 8 }}
-                      labelStyle={{ color: "#e5e5e5" }}
-                      itemStyle={{ color: "#a3a3a3" }}
-                    />
-                    <Bar dataKey="count" fill="#d97706" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <p className="text-sm text-neutral-600 text-center py-16">No data yet.</p>
-              )}
-            </div>
-          </div>
-
-          {/* Import timeline — Line */}
-          {data?.importTimeline && data.importTimeline.length > 1 && (
-            <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 mb-8">
-              <h3 className="text-sm font-semibold text-neutral-300 mb-4">Import Timeline (rows added per batch)</h3>
-              <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={data.importTimeline} margin={{ top: 0, right: 8, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
-                  <XAxis dataKey="date" tick={{ fill: "#737373", fontSize: 11 }} />
-                  <YAxis tick={{ fill: "#737373", fontSize: 11 }} />
-                  <Tooltip
-                    contentStyle={{ background: "#171717", border: "1px solid #404040", borderRadius: 8 }}
-                    labelStyle={{ color: "#e5e5e5" }}
-                    itemStyle={{ color: "#a3a3a3" }}
-                  />
-                  <Line type="monotone" dataKey="addedCount" stroke="#d97706" strokeWidth={2} dot={{ fill: "#d97706", strokeWidth: 0 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-
-          {/* Per-module progress bars */}
-          <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6">
-            <h3 className="text-sm font-semibold text-neutral-300 mb-4">Completion Progress by Module</h3>
-            <div className="space-y-4">
-              {data?.byModule.map((m) => {
-                const pct = totalWOs > 0 ? Math.round((m.count / totalWOs) * 100) : 0;
-                return (
-                  <div key={m.slug}>
-                    <div className="flex justify-between text-sm mb-1.5">
-                      <span className="text-neutral-400">{m.moduleName}</span>
-                      <span className="text-neutral-500">{m.count} WOs ({pct}%)</span>
                     </div>
-                    <div className="h-2 bg-neutral-800 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-amber-600 rounded-full transition-all duration-500"
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-gray-300 dark:text-white/25 text-center py-16">No data yet.</p>
+                )}
+              </Card>
+
+              {/* Work orders by module — 3 cols */}
+              <Card className="lg:col-span-3 p-6">
+                <SectionTitle>Work Orders by Module</SectionTitle>
+                {data?.byModule?.some(m => m.count > 0) ? (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <BarChart data={data.byModule} margin={{ top: 0, right: 0, left: -24, bottom: 0 }} barCategoryGap="30%">
+                      <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
+                      <XAxis dataKey="moduleName" tick={AXIS} axisLine={false} tickLine={false} />
+                      <YAxis tick={AXIS} axisLine={false} tickLine={false} />
+                      <Tooltip {...TT} cursor={{ fill: "#F9FAFB" }} />
+                      <Bar dataKey="count" fill={AMBER} radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="text-sm text-gray-300 dark:text-white/25 text-center py-16">No data yet.</p>
+                )}
+
+                {/* Module progress bars */}
+                <div className="mt-5 space-y-3">
+                  {data?.byModule.map(m => {
+                    const pct = totalWOs > 0 ? Math.round((m.count / totalWOs) * 100) : 0;
+                    return (
+                      <div key={m.slug}>
+                        <div className="flex items-center justify-between text-[12px] mb-1">
+                          <span className="text-gray-600 dark:text-white/70 font-medium">{m.moduleName}</span>
+                          <span className="text-gray-400 dark:text-white/40 tabular-nums">{m.count} · {pct}%</span>
+                        </div>
+                        <div className="h-1.5 bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, background: AMBER }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            </div>
+
+            {/* ── Import timeline (area) ────────────────────── */}
+            {(data?.importTimeline?.length ?? 0) > 1 && (
+              <Card className="p-6">
+                <SectionTitle>Import Timeline · Work Orders Added per Month</SectionTitle>
+                <ResponsiveContainer width="100%" height={180}>
+                  <AreaChart data={data!.importTimeline} margin={{ top: 0, right: 8, left: -24, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="amberGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%"  stopColor={AMBER} stopOpacity={0.18} />
+                        <stop offset="95%" stopColor={AMBER} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
+                    <XAxis dataKey="date" tick={AXIS} axisLine={false} tickLine={false} />
+                    <YAxis tick={AXIS} axisLine={false} tickLine={false} />
+                    <Tooltip {...TT} />
+                    <Area
+                      type="monotone" dataKey="addedCount"
+                      stroke={AMBER} strokeWidth={2}
+                      fill="url(#amberGrad)"
+                      dot={{ fill: AMBER, r: 3, strokeWidth: 0 }}
+                      activeDot={{ r: 5, fill: AMBER, strokeWidth: 0 }}
+                      isAnimationActive={false}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </Card>
+            )}
+
+            {/* ── shipping line + vessels ───────────────────── */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Containers by shipping line */}
+              <Card className="p-6">
+                <SectionTitle>Containers by Shipping Line</SectionTitle>
+                {data?.containersByLine?.length ? (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <BarChart
+                      data={data.containersByLine}
+                      layout="vertical"
+                      margin={{ top: 0, right: 8, left: 8, bottom: 0 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke={GRID} horizontal={false} />
+                      <XAxis type="number" tick={AXIS} axisLine={false} tickLine={false} />
+                      <YAxis type="category" dataKey="lineName" tick={AXIS} axisLine={false} tickLine={false} width={80} />
+                      <Tooltip {...TT} cursor={{ fill: "#F9FAFB" }} />
+                      <Bar dataKey="containerCount" fill="#3B82F6" radius={[0, 6, 6, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="text-sm text-gray-300 dark:text-white/25 text-center py-16">No container data yet.</p>
+                )}
+              </Card>
+
+              {/* Vessels over limit + top vessels */}
+              <Card className="p-6">
+                <SectionTitle>Top Vessels · Container Load</SectionTitle>
+                {data?.containersByVessel?.filter(v => v.vesselName)?.length ? (
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {data.containersByVessel.filter(v => v.vesselName).slice(0, 12).map(v => {
+                      const isOver = v.containerCount > 25;
+                      return (
+                        <div key={v.vesselName} className={cn(
+                          "flex items-center justify-between px-3 py-2 rounded-xl text-[12px] transition-colors",
+                          isOver ? "bg-red-50 text-red-600" : "bg-gray-50 dark:bg-white/5 text-gray-700 dark:text-white/80 hover:bg-gray-100 dark:hover:bg-white/8"
+                        )}>
+                          <div className="flex items-center gap-2 min-w-0">
+                            {isOver && <AlertTriangle className="size-3 flex-shrink-0 text-red-500" />}
+                            <span className="truncate font-medium">{v.vesselName}</span>
+                          </div>
+                          <span className="tabular-nums font-semibold flex-shrink-0 ml-4">
+                            {v.containerCount}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
+                ) : (
+                  <p className="text-sm text-gray-300 dark:text-white/25 text-center py-16">No vessel data yet.</p>
+                )}
+              </Card>
             </div>
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

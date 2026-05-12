@@ -2,201 +2,187 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Loader2, CheckCircle, Globe } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { Eye, EyeOff, Loader2, CheckCircle } from "lucide-react";
 
 export function SignupForm() {
-  const supabase = createClient();
-
   const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email,    setEmail]    = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
+  const [company,  setCompany]  = useState("");
+  const [error,    setError]    = useState<string | null>(null);
+  const [loading,  setLoading]  = useState(false);
+  const [success,  setSuccess]  = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-
-    if (password !== confirmPassword) {
-      setError("Passwords do not match");
+    if (!email || !fullName || !password) {
+      setError("Name, email, and password are required.");
       return;
     }
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters");
-      return;
-    }
-
     setLoading(true);
+    try {
+      const supabase = createClient();
+      const { error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { full_name: fullName },
+        },
+      });
 
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { full_name: fullName },
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
+      if (signUpError) {
+        setError(signUpError.message);
+        setLoading(false);
+        return;
+      }
 
-    setLoading(false);
+      // Create pending bajaj_users record
+      await fetch("/api/bajaj/users", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ email, full_name: fullName }),
+      });
 
-    if (error) {
-      setError(error.message);
-      return;
+      setSuccess(true);
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
     }
-
-    setSuccess(true);
   }
 
   if (success) {
     return (
-      <div className="w-full max-w-sm space-y-4 text-center">
-        <CheckCircle className="mx-auto size-12 text-emerald-400" />
-        <h2 className="text-xl font-semibold text-neutral-50">
-          Check your email
-        </h2>
-        <p className="text-sm text-neutral-400">
-          We sent a confirmation link to{" "}
-          <span className="text-neutral-200">{email}</span>. Click it to
-          activate your account.
-        </p>
-        <p className="text-xs text-neutral-500">
-          (If email confirmation is disabled in your setup, you can{" "}
-          <Link href="/login" className="text-violet-400 hover:underline">
-            sign in directly
+      <div className="min-h-dvh bg-neutral-950 flex items-center justify-center px-6">
+        <div className="w-full max-w-sm text-center space-y-5">
+          <CheckCircle className="mx-auto size-14 text-amber-500" />
+          <h2 className="text-2xl font-bold text-neutral-50">Request submitted!</h2>
+          <p className="text-sm text-neutral-400 leading-relaxed">
+            Your access request for{" "}
+            <span className="text-neutral-200 font-medium">{email}</span>{" "}
+            has been received. An admin will approve your account — you&apos;ll be notified once approved.
+          </p>
+          <Link
+            href="/login"
+            className="inline-block px-6 py-2.5 rounded-lg bg-amber-600 text-sm font-semibold text-white hover:bg-amber-500 transition-colors"
+          >
+            Back to sign in
           </Link>
-          .)
-        </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="w-full max-w-sm space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-neutral-50">
-          Create account
-        </h1>
-        <p className="mt-1 text-sm text-neutral-400">
-          Join the ticket management system
-        </p>
-      </div>
+    <div className="min-h-dvh bg-neutral-950 flex items-center justify-center px-6 py-12">
+      <div className="w-full max-w-sm space-y-7">
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="space-y-1">
-          <label
-            htmlFor="fullName"
-            className="block text-sm text-neutral-300"
-          >
-            Full name
-          </label>
-          <input
-            id="fullName"
-            type="text"
-            required
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            className="w-full rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-50 placeholder-neutral-500 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-            placeholder="Manilal Patel"
-          />
+        {/* Header */}
+        <div className="flex items-center gap-2.5">
+          <div className="flex size-8 items-center justify-center rounded-md bg-amber-600">
+            <Globe className="size-4 text-white" />
+          </div>
+          <p className="text-sm font-bold text-neutral-100">Bajaj Logistics · Links</p>
         </div>
 
-        <div className="space-y-1">
-          <label htmlFor="email" className="block text-sm text-neutral-300">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            required
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-50 placeholder-neutral-500 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-            placeholder="you@example.com"
-          />
+        <div>
+          <h1 className="text-2xl font-bold text-neutral-50 tracking-tight">Request Access</h1>
+          <p className="mt-1 text-sm text-neutral-500">
+            Submit your details and an admin will approve your account.
+          </p>
         </div>
 
-        <div className="space-y-1">
-          <label
-            htmlFor="password"
-            className="block text-sm text-neutral-300"
-          >
-            Password
-          </label>
-          <div className="relative">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <label htmlFor="fullName" className="block text-[13px] font-medium text-neutral-400">
+              Full name
+            </label>
+            <input
+              id="fullName"
+              type="text"
+              required
+              autoFocus
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3.5 py-2.5 text-sm text-neutral-50 placeholder-neutral-600 focus:border-amber-600 focus:outline-none focus:ring-1 focus:ring-amber-600 transition-colors"
+              placeholder="Yogesh Pednekar"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="email" className="block text-[13px] font-medium text-neutral-400">
+              Work email
+            </label>
+            <input
+              id="email"
+              type="email"
+              required
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3.5 py-2.5 text-sm text-neutral-50 placeholder-neutral-600 focus:border-amber-600 focus:outline-none focus:ring-1 focus:ring-amber-600 transition-colors"
+              placeholder="you@linksin.com"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="password" className="block text-[13px] font-medium text-neutral-400">
+              Password
+            </label>
             <input
               id="password"
-              type={showPassword ? "text" : "password"}
+              type="password"
               required
               autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 pr-10 text-sm text-neutral-50 placeholder-neutral-500 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-              placeholder="Min. 8 characters"
+              className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3.5 py-2.5 text-sm text-neutral-50 placeholder-neutral-600 focus:border-amber-600 focus:outline-none focus:ring-1 focus:ring-amber-600 transition-colors"
+              placeholder="••••••••"
             />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-200"
-              aria-label={showPassword ? "Hide password" : "Show password"}
-            >
-              {showPassword ? (
-                <EyeOff className="size-4" />
-              ) : (
-                <Eye className="size-4" />
-              )}
-            </button>
           </div>
-        </div>
 
-        <div className="space-y-1">
-          <label
-            htmlFor="confirmPassword"
-            className="block text-sm text-neutral-300"
+          <div className="space-y-1.5">
+            <label htmlFor="company" className="block text-[13px] font-medium text-neutral-400">
+              Company / Role <span className="text-neutral-600">(optional)</span>
+            </label>
+            <input
+              id="company"
+              type="text"
+              value={company}
+              onChange={(e) => setCompany(e.target.value)}
+              className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3.5 py-2.5 text-sm text-neutral-50 placeholder-neutral-600 focus:border-amber-600 focus:outline-none focus:ring-1 focus:ring-amber-600 transition-colors"
+              placeholder="Links Bom · Operations"
+            />
+          </div>
+
+          {error && (
+            <div className="rounded-lg bg-red-950/40 border border-red-800/50 px-3.5 py-2.5 text-sm text-red-400">
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-500 disabled:opacity-60 disabled:cursor-not-allowed transition-colors shadow-md shadow-amber-900/30"
           >
-            Confirm password
-          </label>
-          <input
-            id="confirmPassword"
-            type="password"
-            required
-            autoComplete="new-password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            className="w-full rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-50 placeholder-neutral-500 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-            placeholder="Repeat password"
-          />
-        </div>
+            {loading && <Loader2 className="size-4 animate-spin" />}
+            {loading ? "Submitting…" : "Request Access"}
+          </button>
+        </form>
 
-        {error && (
-          <p className="rounded-md bg-red-900/30 border border-red-800 px-3 py-2 text-sm text-red-400">
-            {error}
-          </p>
-        )}
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="flex w-full items-center justify-center gap-2 rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-        >
-          {loading && <Loader2 className="size-4 animate-spin" />}
-          Create account
-        </button>
-      </form>
-
-      <p className="text-center text-sm text-neutral-400">
-        Already have an account?{" "}
-        <Link
-          href="/login"
-          className="text-violet-400 hover:text-violet-300 underline-offset-4 hover:underline"
-        >
-          Sign in
-        </Link>
-      </p>
+        <p className="text-center text-[13px] text-neutral-600">
+          Already have access?{" "}
+          <Link
+            href="/login"
+            className="text-amber-500 hover:text-amber-400 underline-offset-4 hover:underline transition-colors"
+          >
+            Sign in
+          </Link>
+        </p>
+      </div>
     </div>
   );
 }

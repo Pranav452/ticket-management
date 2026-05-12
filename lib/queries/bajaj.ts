@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { createClient } from "@/lib/supabase/client";
 import type {
   BajajModule,
   BajajStatus,
@@ -12,353 +11,396 @@ import type {
   BajajAuditLog,
   BajajAnalytics,
   WorkOrderFilters,
+  BajajReminder,
+  BajajRolePermission,
+  BajajUserRole,
   BajajColumnAssignment,
   BajajColumnRequest,
 } from "@/lib/types/bajaj";
 
-const supabase = createClient();
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
+  const res = await fetch(url, opts);
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`[${res.status}] ${text}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+function buildQS(params: Record<string, string | number | undefined | null>): string {
+  const sp = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v != null && v !== "") sp.set(k, String(v));
+  });
+  const s = sp.toString();
+  return s ? `?${s}` : "";
+}
 
 // ─── Modules ──────────────────────────────────────────────────────────────────
+
 export function useBajajModules() {
-  return useQuery({
-    queryKey: ["bajaj_modules"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("bajaj_modules")
-        .select("*")
-        .order("display_order");
-      if (error) throw error;
-      return data as BajajModule[];
+  return useQuery<BajajModule[]>({
+    queryKey: ["bajaj", "modules"],
+    queryFn:  () => apiFetch("/api/bajaj/modules"),
+    staleTime: 60_000,
+  });
+}
+
+// ─── Board Config ─────────────────────────────────────────────────────────────
+// Components call useBajajBoardConfig(moduleSlug) — we map slug → module_id
+// via a two-step fetch.
+
+export function useBajajBoardConfig(moduleSlug: string) {
+  return useQuery<BajajBoardConfig | null>({
+    queryKey: ["bajaj", "board-config", moduleSlug],
+    queryFn:  async () => {
+      // fetch all modules to resolve slug → id
+      const modules: BajajModule[] = await apiFetch("/api/bajaj/modules");
+      const mod = modules.find((m) => m.slug === moduleSlug);
+      if (!mod) return null;
+      return apiFetch<BajajBoardConfig>(
+        `/api/bajaj/board-config${buildQS({ module_id: mod.id })}`
+      );
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 60_000,
   });
 }
 
 // ─── Statuses ─────────────────────────────────────────────────────────────────
-export function useBajajStatuses(moduleSlug: string) {
-  return useQuery({
-    queryKey: ["bajaj_statuses", moduleSlug],
-    queryFn: async () => {
-      const { data: mod } = await supabase
-        .from("bajaj_modules")
-        .select("id")
-        .eq("slug", moduleSlug)
-        .single();
-      if (!mod) return [] as BajajStatus[];
+// Components pass module_id directly; also accept slug (for board client).
 
-      const { data, error } = await supabase
-        .from("bajaj_statuses")
-        .select("*")
-        .eq("module_id", mod.id)
-        .order("display_order");
-      if (error) throw error;
-      return data as BajajStatus[];
+export function useBajajStatuses(moduleIdOrSlug?: string) {
+  return useQuery<BajajStatus[]>({
+    queryKey: ["bajaj", "statuses", moduleIdOrSlug],
+    queryFn:  async () => {
+      if (!moduleIdOrSlug) return apiFetch("/api/bajaj/statuses");
+      // Try as module_id first (UUID pattern)
+      const isUUID = /^[0-9a-f-]{36}$/i.test(moduleIdOrSlug);
+      if (isUUID) {
+        return apiFetch(`/api/bajaj/statuses?module_id=${moduleIdOrSlug}`);
+      }
+      // It's a slug — resolve to id first
+      const modules: BajajModule[] = await apiFetch("/api/bajaj/modules");
+      const mod = modules.find((m) => m.slug === moduleIdOrSlug);
+      if (!mod) return [];
+      return apiFetch(`/api/bajaj/statuses?module_id=${mod.id}`);
     },
-    enabled: !!moduleSlug,
+    staleTime: 60_000,
   });
 }
 
-// ─── Board config ─────────────────────────────────────────────────────────────
-export function useBajajBoardConfig(moduleSlug: string) {
-  return useQuery({
-    queryKey: ["bajaj_board_config", moduleSlug],
-    queryFn: async () => {
-      const { data: mod } = await supabase
-        .from("bajaj_modules")
-        .select("id")
-        .eq("slug", moduleSlug)
-        .single();
-      if (!mod) return null;
+// ─── Work Orders ──────────────────────────────────────────────────────────────
+// Return flat array (components don't handle pagination object).
 
-      const { data, error } = await supabase
-        .from("bajaj_board_config")
-        .select("*")
-        .eq("module_id", mod.id)
-        .maybeSingle();
-      if (error) throw error;
-      return data as BajajBoardConfig | null;
-    },
-    enabled: !!moduleSlug,
-  });
-}
-
-// ─── Work orders ──────────────────────────────────────────────────────────────
 export function useWorkOrders(moduleSlug: string, filters?: WorkOrderFilters) {
-  return useQuery({
-    queryKey: ["bajaj_work_orders", moduleSlug, filters],
-    queryFn: async () => {
-      const { data: mod } = await supabase
-        .from("bajaj_modules")
-        .select("id")
-        .eq("slug", moduleSlug)
-        .single();
-      if (!mod) return [] as BajajWorkOrder[];
-
-      let query = supabase
-        .from("bajaj_work_orders")
-        .select(
-          `*, status:bajaj_statuses(*), assignee:profiles!bajaj_work_orders_assigned_to_fkey(id, full_name, email, avatar_url)`
-        )
-        .eq("module_id", mod.id)
-        .order("column_order", { ascending: true });
-
-      if (filters?.statusId) query = query.eq("status_id", filters.statusId);
-      if (filters?.assignedTo) query = query.eq("assigned_to", filters.assignedTo);
-      if (filters?.dateFrom) query = query.gte("created_at", filters.dateFrom);
-      if (filters?.dateTo) query = query.lte("created_at", filters.dateTo);
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data as BajajWorkOrder[];
+  return useQuery<BajajWorkOrder[]>({
+    queryKey: ["bajaj", "work-orders", moduleSlug, filters],
+    queryFn:  async () => {
+      const result: { data: BajajWorkOrder[] } = await apiFetch(
+        `/api/bajaj/work-orders${buildQS({
+          module:     moduleSlug,
+          statusId:   filters?.statusId,
+          assignedTo: filters?.assignedTo,
+          search:     filters?.search,
+          dateFrom:   filters?.dateFrom,
+          dateTo:     filters?.dateTo,
+          pageSize:   200, // load up to 200 per board view
+        })}`
+      );
+      return result.data;
     },
-    enabled: !!moduleSlug,
+    staleTime: 30_000,
   });
 }
 
-export function useWorkOrder(id: string) {
-  return useQuery({
-    queryKey: ["bajaj_work_order", id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("bajaj_work_orders")
-        .select(
-          `*, status:bajaj_statuses(*), assignee:profiles!bajaj_work_orders_assigned_to_fkey(id, full_name, email, avatar_url)`
-        )
-        .eq("id", id)
-        .single();
-      if (error) throw error;
-      return data as BajajWorkOrder;
-    },
-    enabled: !!id,
+export function useWorkOrder(id: string | null) {
+  return useQuery<BajajWorkOrder>({
+    queryKey: ["bajaj", "work-order", id],
+    enabled:  !!id,
+    queryFn:  () => apiFetch(`/api/bajaj/work-orders/${id}`),
   });
 }
 
+// Components call: mutate({ id, updates: { status_id, column_order, ... } })
 export function useUpdateWorkOrder() {
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({
-      id,
-      updates,
-    }: {
-      id: string;
-      updates: Partial<BajajWorkOrder>;
-    }) => {
-      const { data, error } = await supabase
-        .from("bajaj_work_orders")
-        .update(updates)
-        .eq("id", id)
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
+    mutationFn: ({ id, updates }: { id: string; updates: Partial<BajajWorkOrder> & { status_id?: string | null; column_order?: number; assigned_to?: string | null } }) =>
+      apiFetch(`/api/bajaj/work-orders/${id}`, {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(updates),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["bajaj", "work-orders"] });
+      qc.invalidateQueries({ queryKey: ["bajaj", "work-order"] });
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["bajaj_work_orders"] });
-      queryClient.invalidateQueries({ queryKey: ["bajaj_work_order", data.id] });
+  });
+}
+
+// Components call: mutate({ moduleSlug, data: {...} })
+export function useCreateWorkOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: Partial<BajajWorkOrder> & { moduleSlug?: string }) =>
+      apiFetch("/api/bajaj/work-orders", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["bajaj", "work-orders"] });
     },
   });
 }
 
 // ─── Comments ─────────────────────────────────────────────────────────────────
-export function useBajajComments(workOrderId: string) {
-  return useQuery({
-    queryKey: ["bajaj_comments", workOrderId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("bajaj_comments")
-        .select(`*, author:profiles!bajaj_comments_author_id_fkey(id, full_name, email, avatar_url)`)
-        .eq("work_order_id", workOrderId)
-        .order("created_at", { ascending: true });
-      if (error) throw error;
-      return data as BajajComment[];
-    },
-    enabled: !!workOrderId,
+// Components pass workOrderId (camelCase string)
+
+export function useBajajComments(workOrderId: string | null) {
+  return useQuery<BajajComment[]>({
+    queryKey: ["bajaj", "comments", workOrderId],
+    enabled:  !!workOrderId,
+    queryFn:  () => apiFetch(`/api/bajaj/comments?work_order_id=${workOrderId}`),
   });
 }
 
+// Components call: mutate({ workOrderId, authorId, authorEmail, authorName, content })
+// authorId is treated as email (profile id = email in this system)
 export function useAddBajajComment() {
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({
-      workOrderId,
-      authorId,
-      content,
-    }: {
-      workOrderId: string;
-      authorId: string;
-      content: string;
-    }) => {
-      const { data, error } = await supabase
-        .from("bajaj_comments")
-        .insert({ work_order_id: workOrderId, author_id: authorId, content })
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({
-        queryKey: ["bajaj_comments", data.work_order_id],
-      });
+    mutationFn: (payload: {
+      workOrderId:  string;
+      authorId?:    string | null;   // legacy — treated as email
+      authorEmail?: string | null;
+      authorName?:  string | null;
+      content:      string;
+    }) =>
+      apiFetch<BajajComment>("/api/bajaj/comments", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          work_order_id: payload.workOrderId,
+          author_email:  payload.authorEmail ?? payload.authorId ?? "unknown",
+          author_name:   payload.authorName,
+          content:       payload.content,
+        }),
+      }),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["bajaj", "comments", vars.workOrderId] });
     },
   });
 }
 
-// ─── Bajaj users (admin) ──────────────────────────────────────────────────────
-export function useBajajUsers(status?: string) {
-  return useQuery({
-    queryKey: ["bajaj_users", status],
-    queryFn: async () => {
-      let query = supabase
-        .from("bajaj_users")
-        .select("*")
-        .order("created_at", { ascending: false });
-      if (status) query = query.eq("status", status);
-      const { data, error } = await query;
-      if (error) throw error;
-      return data as BajajUser[];
-    },
+// ─── Users ────────────────────────────────────────────────────────────────────
+
+export function useBajajUsers() {
+  return useQuery<BajajUser[]>({
+    queryKey: ["bajaj", "users"],
+    queryFn:  () => apiFetch("/api/bajaj/users"),
   });
 }
 
+// Components call: mutate({ bajajUserId, adminId })
 export function useApproveBajajUser() {
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({
-      bajajUserId,
-      adminId,
-    }: {
-      bajajUserId: string;
-      adminId: string;
-    }) => {
-      const { error } = await supabase
-        .from("bajaj_users")
-        .update({ status: "approved", approved_by: adminId, approved_at: new Date().toISOString() })
-        .eq("id", bajajUserId);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["bajaj_users"] });
-    },
+    mutationFn: ({ bajajUserId, adminId }: { bajajUserId: string; adminId?: string }) =>
+      apiFetch(`/api/bajaj/users/${bajajUserId}`, {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ action: "approve", approved_by: adminId }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["bajaj", "users"] }),
   });
 }
 
 export function useRejectBajajUser() {
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ bajajUserId }: { bajajUserId: string }) => {
-      const { error } = await supabase
-        .from("bajaj_users")
-        .update({ status: "rejected" })
-        .eq("id", bajajUserId);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["bajaj_users"] });
-    },
+    mutationFn: ({ bajajUserId, adminId }: { bajajUserId: string; adminId?: string }) =>
+      apiFetch(`/api/bajaj/users/${bajajUserId}`, {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ action: "reject", approved_by: adminId }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["bajaj", "users"] }),
   });
 }
 
-// ─── Audit logs ───────────────────────────────────────────────────────────────
-export function useBajajAuditLogs(filters?: {
-  actorEmail?: string;
-  action?: string;
-  targetId?: string;
-  limit?: number;
-}) {
-  return useQuery({
-    queryKey: ["bajaj_audit_logs", filters],
-    queryFn: async () => {
-      let query = supabase
-        .from("bajaj_audit_logs")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(filters?.limit ?? 100);
+// ─── Audit Logs ───────────────────────────────────────────────────────────────
+// Components call: useBajajAuditLogs({ actorEmail, action, limit })
 
-      if (filters?.actorEmail) query = query.ilike("actor_email", `%${filters.actorEmail}%`);
-      if (filters?.action) query = query.eq("action", filters.action);
-      if (filters?.targetId) query = query.eq("target_id", filters.targetId);
+export function useBajajAuditLogs(params?: { actorEmail?: string; action?: string; limit?: number; targetId?: string } | number) {
+  const resolved = typeof params === "number"
+    ? { limit: params }
+    : (params ?? {});
 
-      const { data, error } = await query;
-      if (error) throw error;
-      return data as BajajAuditLog[];
-    },
+  return useQuery<BajajAuditLog[]>({
+    queryKey: ["bajaj", "audit-logs", resolved],
+    queryFn:  () =>
+      apiFetch(
+        `/api/bajaj/audit-logs${buildQS({
+          limit:       resolved.limit ?? 50,
+          actor_email: (resolved as { actorEmail?: string }).actorEmail,
+          action:      (resolved as { action?: string }).action,
+          target_id:   (resolved as { targetId?: string }).targetId,
+        })}`
+      ),
   });
 }
 
 // ─── Analytics ────────────────────────────────────────────────────────────────
+
 export function useBajajAnalytics(moduleSlug?: string) {
-  return useQuery({
-    queryKey: ["bajaj_analytics", moduleSlug],
-    queryFn: async () => {
-      // Counts per module
-      const { data: modules } = await supabase
-        .from("bajaj_modules")
-        .select("id, name, slug")
-        .order("display_order");
+  return useQuery<BajajAnalytics>({
+    queryKey: ["bajaj", "analytics", moduleSlug],
+    queryFn:  () => apiFetch(`/api/bajaj/analytics${buildQS({ module: moduleSlug })}`),
+    staleTime: 60_000,
+  });
+}
 
-      const byModule: BajajAnalytics["byModule"] = [];
-      let totalWorkOrders = 0;
+// ─── Reminders ────────────────────────────────────────────────────────────────
 
-      for (const mod of modules ?? []) {
-        const { count } = await supabase
-          .from("bajaj_work_orders")
-          .select("*", { count: "exact", head: true })
-          .eq("module_id", mod.id);
-        const c = count ?? 0;
-        byModule.push({ moduleName: mod.name, slug: mod.slug, count: c });
-        totalWorkOrders += c;
-      }
+export function useBajajReminders(params?: { work_order_id?: string; module_id?: string }) {
+  return useQuery<BajajReminder[]>({
+    queryKey: ["bajaj", "reminders", params],
+    queryFn:  () => apiFetch(`/api/bajaj/reminders${buildQS(params ?? {})}`),
+  });
+}
 
-      // Status breakdown (for selected module or all)
-      let statusQuery = supabase
-        .from("bajaj_work_orders")
-        .select("status_id, bajaj_statuses(name, color_hex)");
-      if (moduleSlug) {
-        const { data: mod } = await supabase
-          .from("bajaj_modules")
-          .select("id")
-          .eq("slug", moduleSlug)
-          .single();
-        if (mod) statusQuery = statusQuery.eq("module_id", mod.id);
-      }
-      const { data: workOrdersWithStatus } = await statusQuery;
-      const statusMap = new Map<string, { name: string; colorHex: string; count: number }>();
-      for (const wo of workOrdersWithStatus ?? []) {
-        const s = (wo as unknown as { bajaj_statuses: { name: string; color_hex: string } | null }).bajaj_statuses;
-        if (!s || !wo.status_id) continue;
-        const key = wo.status_id as string;
-        if (!statusMap.has(key)) {
-          statusMap.set(key, { name: s.name, colorHex: s.color_hex, count: 0 });
-        }
-        statusMap.get(key)!.count++;
-      }
-      const byStatus = Array.from(statusMap.values()).map((s) => ({
-        statusName: s.name,
-        colorHex: s.colorHex,
-        count: s.count,
-      }));
+// Components call with camelCase: { workOrderId, moduleId, workOrderSummary, daysOffset, recipients, message, createdBy, due_at }
+export function useCreateBajajReminder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: {
+      workOrderId?:       string;
+      work_order_id?:     string;
+      moduleId?:          string;
+      module_id?:         string;
+      workOrderSummary?:  string;
+      work_order_summary?:string;
+      daysOffset?:        number;
+      days_offset?:       number;
+      recipients?:        string[];
+      message?:           string;
+      createdBy?:         string | null;
+      created_by?:        string | null;
+      due_at?:            string;
+    }) =>
+      apiFetch<BajajReminder>("/api/bajaj/reminders", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          work_order_id:      payload.work_order_id  ?? payload.workOrderId,
+          module_id:          payload.module_id       ?? payload.moduleId,
+          work_order_summary: payload.work_order_summary ?? payload.workOrderSummary ?? "",
+          days_offset:        payload.days_offset     ?? payload.daysOffset    ?? 0,
+          recipients:         payload.recipients      ?? [],
+          message:            payload.message         ?? "",
+          created_by:         payload.created_by      ?? payload.createdBy     ?? null,
+          due_at:             payload.due_at           ?? new Date(Date.now() + (payload.daysOffset ?? payload.days_offset ?? 0) * 86400_000).toISOString(),
+        }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["bajaj", "reminders"] }),
+  });
+}
 
-      // Import timeline
-      const { data: batches } = await supabase
-        .from("bajaj_import_batches")
-        .select("id, imported_at, added_count")
-        .order("imported_at", { ascending: true })
-        .limit(30);
-      const importTimeline = (batches ?? []).map((b) => ({
-        date: b.imported_at.slice(0, 10),
-        addedCount: b.added_count,
-        batchId: b.id,
-      }));
+// ─── Role Permissions ─────────────────────────────────────────────────────────
 
-      return {
-        totalWorkOrders,
-        byStatus,
-        byModule,
-        importTimeline,
-      } as BajajAnalytics;
-    },
-    staleTime: 60 * 1000,
+export function useBajajRolePermissions() {
+  return useQuery<BajajRolePermission[]>({
+    queryKey: ["bajaj", "role-permissions"],
+    queryFn:  () => apiFetch("/api/bajaj/role-permissions"),
+    staleTime: 30_000,
+  });
+}
+
+// ─── Column-level Permissions ─────────────────────────────────────────────────
+
+export function useBajajColumnPerms(moduleSlug?: string) {
+  return useQuery<import("@/lib/types/bajaj").BajajColumnPerm[]>({
+    queryKey: ["bajaj", "column-perms", moduleSlug],
+    queryFn:  () => apiFetch(`/api/bajaj/column-perms${moduleSlug ? `?module=${moduleSlug}` : ""}`),
+    staleTime: 30_000,
+  });
+}
+
+export function useUpsertColumnPerm() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      module_slug: string; status_id?: string | null;
+      grantee_type: "role" | "user"; grantee: string;
+      can_view?: boolean; can_edit_fields?: boolean; can_move_cards?: boolean; can_assign?: boolean;
+    }) =>
+      apiFetch("/api/bajaj/column-perms", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["bajaj", "column-perms"] }),
+  });
+}
+
+export function useDeleteColumnPerm() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/api/bajaj/column-perms?id=${id}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["bajaj", "column-perms"] }),
+  });
+}
+
+export function useUpdateUserRole() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: string }) =>
+      apiFetch(`/api/bajaj/users/${userId}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set_role", role }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["bajaj", "users"] }),
+  });
+}
+
+export function useUpdateBajajRolePermission() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (perm: Partial<BajajRolePermission> & { role: BajajUserRole }) =>
+      apiFetch("/api/bajaj/role-permissions", {
+        method:  "PUT",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(perm),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["bajaj", "role-permissions"] }),
+  });
+}
+
+export function useUpdateBajajUserRole() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: BajajUserRole }) =>
+      apiFetch(`/api/bajaj/users/${userId}`, {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ role }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["bajaj", "users"] }),
+  });
+}
+
+// Components call: mutate({ id, updates: { status, sent_at, ... } })
+export function useUpdateBajajReminder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, updates }: { id: string; updates: Partial<BajajReminder> }) =>
+      apiFetch(`/api/bajaj/reminders/${id}`, {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(updates),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["bajaj", "reminders"] }),
   });
 }
 

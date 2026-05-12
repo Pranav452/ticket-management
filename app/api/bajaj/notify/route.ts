@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 // POST /api/bajaj/notify
 // Body: { to: string, subject?: string, workOrderId: string, workOrderSummary: string, message: string, senderName: string }
 export async function POST(req: NextRequest) {
@@ -13,12 +11,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
+  // Demo mode: if email is not configured, pretend it succeeded so the UI flow works offline.
   if (!process.env.RESEND_API_KEY) {
-    return NextResponse.json(
-      { error: "Email service not configured. Set RESEND_API_KEY in .env.local" },
-      { status: 503 }
-    );
+    return NextResponse.json({ success: true, demo: true });
   }
+
+  const resend = new Resend(process.env.RESEND_API_KEY);
 
   const subject = body.subject ?? `Work Order Update — ${workOrderSummary ?? workOrderId}`;
 

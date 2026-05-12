@@ -8,25 +8,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getLinksPool } from "@/lib/db";
 
-const ADMIN_EMAIL = "pranavnairop090@gmail.com";
+const ADMIN_EMAILS = new Set(["pranavnairop090@gmail.com", "superadmin@links.com"]);
 
 export async function DELETE(_req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user || user.email !== ADMIN_EMAIL) {
+  if (!user || !ADMIN_EMAILS.has(user.email ?? "")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
     const pool = await getLinksPool();
-    // meta first (FK child), then orders (FK parent)
     await pool.request().query(`DELETE FROM bajaj_wo_meta`);
     await pool.request().query(`DELETE FROM bajaj_work_orders`);
-
-    return NextResponse.json({ ok: true, message: "All work orders cleared." });
+    return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("[DELETE /api/bajaj/work-orders/clear]", err);
-    return NextResponse.json({ error: "Failed to clear tables" }, { status: 500 });
+    return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }

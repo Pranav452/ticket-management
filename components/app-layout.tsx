@@ -1,192 +1,272 @@
 "use client";
 
 import React, { useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import {
-  Sidebar,
-  SidebarBody,
-  SidebarLink,
-  useSidebar,
-} from "@/components/ui/sidebar";
-import {
-  LayoutDashboard,
-  UserCog,
-  Settings,
-  LogOut,
-  Ticket,
-  MessageSquare,
-  Ship,
-  BarChart2,
-} from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { motion } from "framer-motion";
+import { useAuthStore } from "@/lib/stores/auth-store";
+import {
+  LayoutGrid, BarChart2, Upload, ShieldCheck, LogOut,
+  Search, ChevronDown, ChevronRight as ChevronRightIcon,
+  PanelLeft, Settings, Globe,
+  Inbox, MessageSquare, Home,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
-const navLinks = [
-  {
-    label: "Dashboard",
-    href: "/dashboard",
-    icon: (
-      <LayoutDashboard className="text-neutral-400 dark:text-neutral-300 size-5 flex-shrink-0" />
-    ),
-  },
-  {
-    label: "Tickets",
-    href: "/tickets",
-    icon: (
-      <Ticket className="text-neutral-400 dark:text-neutral-300 size-5 flex-shrink-0" />
-    ),
-  },
-  {
-    label: "Chats",
-    href: "/chats",
-    icon: (
-      <MessageSquare className="text-neutral-400 dark:text-neutral-300 size-5 flex-shrink-0" />
-    ),
-  },
-  {
-    label: "Profile",
-    href: "/profile",
-    icon: (
-      <UserCog className="text-neutral-400 dark:text-neutral-300 size-5 flex-shrink-0" />
-    ),
-  },
-  {
-    label: "Settings",
-    href: "/settings",
-    icon: (
-      <Settings className="text-neutral-400 dark:text-neutral-300 size-5 flex-shrink-0" />
-    ),
-  },
+const MODULES = [
+  { slug: "vipar",      name: "VIPAR",      flag: "🌐", desc: "Myanmar · Brazil · Others" },
+  { slug: "srilanka",   name: "Sri Lanka",  flag: "🌴", desc: "Colombo · CMNBO" },
+  { slug: "nigeria",    name: "Nigeria",    flag: "🟢", desc: "Apapa Lagos" },
+  { slug: "bangladesh", name: "Bangladesh", flag: "🔴", desc: "Chattogram" },
+  { slug: "triumph",    name: "Triumph",    flag: "⚡", desc: "United Kingdom" },
 ];
 
-const bajajLinks = [
-  {
-    label: "Bajaj Board",
-    href: "/bajaj/boards/vipar",
-    icon: (
-      <Ship className="text-amber-500 size-5 flex-shrink-0" />
-    ),
-  },
-  {
-    label: "Bajaj Analytics",
-    href: "/bajaj/dashboard",
-    icon: (
-      <BarChart2 className="text-amber-500 size-5 flex-shrink-0" />
-    ),
-  },
-];
+// Sidebar palette — use CSS vars so dark mode applies automatically
+const SB_BG      = "var(--sb-bg)";
+const SB_ACTIVE  = "var(--sb-active)";
+const SB_HOVER   = "var(--sb-hover)";
+const SB_TEXT    = "var(--sb-text)";
+const SB_MUTED   = "var(--sb-muted)";
+const SB_BORDER  = "var(--sb-border)";
 
-function LogoutButton() {
-  const { open, animate } = useSidebar();
-  const router = useRouter();
-  const supabase = createClient();
-
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
-  }
-
+function NavItem({
+  href,
+  label,
+  icon: Icon,
+  emoji,
+  badge,
+  depth = 0,
+  active,
+}: {
+  href: string;
+  label: string;
+  icon?: React.ElementType;
+  emoji?: string;
+  badge?: number;
+  depth?: number;
+  active?: boolean;
+}) {
   return (
-    <button
-      type="button"
-      onClick={handleLogout}
-      className="flex items-center justify-start gap-2 group/sidebar py-2 w-full text-left"
+    <Link
+      href={href}
+      className="group flex items-center gap-2 rounded-md px-2 py-[5px] text-[13px] font-medium transition-colors select-none w-full"
+      style={{
+        paddingLeft: depth === 1 ? 28 : depth === 2 ? 44 : 8,
+        background: active ? SB_ACTIVE : "transparent",
+        color: active ? SB_TEXT : SB_MUTED,
+      }}
+      onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = SB_HOVER; }}
+      onMouseLeave={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
     >
-      <LogOut className="text-neutral-400 dark:text-neutral-300 size-5 flex-shrink-0" />
-      <motion.span
-        animate={{
-          display: animate
-            ? open
-              ? "inline-block"
-              : "none"
-            : "inline-block",
-          opacity: animate ? (open ? 1 : 0) : 1,
-        }}
-        className="text-neutral-400 dark:text-neutral-300 text-sm group-hover/sidebar:translate-x-1 transition duration-150 whitespace-pre inline-block !p-0 !m-0"
-      >
-        Logout
-      </motion.span>
-    </button>
+      {emoji && <span className="text-[14px] leading-none w-4 text-center flex-shrink-0">{emoji}</span>}
+      {Icon && !emoji && <Icon className="size-[15px] flex-shrink-0" style={{ color: active ? SB_TEXT : SB_MUTED }} />}
+      <span className="flex-1 truncate" style={{ color: active ? SB_TEXT : SB_MUTED }}>{label}</span>
+      {badge != null && badge > 0 && (
+        <span className="ml-auto text-[11px] font-semibold tabular-nums rounded-full px-1.5 py-0.5 min-w-[18px] text-center"
+          style={{ background: "rgba(0,0,0,0.08)", color: SB_MUTED }}>
+          {badge}
+        </span>
+      )}
+    </Link>
   );
 }
 
-function SidebarBottom() {
-  const { open, animate } = useSidebar();
-  const showLabel = animate ? open : true;
+function SectionHeader({ label }: { label: string }) {
+  return (
+    <p className="px-2 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wider select-none"
+      style={{ color: SB_MUTED }}>
+      {label}
+    </p>
+  );
+}
+
+function Divider() {
+  return <div className="mx-2 my-1" style={{ borderTop: `1px solid ${SB_BORDER}` }} />;
+}
+
+function ModuleGroup({ module, isActiveBoard }: { module: typeof MODULES[0]; isActiveBoard: boolean }) {
+  const [open, setOpen] = useState(isActiveBoard);
+  const pathname = usePathname();
+  const isBoardActive = pathname === `/bajaj/boards/${module.slug}`;
 
   return (
-    <div className="flex flex-col items-center gap-2 pt-4 border-t border-neutral-700">
-      <Link
-        href="/"
-        className="flex flex-col items-center gap-1.5 group"
-        aria-label="Home"
+    <div>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="group flex items-center gap-2 rounded-md px-2 py-[5px] w-full transition-colors select-none"
+        style={{
+          background: isActiveBoard && !open ? SB_ACTIVE : "transparent",
+          color: SB_TEXT,
+        }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = SB_HOVER; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = isActiveBoard && !open ? SB_ACTIVE : "transparent"; }}
       >
-        {/* Circular logo */}
-        <div className="size-10 rounded-full overflow-hidden bg-white ring-2 ring-neutral-700 group-hover:ring-violet-500 transition-all flex-shrink-0">
-          <Image
-            src="/logo.png"
-            alt="Manilal logo"
-            width={40}
-            height={40}
-            className="size-full object-contain"
-          />
-        </div>
+        <span className="text-[14px] leading-none w-4 text-center flex-shrink-0">{module.flag}</span>
+        <span className="flex-1 text-left text-[13px] font-medium truncate">{module.name}</span>
+        {open
+          ? <ChevronDown className="size-3.5 flex-shrink-0" style={{ color: SB_MUTED }} />
+          : <ChevronRightIcon className="size-3.5 flex-shrink-0" style={{ color: SB_MUTED }} />
+        }
+      </button>
 
-        {/* Label + copyright — only shown when expanded */}
-        {showLabel && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="flex flex-col items-center text-center"
-          >
-            <span className="text-sm font-medium text-neutral-200">
-              Manilal
-            </span>
-            <span className="text-[10px] text-neutral-600 leading-tight">
-              © 2026 Manilal. All rights reserved.
-            </span>
-          </motion.div>
-        )}
-      </Link>
+      {open && (
+        <div>
+          <NavItem href={`/bajaj/boards/${module.slug}`} label="Board" icon={LayoutGrid} depth={1} active={isBoardActive} />
+          <NavItem href={`/bajaj/import?module=${module.slug}`} label="Import" icon={Upload} depth={1}
+            active={pathname.startsWith("/bajaj/import") && (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("module") === module.slug : false)} />
+        </div>
+      )}
     </div>
   );
 }
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
+  const [collapsed,    setCollapsed]    = useState(false);
+  const [searchQuery,  setSearchQuery]  = useState("");
+  const pathname  = usePathname();
+  const router    = useRouter();
+  const clearAuth = useAuthStore((s) => s.clearAuth);
+  const bajajUser = useAuthStore((s) => s.bajajUser);
+
+  async function handleSignOut() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    clearAuth();
+    sessionStorage.removeItem("bajaj_user");
+    router.push("/login");
+  }
+
+  const activeModule = MODULES.find((m) => pathname.includes(`/bajaj/boards/${m.slug}`))?.slug;
+
+  if (collapsed) {
+    return (
+      <div className="flex h-dvh overflow-hidden" style={{ background: "var(--main-bg)" }}>
+        {/* Collapsed sidebar */}
+        <aside className="flex flex-col flex-shrink-0 w-12 items-center py-3 gap-3" style={{ background: SB_BG, borderRight: `1px solid ${SB_BORDER}` }}>
+          <button onClick={() => setCollapsed(false)} className="size-7 flex items-center justify-center rounded-md transition-colors hover:bg-black/5">
+            <PanelLeft className="size-4" style={{ color: SB_MUTED }} />
+          </button>
+          <div className="flex size-7 items-center justify-center rounded-md bg-amber-500 flex-shrink-0">
+            <Globe className="size-3.5 text-white" />
+          </div>
+          <Divider />
+          {MODULES.map((m) => (
+            <Link key={m.slug} href={`/bajaj/boards/${m.slug}`} title={m.name}
+              className="size-7 flex items-center justify-center rounded-md transition-colors hover:bg-black/5 text-sm"
+              style={{ background: activeModule === m.slug ? SB_ACTIVE : "transparent" }}>
+              {m.flag}
+            </Link>
+          ))}
+        </aside>
+        <main className="bajaj-main flex min-h-0 flex-1 flex-col overflow-hidden rounded-tl-[18px]" style={{ background: "var(--main-bg)" }}>{children}</main>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex h-dvh bg-neutral-900 text-neutral-50">
-      <Sidebar open={open} setOpen={setOpen}>
-        <SidebarBody className="justify-between gap-4 border-r border-neutral-700">
-          {/* Top — nav links */}
-          <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden gap-2 pt-2">
-            {navLinks.map((link, idx) => (
-              <SidebarLink key={idx} link={link} href={link.href} />
-            ))}
+    <div className="flex h-dvh overflow-hidden" style={{ background: "var(--sb-bg)" }}>
 
-            {/* Bajaj module section */}
-            <div className="my-1 border-t border-neutral-800 pt-2">
-              {bajajLinks.map((link, idx) => (
-                <SidebarLink key={`bajaj-${idx}`} link={link} href={link.href} />
-              ))}
+      {/* ── Sidebar ─────────────────────────────────────────────────── */}
+      <aside
+        className="bajaj-sidebar flex flex-col flex-shrink-0 w-[220px] overflow-hidden"
+        style={{ background: SB_BG, borderRight: `1px solid ${SB_BORDER}` }}
+      >
+
+        {/* ── Workspace header ──────────────────────────────────────── */}
+        <div className="flex items-center justify-between px-3 py-3" style={{ borderBottom: `1px solid ${SB_BORDER}` }}>
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="flex size-6 items-center justify-center rounded-md bg-amber-500 flex-shrink-0">
+              <Globe className="size-3.5 text-white" />
             </div>
-
-            <div className="mt-2">
-              <LogoutButton />
+            <div className="min-w-0">
+              <p className="text-[13px] font-semibold leading-none truncate" style={{ color: SB_TEXT }}>Bajaj Logistics</p>
             </div>
           </div>
+          <button
+            onClick={() => setCollapsed(true)}
+            className="size-6 flex items-center justify-center rounded-md transition-colors hover:bg-black/5 flex-shrink-0"
+          >
+            <PanelLeft className="size-4" style={{ color: SB_MUTED }} />
+          </button>
+        </div>
 
-          {/* Bottom — logo + copyright */}
-          <SidebarBottom />
-        </SidebarBody>
-      </Sidebar>
+        {/* ── Search ────────────────────────────────────────────────── */}
+        <div className="px-2 pt-2.5 pb-1">
+          <div className="flex items-center gap-2 rounded-md px-2.5 py-1.5 transition-colors"
+            style={{ background: "rgba(0,0,0,0.05)", color: SB_MUTED }}>
+            <Search className="size-3.5 flex-shrink-0" />
+            <input
+              type="text"
+              placeholder="Search…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="flex-1 bg-transparent text-[13px] outline-none placeholder-current min-w-0"
+              style={{ color: SB_MUTED }}
+            />
+            <span className="text-[11px] font-medium px-1 rounded" style={{ background: "rgba(0,0,0,0.08)", color: SB_MUTED }}>/</span>
+          </div>
+        </div>
 
-      <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {/* ── Scrollable nav ────────────────────────────────────────── */}
+        <nav className="flex flex-col flex-1 px-1.5 pb-3 overflow-y-auto overflow-x-hidden">
+
+          {/* Top-level */}
+          <div className="pt-1">
+            <NavItem href="/bajaj/home"      label="Home"         icon={Home}          active={pathname === "/bajaj/home" || pathname === "/bajaj"} />
+            <NavItem href="/bajaj/import"    label="Import"       icon={Inbox}         active={pathname.startsWith("/bajaj/import")} />
+            <NavItem href="/bajaj/chat"      label="Chat"         icon={MessageSquare} active={pathname.startsWith("/bajaj/chat")} />
+            <NavItem href="/bajaj/dashboard" label="Analytics"    icon={BarChart2}     active={pathname.startsWith("/bajaj/dashboard")} />
+          </div>
+
+          <Divider />
+
+          {/* Modules section */}
+          <SectionHeader label="Modules" />
+
+          {MODULES.map((m) => (
+            <ModuleGroup
+              key={m.slug}
+              module={m}
+              isActiveBoard={activeModule === m.slug}
+            />
+          ))}
+
+          <Divider />
+
+          {/* Tools */}
+          <SectionHeader label="Tools" />
+          <NavItem href="/bajaj/admin"    label="Admin"    icon={ShieldCheck}  active={pathname.startsWith("/bajaj/admin")} />
+          <NavItem href="/bajaj/settings" label="Settings" icon={Settings}     active={pathname.startsWith("/bajaj/settings")} />
+
+        </nav>
+
+        {/* ── Bottom footer ─────────────────────────────────────────── */}
+        <div className="px-2 py-2" style={{ borderTop: `1px solid ${SB_BORDER}` }}>
+          {bajajUser && (
+            <Link
+              href="/bajaj/settings"
+              className="flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors w-full group"
+              style={{ color: SB_TEXT }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = SB_HOVER; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+            >
+              <div className="size-6 rounded-full bg-amber-500 flex items-center justify-center flex-shrink-0">
+                <span className="text-[11px] font-bold text-white">
+                  {(bajajUser.full_name ?? bajajUser.email ?? "?")[0].toUpperCase()}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[12px] font-medium truncate" style={{ color: SB_TEXT }}>{bajajUser.full_name ?? bajajUser.email}</p>
+                <p className="text-[10px] truncate" style={{ color: SB_MUTED }}>{bajajUser.email}</p>
+              </div>
+              <Settings className="size-3.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: SB_MUTED }} />
+            </Link>
+          )}
+        </div>
+      </aside>
+
+      {/* ── Page content ────────────────────────────────────────────── */}
+      <main className="bajaj-main flex min-h-0 flex-1 flex-col overflow-hidden rounded-tl-[18px]" style={{ background: "var(--main-bg)" }}>
         {children}
       </main>
     </div>

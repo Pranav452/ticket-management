@@ -5,63 +5,48 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
 import type { Message } from "@/lib/types";
 
-const supabase = createClient();
+// In-memory demo messages so chat works without any backend.
+let demoMessagesByTicket: Record<string, Message[]> = {};
 
-// ─── Fetch messages for a ticket ─────────────────────────
+function ensureDemoMessagesSeeded(ticketId: string) {
+  if (demoMessagesByTicket[ticketId]) return;
+  const now = new Date().toISOString();
+  demoMessagesByTicket[ticketId] = [
+    {
+      id: "demo-msg-1",
+      ticket_id: ticketId,
+      sender_id: "demo-user-1",
+      content: "This is a demo conversation message.",
+      created_at: now,
+      sender: {
+        id: "demo-user-1",
+        email: "demo.user@example.com",
+        full_name: "Demo User",
+        avatar_url: null,
+        role: "dev",
+      } as any,
+    } as Message,
+  ];
+}
+
+// ─── Fetch messages for a ticket (demo) ───────────────────
 export function useMessages(ticketId: string | null) {
-  const queryClient = useQueryClient();
-
-  // Supabase Realtime subscription for live chat updates
-  useEffect(() => {
-    if (!ticketId) return;
-
-    const channel = supabase
-      .channel(`messages:${ticketId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `ticket_id=eq.${ticketId}`,
-        },
-        () => {
-          queryClient.invalidateQueries({
-            queryKey: ["messages", ticketId],
-          });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [ticketId, queryClient]);
+  const key = ticketId ?? "none";
 
   return useQuery({
-    queryKey: ["messages", ticketId],
+    queryKey: ["messages", key],
     enabled: !!ticketId,
     queryFn: async (): Promise<Message[]> => {
-      const { data, error } = await supabase
-        .from("messages")
-        .select(`
-          *,
-          sender:profiles(id, email, full_name, avatar_url, role)
-        `)
-        .eq("ticket_id", ticketId!)
-        .order("created_at", { ascending: true });
-
-      if (error) throw error;
-      return (data ?? []) as Message[];
+      if (!ticketId) return [];
+      ensureDemoMessagesSeeded(ticketId);
+      return demoMessagesByTicket[ticketId] ?? [];
     },
   });
 }
 
-// ─── Send a message ───────────────────────────────────────
+// ─── Send a message (demo, local only) ─────────────────────
 export function useSendMessage() {
   const queryClient = useQueryClient();
 
@@ -73,26 +58,30 @@ export function useSendMessage() {
       ticketId: string;
       content: string;
     }) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const { data, error } = await supabase
-        .from("messages")
-        .insert({
-          ticket_id: ticketId,
-          sender_id: user.id,
-          content: content.trim(),
-        })
-        .select(`
-          *,
-          sender:profiles(id, email, full_name, avatar_url, role)
-        `)
-        .single();
-
-      if (error) throw error;
-      return data as Message;
+      if (!content.trim()) {
+        throw new Error("Message cannot be empty");
+      }
+      ensureDemoMessagesSeeded(ticketId);
+      const now = new Date().toISOString();
+      const newMessage: Message = {
+        id: `demo-msg-${(demoMessagesByTicket[ticketId]?.length ?? 0) + 1}`,
+        ticket_id: ticketId,
+        sender_id: "demo-user-1",
+        content: content.trim(),
+        created_at: now,
+        sender: {
+          id: "demo-user-1",
+          email: "demo.user@example.com",
+          full_name: "Demo User",
+          avatar_url: null,
+          role: "dev",
+        } as any,
+      } as Message;
+      demoMessagesByTicket[ticketId] = [
+        ...(demoMessagesByTicket[ticketId] ?? []),
+        newMessage,
+      ];
+      return newMessage;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({

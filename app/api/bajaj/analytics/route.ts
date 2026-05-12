@@ -37,6 +37,8 @@ export async function GET(req: NextRequest) {
     const moduleSlug = req.nextUrl.searchParams.get("module") || null;
     const pool = await getLinksPool();
 
+    // Build a dummy request just to add params — we'll reuse the filter string
+    // but each query needs its own request object with its own params
     function makeFilter() {
       const r = pool.request();
       const f = buildModuleFilter(moduleSlug, r);
@@ -146,7 +148,7 @@ export async function GET(req: NextRequest) {
         WHERE w.blno IS NOT NULL AND LTRIM(RTRIM(w.blno)) != '' ${f7}
       `),
 
-      // WOs by brand
+      // WOs by brand (used as "by line" equivalent)
       r8.query(`
         SELECT TOP 10
           ISNULL(w.brand, 'Unknown') AS lineName,
@@ -158,7 +160,7 @@ export async function GET(req: NextRequest) {
         ORDER BY containerCount DESC
       `),
 
-      // Variants with high container count
+      // Variants with high qty (equivalent to "over limit")
       r9.query(`
         SELECT TOP 10
           ISNULL(w.variant, 'Unknown') AS vesselName,

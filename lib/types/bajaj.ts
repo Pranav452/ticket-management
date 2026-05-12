@@ -60,15 +60,31 @@ export interface BajajComment {
   author?: { id: string; full_name: string | null; email: string; avatar_url: string | null };
 }
 
+export type BajajUserRole = "superadmin" | "admin" | "operator" | "viewer";
+
 export interface BajajUser {
   id: string;
-  user_id: string;
+  user_id?: string | null;
   email: string;
   full_name: string | null;
   status: BajajUserStatus;
+  role: BajajUserRole | null;
+  department: string | null;
   approved_by: string | null;
   approved_at: string | null;
   created_at: string;
+}
+
+export interface BajajRolePermission {
+  id: string;
+  role: BajajUserRole;
+  module_slug: string;
+  can_view: boolean;
+  can_edit_fields: boolean;
+  can_move_stage: boolean;
+  can_import: boolean;
+  can_export: boolean;
+  can_manage_users: boolean;
 }
 
 export interface BajajAuditLog {
@@ -81,6 +97,26 @@ export interface BajajAuditLog {
   old_value: Record<string, unknown> | null;
   new_value: Record<string, unknown> | null;
   created_at: string;
+}
+
+// ─── Reminders (demo) ─────────────────────────────────────────────────────────
+
+export type BajajReminderStatus = "scheduled" | "sent" | "done";
+
+export interface BajajReminder {
+  id: string;
+  work_order_id: string;
+  module_id: string;
+  work_order_summary: string;
+  created_by: string | null;
+  created_at: string;
+  due_at: string; // ISO string
+  days_offset: number;
+  recipients: string[];
+  message: string;
+  status: BajajReminderStatus;
+  sent_at: string | null;
+  done_at: string | null;
 }
 
 // ─── Import flow types ────────────────────────────────────────────────────────
@@ -113,6 +149,31 @@ export interface BajajAnalytics {
   byStatus: { statusName: string; colorHex: string; count: number }[];
   byModule: { moduleName: string; slug: string; count: number }[];
   importTimeline: { date: string; addedCount: number; batchId: string }[];
+  // Extended demo metrics
+  totalContainers: number;
+  totalBLs: number;
+  containersByVessel: { vesselName: string; containerCount: number }[];
+  containersByLine: { lineName: string; containerCount: number }[];
+  blPendingAfterETD: number;
+  vesselsOverLimit: { vesselName: string; containerCount: number }[];
+}
+
+// ─── Column-level RBAC ───────────────────────────────────────────────────────
+
+export type BajajGranteeType = "role" | "user";
+export type BajajRole = "admin" | "manager" | "operator" | "viewer";
+
+export interface BajajColumnPerm {
+  id:              string;
+  module_slug:     string;
+  status_id:       string | null;
+  grantee_type:    BajajGranteeType;
+  grantee:         string;
+  can_view:        boolean;
+  can_edit_fields: boolean;
+  can_move_cards:  boolean;
+  can_assign:      boolean;
+  created_at:      string;
 }
 
 // ─── Column RBAC ──────────────────────────────────────────────────────────────
