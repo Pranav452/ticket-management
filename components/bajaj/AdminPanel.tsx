@@ -1,10 +1,18 @@
 "use client";
 
 import React, { useState } from "react";
-import { CheckCircle, XCircle, Loader2, Search, Filter } from "lucide-react";
-import { useBajajUsers, useApproveBajajUser, useRejectBajajUser, useBajajAuditLogs } from "@/lib/queries/bajaj";
+import {
+  CheckCircle, XCircle, Loader2, Search, Filter,
+  Trash2, Plus, ShieldCheck, ShieldOff,
+} from "lucide-react";
+import {
+  useBajajUsers, useApproveBajajUser, useRejectBajajUser, useBajajAuditLogs,
+  useBajajColumnAssignments, useUpsertColumnAssignment, useDeleteColumnAssignment,
+  useBajajColumnRequests, useReviewColumnRequest,
+} from "@/lib/queries/bajaj";
+import { useBajajModules, useBajajStatuses } from "@/lib/queries/bajaj";
 import { useAuthStore } from "@/lib/stores/auth-store";
-import type { BajajUser, BajajAuditLog } from "@/lib/types/bajaj";
+import type { BajajUser, BajajAuditLog, BajajColumnAssignment, BajajColumnRequest } from "@/lib/types/bajaj";
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
@@ -98,9 +106,255 @@ function AuditRow({ log }: { log: BajajAuditLog }) {
   );
 }
 
+// ─── Column Assignments Tab ───────────────────────────────────────────────────
+function ColumnAssignmentsTab() {
+  const { data: modules = [] } = useBajajModules();
+  const [selectedModule, setSelectedModule] = useState<string>("");
+  const moduleSlug = selectedModule || modules[0]?.slug || "";
+
+  const { data: assignments = [], isLoading: loadingAssign } = useBajajColumnAssignments(moduleSlug);
+  const { data: requests = [], isLoading: loadingReqs } = useBajajColumnRequests(moduleSlug);
+  const { data: statuses = [] } = useBajajStatuses(moduleSlug);
+  const { data: allUsers = [] } = useBajajUsers("approved");
+
+  const upsert = useUpsertColumnAssignment();
+  const deleteAssign = useDeleteColumnAssignment();
+  const reviewRequest = useReviewColumnRequest();
+
+  const [newEmail, setNewEmail] = useState("");
+  const [newStatusId, setNewStatusId] = useState<string>("__all__");
+  const [newCanEdit, setNewCanEdit] = useState(true);
+  const [newCanMove, setNewCanMove] = useState(true);
+  const [newCanAssign, setNewCanAssign] = useState(true);
+
+  const pendingRequests = requests.filter((r) => r.status === "pending");
+
+  function handleAdd() {
+    if (!newEmail || !moduleSlug) return;
+    upsert.mutate({
+      module_slug: moduleSlug,
+      status_id: newStatusId === "__all__" ? null : newStatusId,
+      user_email: newEmail,
+      can_edit: newCanEdit,
+      can_move: newCanMove,
+      can_assign: newCanAssign,
+    }, {
+      onSuccess: () => {
+        setNewEmail("");
+        setNewStatusId("__all__");
+        setNewCanEdit(true);
+        setNewCanMove(true);
+        setNewCanAssign(true);
+      },
+    });
+  }
+
+  const moduleChoices = modules.length > 0 ? modules : [{ slug: moduleSlug, name: moduleSlug }];
+
+  return (
+    <div className="space-y-8">
+
+      {/* Module selector */}
+      <div className="flex items-center gap-3">
+        <label className="text-sm text-neutral-400 font-medium">Module</label>
+        <select
+          value={selectedModule || moduleSlug}
+          onChange={(e) => setSelectedModule(e.target.value)}
+          className="px-3 py-1.5 bg-neutral-900 border border-neutral-700 rounded-lg text-sm text-neutral-200 focus:outline-none focus:border-amber-600"
+        >
+          {moduleChoices.map((m) => (
+            <option key={m.slug} value={m.slug}>{m.name || m.slug}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Pending access requests */}
+      {pendingRequests.length > 0 && (
+        <div>
+          <h2 className="text-sm font-semibold text-amber-400 mb-3 flex items-center gap-2">
+            Column Access Requests
+            <span className="px-1.5 py-0.5 rounded-full bg-amber-600 text-[10px] text-white">{pendingRequests.length}</span>
+          </h2>
+          <div className="overflow-x-auto rounded-xl border border-neutral-800">
+            <table className="w-full">
+              <thead className="bg-neutral-900/80 border-b border-neutral-800">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">User</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Column</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Reason</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingRequests.map((r) => {
+                  const statusName = r.status_id
+                    ? (statuses.find((s) => s.id === r.status_id)?.name ?? r.status_id)
+                    : "All columns";
+                  return (
+                    <tr key={r.id} className="border-b border-neutral-800 hover:bg-neutral-900/50">
+                      <td className="px-4 py-3 text-sm text-neutral-200">{r.user_email}</td>
+                      <td className="px-4 py-3 text-sm text-neutral-400">{statusName}</td>
+                      <td className="px-4 py-3 text-xs text-neutral-500 max-w-[200px] truncate">{r.reason ?? "—"}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => reviewRequest.mutate({ id: r.id, status: "approved" })}
+                            disabled={reviewRequest.isPending}
+                            className="flex items-center gap-1 px-3 py-1 rounded-md bg-emerald-700 text-xs text-white hover:bg-emerald-600 disabled:opacity-50 transition-colors"
+                          >
+                            <ShieldCheck className="size-3" /> Approve
+                          </button>
+                          <button
+                            onClick={() => reviewRequest.mutate({ id: r.id, status: "rejected" })}
+                            disabled={reviewRequest.isPending}
+                            className="flex items-center gap-1 px-3 py-1 rounded-md bg-red-900/60 text-xs text-red-300 hover:bg-red-800 disabled:opacity-50 transition-colors border border-red-800"
+                          >
+                            <ShieldOff className="size-3" /> Reject
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Current assignments */}
+      <div>
+        <h2 className="text-sm font-semibold text-neutral-300 mb-3">Current Assignments</h2>
+
+        {/* Add form */}
+        <div className="flex flex-wrap items-end gap-3 mb-4 p-4 bg-neutral-900/50 rounded-xl border border-neutral-800">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-neutral-500">User email</label>
+            <input
+              type="email"
+              list="approved-emails"
+              value={newEmail}
+              onChange={(e) => setNewEmail(e.target.value)}
+              placeholder="user@example.com"
+              className="px-3 py-1.5 bg-neutral-900 border border-neutral-700 rounded-lg text-sm text-neutral-200 placeholder:text-neutral-600 focus:outline-none focus:border-amber-600 w-52"
+            />
+            <datalist id="approved-emails">
+              {allUsers.map((u) => <option key={u.id} value={u.email} />)}
+            </datalist>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-neutral-500">Column</label>
+            <select
+              value={newStatusId}
+              onChange={(e) => setNewStatusId(e.target.value)}
+              className="px-3 py-1.5 bg-neutral-900 border border-neutral-700 rounded-lg text-sm text-neutral-200 focus:outline-none focus:border-amber-600"
+            >
+              <option value="__all__">All columns</option>
+              {statuses.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <label className="text-xs text-neutral-500">Permissions</label>
+            <div className="flex items-center gap-3">
+              {(["can_edit", "can_move", "can_assign"] as const).map((flag) => {
+                const checked = flag === "can_edit" ? newCanEdit : flag === "can_move" ? newCanMove : newCanAssign;
+                const setter = flag === "can_edit" ? setNewCanEdit : flag === "can_move" ? setNewCanMove : setNewCanAssign;
+                return (
+                  <label key={flag} className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => setter(e.target.checked)}
+                      className="accent-amber-500"
+                    />
+                    <span className="text-xs text-neutral-400">{flag.replace("can_", "")}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          <button
+            onClick={handleAdd}
+            disabled={!newEmail || upsert.isPending}
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-sm font-medium transition-colors"
+          >
+            {upsert.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+            Assign
+          </button>
+        </div>
+
+        {loadingAssign ? (
+          <div className="flex items-center gap-2 py-6 text-neutral-500 text-sm">
+            <Loader2 className="size-4 animate-spin" /> Loading…
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-neutral-800">
+            <table className="w-full">
+              <thead className="bg-neutral-900/80 border-b border-neutral-800">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">User</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Column</th>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-neutral-500 uppercase tracking-wide">Edit</th>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-neutral-500 uppercase tracking-wide">Move</th>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-neutral-500 uppercase tracking-wide">Assign</th>
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {assignments.map((a) => {
+                  const statusName = a.status_id
+                    ? (statuses.find((s) => s.id === a.status_id)?.name ?? a.status_id)
+                    : <span className="text-neutral-500 italic">All columns</span>;
+                  const Tick = ({ v }: { v: boolean }) => (
+                    <span className={v ? "text-emerald-400" : "text-neutral-700"}>
+                      {v ? <CheckCircle className="size-4 mx-auto" /> : <XCircle className="size-4 mx-auto" />}
+                    </span>
+                  );
+                  return (
+                    <tr key={a.id} className="border-b border-neutral-800 hover:bg-neutral-900/50">
+                      <td className="px-4 py-3 text-sm text-neutral-200">{a.user_email}</td>
+                      <td className="px-4 py-3 text-sm text-neutral-400">{statusName}</td>
+                      <td className="px-4 py-3 text-center"><Tick v={a.can_edit} /></td>
+                      <td className="px-4 py-3 text-center"><Tick v={a.can_move} /></td>
+                      <td className="px-4 py-3 text-center"><Tick v={a.can_assign} /></td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          onClick={() => deleteAssign.mutate({ id: a.id, moduleSlug })}
+                          disabled={deleteAssign.isPending}
+                          className="p-1 rounded hover:bg-red-900/40 text-neutral-600 hover:text-red-400 transition-colors"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {assignments.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-neutral-600">
+                      No assignments yet. Add one above.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Admin Panel ──────────────────────────────────────────────────────────────
 export function AdminPanel() {
-  const [tab, setTab] = useState<"requests" | "audit">("requests");
+  const [tab, setTab] = useState<"requests" | "columns" | "audit" | "data">("requests");
+  const [clearing, setClearing] = useState(false);
+  const [clearMsg, setClearMsg] = useState<string | null>(null);
   const [searchEmail, setSearchEmail] = useState("");
   const [actionFilter, setActionFilter] = useState("");
 
@@ -122,46 +376,47 @@ export function AdminPanel() {
     "edited_field", "approved_user", "rejected_user", "requested_access",
   ];
 
+  const tabs: { key: "requests" | "columns" | "audit" | "data"; label: string; badge: number; danger?: boolean }[] = [
+    { key: "requests", label: "Access Requests", badge: pendingUsers.length },
+    { key: "columns",  label: "Column Access",   badge: 0 },
+    { key: "audit",    label: "Audit Log",        badge: 0 },
+    { key: "data",     label: "Data",             badge: 0, danger: true },
+  ];
+
   return (
     <div className="min-h-full bg-neutral-950 px-8 py-8 overflow-y-auto">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-neutral-100">Admin Panel</h1>
-        <p className="text-sm text-neutral-500 mt-1">Manage access requests and view the full audit log.</p>
+        <p className="text-sm text-neutral-500 mt-1">Manage access requests, column permissions, and the audit log.</p>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 border-b border-neutral-800">
-        <button
-          onClick={() => setTab("requests")}
-          className={`px-4 py-2 text-sm font-medium transition-colors ${
-            tab === "requests"
-              ? "text-amber-400 border-b-2 border-amber-500"
-              : "text-neutral-500 hover:text-neutral-300"
-          }`}
-        >
-          Access Requests
-          {pendingUsers.length > 0 && (
-            <span className="ml-2 px-1.5 py-0.5 rounded-full bg-amber-600 text-[10px] text-white">
-              {pendingUsers.length}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setTab("audit")}
-          className={`px-4 py-2 text-sm font-medium transition-colors ${
-            tab === "audit"
-              ? "text-amber-400 border-b-2 border-amber-500"
-              : "text-neutral-500 hover:text-neutral-300"
-          }`}
-        >
-          Audit Log
-        </button>
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`px-4 py-2 text-sm font-medium transition-colors ${
+              tab === t.key
+                ? t.danger
+                  ? "text-red-400 border-b-2 border-red-500"
+                  : "text-amber-400 border-b-2 border-amber-500"
+                : "text-neutral-500 hover:text-neutral-300"
+            }`}
+          >
+            {t.label}
+            {t.badge > 0 && (
+              <span className="ml-2 px-1.5 py-0.5 rounded-full bg-amber-600 text-[10px] text-white">
+                {t.badge}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
 
       {/* ── Access Requests tab ───────────────────────────────────── */}
       {tab === "requests" && (
         <div>
-          {/* Search */}
           <div className="flex items-center gap-2 mb-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-neutral-600" />
@@ -203,10 +458,54 @@ export function AdminPanel() {
         </div>
       )}
 
+      {/* ── Column Access tab ─────────────────────────────────────── */}
+      {tab === "columns" && <ColumnAssignmentsTab />}
+
+      {/* ── Data tab ─────────────────────────────────────────────── */}
+      {tab === "data" && (
+        <div className="max-w-lg">
+          <div className="rounded-xl border border-red-900/50 bg-red-950/20 p-6">
+            <div className="flex items-center gap-3 mb-3">
+              <Trash2 className="size-5 text-red-400" />
+              <h2 className="text-base font-semibold text-red-300">Clear All Work Orders</h2>
+            </div>
+            <p className="text-sm text-neutral-400 mb-5">
+              Permanently deletes every row in <code className="text-red-300">bajaj_work_orders</code> and <code className="text-red-300">bajaj_wo_meta</code>.
+              This cannot be undone. Use before re-importing fresh data.
+            </p>
+            {clearMsg && (
+              <p className={`text-sm mb-4 ${clearMsg.startsWith("✓") ? "text-emerald-400" : "text-red-400"}`}>
+                {clearMsg}
+              </p>
+            )}
+            <button
+              disabled={clearing}
+              onClick={async () => {
+                if (!confirm("Delete ALL work orders? This is irreversible.")) return;
+                setClearing(true);
+                setClearMsg(null);
+                try {
+                  const res = await fetch("/api/bajaj/work-orders/clear", { method: "DELETE" });
+                  if (!res.ok) throw new Error(await res.text());
+                  setClearMsg("✓ All work orders deleted. You can now re-import.");
+                } catch (e: unknown) {
+                  setClearMsg(`✗ Error: ${e instanceof Error ? e.message : "Unknown error"}`);
+                } finally {
+                  setClearing(false);
+                }
+              }}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white text-sm font-medium transition-colors"
+            >
+              {clearing ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+              {clearing ? "Clearing…" : "Clear All Data"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Audit Log tab ─────────────────────────────────────────── */}
       {tab === "audit" && (
         <div>
-          {/* Filters */}
           <div className="flex items-center gap-2 mb-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-neutral-600" />

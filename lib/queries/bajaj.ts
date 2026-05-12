@@ -12,6 +12,8 @@ import type {
   BajajAuditLog,
   BajajAnalytics,
   WorkOrderFilters,
+  BajajColumnAssignment,
+  BajajColumnRequest,
 } from "@/lib/types/bajaj";
 
 const supabase = createClient();
@@ -357,5 +359,114 @@ export function useBajajAnalytics(moduleSlug?: string) {
       } as BajajAnalytics;
     },
     staleTime: 60 * 1000,
+  });
+}
+
+// ─── Column Assignments ───────────────────────────────────────────────────────
+
+export function useBajajColumnAssignments(moduleSlug?: string) {
+  return useQuery<BajajColumnAssignment[]>({
+    queryKey: ["bajaj-column-assignments", moduleSlug],
+    queryFn: async () => {
+      const url = moduleSlug
+        ? `/api/bajaj/column-assignments?module_slug=${moduleSlug}`
+        : "/api/bajaj/column-assignments";
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useUpsertColumnAssignment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: {
+      module_slug: string;
+      status_id: string | null;
+      user_email: string;
+      can_edit?: boolean;
+      can_move?: boolean;
+      can_assign?: boolean;
+    }) => {
+      const res = await fetch("/api/bajaj/column-assignments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json() as Promise<BajajColumnAssignment>;
+    },
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["bajaj-column-assignments", vars.module_slug] });
+    },
+  });
+}
+
+export function useDeleteColumnAssignment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, moduleSlug }: { id: string; moduleSlug: string }) => {
+      const res = await fetch(`/api/bajaj/column-assignments?id=${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(await res.text());
+      return moduleSlug;
+    },
+    onSuccess: (moduleSlug) => {
+      qc.invalidateQueries({ queryKey: ["bajaj-column-assignments", moduleSlug] });
+    },
+  });
+}
+
+// ─── Column Requests ──────────────────────────────────────────────────────────
+
+export function useBajajColumnRequests(moduleSlug?: string) {
+  return useQuery<BajajColumnRequest[]>({
+    queryKey: ["bajaj-column-requests", moduleSlug],
+    queryFn: async () => {
+      const url = moduleSlug
+        ? `/api/bajaj/column-requests?module_slug=${moduleSlug}`
+        : "/api/bajaj/column-requests";
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useRequestColumnAccess() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: { module_slug: string; status_id: string | null; reason?: string }) => {
+      const res = await fetch("/api/bajaj/column-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json() as Promise<BajajColumnRequest>;
+    },
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["bajaj-column-requests", vars.module_slug] });
+    },
+  });
+}
+
+export function useReviewColumnRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: "approved" | "rejected" }) => {
+      const res = await fetch(`/api/bajaj/column-requests?id=${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["bajaj-column-requests"] });
+      qc.invalidateQueries({ queryKey: ["bajaj-column-assignments"] });
+    },
   });
 }

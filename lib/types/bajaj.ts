@@ -115,6 +115,30 @@ export interface BajajAnalytics {
   importTimeline: { date: string; addedCount: number; batchId: string }[];
 }
 
+// ─── Column RBAC ──────────────────────────────────────────────────────────────
+
+export interface BajajColumnAssignment {
+  id: string;
+  module_slug: string;
+  status_id: string | null;   // null = module-wide
+  user_email: string;
+  can_edit: boolean;
+  can_move: boolean;
+  can_assign: boolean;
+  created_at: string;
+}
+
+export interface BajajColumnRequest {
+  id: string;
+  module_slug: string;
+  status_id: string | null;
+  user_email: string;
+  reason: string | null;
+  status: "pending" | "approved" | "rejected";
+  reviewed_by: string | null;
+  created_at: string;
+}
+
 // ─── Board filters ────────────────────────────────────────────────────────────
 
 export interface WorkOrderFilters {
