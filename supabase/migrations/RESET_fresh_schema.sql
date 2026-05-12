@@ -68,8 +68,8 @@ CROSS JOIN (VALUES
   ('SI Filing',            'f97316', 4),
   ('Custom Clearance',     'ef4444', 5),
   ('Gate Open',            'ec4899', 6),
-  ('Billing',              '6366f1', 7),
-  ('BL Release',           '10b981', 8),
+  ('BL Release',           '10b981', 7),
+  ('Billing',              '6366f1', 8),
   ('Completed',            '22c55e', 9)
 ) AS s(name, color_hex, display_order);
 
@@ -311,6 +311,17 @@ CREATE TABLE bajaj_reminders (
   sent_at             timestamptz,
   done_at             timestamptz,
   created_at          timestamptz NOT NULL DEFAULT now()
+);
+
+-- ── bajaj_auto_progression ───────────────────────────────────────────────────
+CREATE TABLE bajaj_auto_progression (
+  id                  uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  module_slug         text        NOT NULL,
+  trigger_field       text        NOT NULL,
+  target_status_name  text        NOT NULL,
+  description         text,
+  created_at          timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (module_slug, trigger_field)
 );
 
 -- ── bajaj_role_permissions ────────────────────────────────────────────────────

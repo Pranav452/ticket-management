@@ -138,7 +138,7 @@ export function useUpdateWorkOrder() {
         body:    JSON.stringify(force ? { ...updates, force: true } : updates),
       });
 
-      // 409 = soft block — warnings returned, ask user to confirm
+      // 409 = container/vessel soft block
       if (res.status === 409) {
         const json = await res.json();
         const msgs: string[] = (json.warnings ?? []).map((w: { message: string }) => w.message);
@@ -146,7 +146,6 @@ export function useUpdateWorkOrder() {
           `⚠️ Business rule warning:\n\n${msgs.join("\n\n")}\n\nOverride and save anyway?`
         );
         if (!confirmed) throw new Error("Cancelled by user");
-        // Retry with force flag
         const retry = await fetch(`/api/bajaj/work-orders/${id}`, {
           method:  "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -156,8 +155,40 @@ export function useUpdateWorkOrder() {
         return retry.json();
       }
 
+      // 422 = required-field or billing prereq block
+      if (res.status === 422) {
+        const json = await res.json();
+        const missing: string[] = json.missing ?? [];
+        const canForce: boolean = json.requiresForce === true;
+
+        if (canForce) {
+          const confirmed = window.confirm(
+            `⚠️ Missing required fields:\n\n• ${missing.join("\n• ")}\n\nMove anyway?`
+          );
+          if (!confirmed) throw new Error("Cancelled by user");
+          const retry = await fetch(`/api/bajaj/work-orders/${id}`, {
+            method:  "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ ...updates, force: true }),
+          });
+          if (!retry.ok) throw new Error(await retry.text());
+          return retry.json();
+        } else {
+          // Hard block — no override (billing prereqs, HAZ isolation)
+          const detail = missing.length ? `\n\nMissing / conflicting: ${missing.join(", ")}` : "";
+          window.alert(`🚫 ${json.error}${detail}`);
+          throw new Error(json.error);
+        }
+      }
+
       if (!res.ok) throw new Error(await res.text());
-      return res.json();
+      const result = await res.json();
+
+      // Surface auto-progression / auto-assignment feedback
+      if (result.autoMovedTo)    window.alert(`✅ Card auto-progressed to next stage based on a workflow rule.`);
+      if (result.autoAssignedTo) window.alert(`👤 Auto-assigned to ${result.autoAssignedTo} (sole column owner).`);
+
+      return result;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["bajaj", "work-orders"] });
@@ -603,6 +634,53 @@ export function useDeleteColumnRequiredField() {
     },
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["bajaj", "column-required-fields", vars.module_slug] });
+    },
+  });
+}
+
+// ── Auto-progression rules ────────────────────────────────────────────────────
+
+export interface AutoProgressionRule {
+  id: string;
+  module_slug: string;
+  trigger_field: string;
+  target_status_name: string;
+  description: string | null;
+  created_at: string;
+}
+
+export function useAutoProgressionRules(moduleSlug: string) {
+  return useQuery<AutoProgressionRule[]>({
+    queryKey: ["bajaj", "auto-progression", moduleSlug],
+    queryFn:  () => apiFetch(`/api/bajaj/auto-progression?module_slug=${moduleSlug}`),
+    staleTime: 60_000,
+  });
+}
+
+export function useUpsertAutoProgressionRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: { module_slug: string; trigger_field: string; target_status_name: string; description?: string }) =>
+      apiFetch("/api/bajaj/auto-progression", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["bajaj", "auto-progression", vars.module_slug] });
+    },
+  });
+}
+
+export function useDeleteAutoProgressionRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, moduleSlug }: { id: string; moduleSlug: string }) => {
+      await apiFetch(`/api/bajaj/auto-progression?id=${id}`, { method: "DELETE" });
+      return moduleSlug;
+    },
+    onSuccess: (moduleSlug) => {
+      qc.invalidateQueries({ queryKey: ["bajaj", "auto-progression", moduleSlug] });
     },
   });
 }

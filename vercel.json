@@ -3,6 +3,14 @@
     {
       "path": "/api/cron/bajaj-reminders",
       "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/bajaj/cron/bl-alert",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/bajaj/cron/si-cutoff",
+      "schedule": "0 6 * * *"
     }
   ]
 }

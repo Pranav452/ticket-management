@@ -143,8 +143,8 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
     { name: "SI Filing",           color_hex: "f97316" },
     { name: "Custom Clearance",    color_hex: "ef4444" },
     { name: "Gate Open",           color_hex: "ec4899" },
-    { name: "Billing",             color_hex: "6366f1" },
     { name: "BL Release",          color_hex: "10b981" },
+    { name: "Billing",             color_hex: "6366f1" },
     { name: "Completed",           color_hex: "22c55e" },
   ];
 
@@ -196,8 +196,69 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
     return true;
   });
 
-  function handleDrop(workOrderId: string, newStatusId: string, newOrder: number) {
-    updateWorkOrder.mutate({ id: workOrderId, updates: { status_id: newStatusId, column_order: newOrder } });
+  async function handleDrop(workOrderId: string, newStatusId: string, newOrder: number) {
+    try {
+      const res = await fetch(`/api/bajaj/work-orders/${workOrderId}`, {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ status_id: newStatusId, column_order: newOrder }),
+      });
+
+      if (res.status === 422) {
+        // Required-field or billing prereq block
+        const json = await res.json();
+        const missing: string[] = json.missing ?? [];
+        const canForce: boolean = json.requiresForce === true;
+
+        if (canForce) {
+          const ok = window.confirm(
+            `⚠️ Missing required fields for this column:\n\n• ${missing.join("\n• ")}\n\nMove anyway?`
+          );
+          if (!ok) return;
+          await fetch(`/api/bajaj/work-orders/${workOrderId}`, {
+            method:  "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ status_id: newStatusId, column_order: newOrder, force: true }),
+          });
+        } else {
+          // Hard block (billing prereqs) — no override
+          window.alert(`🚫 Cannot move card:\n\n${json.error}\n\nMissing: ${missing.join(", ")}`);
+          return;
+        }
+      } else if (res.status === 409) {
+        // Container/vessel soft block
+        const json = await res.json();
+        const msgs: string[] = (json.warnings ?? []).map((w: { message: string }) => w.message);
+        const ok = window.confirm(`⚠️ Business rule warning:\n\n${msgs.join("\n\n")}\n\nOverride and move anyway?`);
+        if (!ok) return;
+        const retry = await fetch(`/api/bajaj/work-orders/${workOrderId}`, {
+          method:  "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ status_id: newStatusId, column_order: newOrder, force: true }),
+        });
+        if (!retry.ok) {
+          const rj = await retry.json().catch(() => ({}));
+          window.alert(`Failed to move card: ${rj.error ?? retry.statusText}`);
+          return;
+        }
+        const rjson = await retry.json().catch(() => ({}));
+        if (rjson.autoMovedTo) window.alert(`✅ Card auto-moved to Completed (invoice set).`);
+      } else if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        window.alert(`Failed to move card: ${json.error ?? res.statusText}`);
+        return;
+      } else {
+        // Successful move — check for auto-progression response
+        const json = await res.json().catch(() => ({}));
+        if (json.autoMovedTo) window.alert(`✅ Card auto-progressed to next stage based on a workflow rule.`);
+        if (json.autoAssignedTo) window.alert(`👤 Auto-assigned to ${json.autoAssignedTo} (sole column owner).`);
+      }
+
+      // Refresh board
+      refetch();
+    } catch (e) {
+      console.error("[handleDrop]", e);
+    }
   }
 
   const hasActiveFilter = !!(searchInput || filters.dateFrom || filters.dateTo || filters.statusId);

@@ -5,12 +5,14 @@ import {
   CheckCircle, XCircle, Loader2, Search, Filter,
   Trash2, Plus, ShieldCheck, ShieldOff, Check,
   AlertTriangle, CheckCircle2, RefreshCw, Wrench, ChevronDown, ExternalLink,
+  BookOpen, ShieldAlert, Bell, Zap, Lock, Eye, Users,
 } from "lucide-react";
 import {
   useBajajUsers, useApproveBajajUser, useRejectBajajUser, useBajajAuditLogs,
   useBajajColumnAssignments, useUpsertColumnAssignment, useDeleteColumnAssignment,
   useBajajColumnRequests, useReviewColumnRequest,
   useColumnRequiredFields, useUpsertColumnRequiredField, useDeleteColumnRequiredField,
+  useAutoProgressionRules, useUpsertAutoProgressionRule, useDeleteAutoProgressionRule,
 } from "@/lib/queries/bajaj";
 import { useBajajModules, useBajajStatuses } from "@/lib/queries/bajaj";
 import { useAuthStore } from "@/lib/stores/auth-store";
@@ -730,9 +732,368 @@ function RepairModulesPanel() {
   );
 }
 
+// ─── Auto-Progression Tab ─────────────────────────────────────────────────────
+const MODULE_SLUGS_LABELS: { slug: string; label: string }[] = [
+  { slug: "vipar",      label: "VIPAR" },
+  { slug: "srilanka",   label: "Sri Lanka" },
+  { slug: "nigeria",    label: "Nigeria" },
+  { slug: "bangladesh", label: "Bangladesh" },
+  { slug: "triumph",    label: "Triumph" },
+];
+
+const LIFECYCLE_TARGETS = [
+  "Planning", "Booking Request", "Booking", "Container Allocation",
+  "SI Filing", "Custom Clearance", "Gate Open", "BL Release", "Billing", "Completed",
+];
+
+function AutoProgressionTab() {
+  const [selectedModule, setSelectedModule] = useState("srilanka");
+  const [triggerField,   setTriggerField]   = useState("");
+  const [targetStage,    setTargetStage]    = useState(LIFECYCLE_TARGETS[2]);
+  const [description,    setDescription]    = useState("");
+
+  const { data: rules = [], isLoading } = useAutoProgressionRules(selectedModule);
+  const upsert = useUpsertAutoProgressionRule();
+  const remove  = useDeleteAutoProgressionRule();
+
+  function handleAdd() {
+    if (!triggerField.trim() || !targetStage) return;
+    upsert.mutate({
+      module_slug:        selectedModule,
+      trigger_field:      triggerField.trim().toLowerCase(),
+      target_status_name: targetStage,
+      description:        description.trim() || undefined,
+    }, { onSuccess: () => { setTriggerField(""); setDescription(""); } });
+  }
+
+  return (
+    <div className="max-w-2xl space-y-6">
+      <div>
+        <h2 className="text-[15px] font-semibold text-neutral-100">Auto-Progression Rules</h2>
+        <p className="text-[12px] text-neutral-500 mt-1">
+          When a field goes from empty → filled on save, the work order automatically
+          advances to the target stage — but only if it hasn&apos;t already passed it.
+        </p>
+      </div>
+
+      {/* Module selector */}
+      <div className="flex items-center gap-3">
+        <label className="text-xs text-neutral-500 font-medium">Module</label>
+        <select value={selectedModule} onChange={e => setSelectedModule(e.target.value)}
+          className="px-3 py-1.5 bg-neutral-900 border border-neutral-700 rounded-lg text-sm text-neutral-200 focus:outline-none focus:border-amber-600">
+          {MODULE_SLUGS_LABELS.map(m => <option key={m.slug} value={m.slug}>{m.label}</option>)}
+        </select>
+      </div>
+
+      {/* Add rule form */}
+      <div className="p-4 rounded-xl border border-neutral-800 bg-neutral-900/50 space-y-4">
+        <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Add Rule</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-neutral-500">Trigger field (data key)</label>
+            <input
+              type="text"
+              value={triggerField}
+              onChange={e => setTriggerField(e.target.value)}
+              placeholder="e.g. booking_no, sbno, blno"
+              className="px-3 py-1.5 bg-neutral-900 border border-neutral-700 rounded-lg text-sm text-neutral-200 placeholder:text-neutral-600 focus:outline-none focus:border-amber-600"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-neutral-500">Move to stage</label>
+            <select value={targetStage} onChange={e => setTargetStage(e.target.value)}
+              className="px-3 py-1.5 bg-neutral-900 border border-neutral-700 rounded-lg text-sm text-neutral-200 focus:outline-none focus:border-amber-600">
+              {LIFECYCLE_TARGETS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-neutral-500">Description (optional)</label>
+          <input
+            type="text"
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            placeholder="e.g. Booking number received → advance to Booking stage"
+            className="px-3 py-1.5 bg-neutral-900 border border-neutral-700 rounded-lg text-sm text-neutral-200 placeholder:text-neutral-600 focus:outline-none focus:border-amber-600 w-full"
+          />
+        </div>
+        <button onClick={handleAdd} disabled={!triggerField.trim() || upsert.isPending}
+          className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-sm font-medium transition-colors">
+          {upsert.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+          Add Rule
+        </button>
+      </div>
+
+      {/* Rules list */}
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-neutral-500 text-sm py-4">
+          <Loader2 className="size-4 animate-spin" /> Loading…
+        </div>
+      ) : rules.length === 0 ? (
+        <p className="text-sm text-neutral-600 py-4">No auto-progression rules for this module yet.</p>
+      ) : (
+        <div className="rounded-xl border border-neutral-800 overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-neutral-900/80 border-b border-neutral-800">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Trigger field</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">→ Stage</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Description</th>
+                <th className="px-4 py-3 w-8" />
+              </tr>
+            </thead>
+            <tbody>
+              {rules.map(r => (
+                <tr key={r.id} className="border-b border-neutral-800 hover:bg-neutral-900/50">
+                  <td className="px-4 py-3">
+                    <code className="text-xs bg-neutral-800 text-amber-300 px-1.5 py-0.5 rounded">{r.trigger_field}</code>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-neutral-300">{r.target_status_name}</td>
+                  <td className="px-4 py-3 text-xs text-neutral-500">{r.description ?? "—"}</td>
+                  <td className="px-4 py-3 text-right">
+                    <button onClick={() => remove.mutate({ id: r.id, moduleSlug: selectedModule })}
+                      disabled={remove.isPending}
+                      className="p-1 rounded hover:bg-red-900/40 text-neutral-600 hover:text-red-400 transition-colors">
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 px-4 py-3 text-xs text-neutral-500 space-y-1">
+        <p className="font-semibold text-neutral-400">⚠ Notes</p>
+        <p>• LINKS invoice_no → Completed is hard-coded and always active (not listed here).</p>
+        <p>• A WO never moves backwards — if it&apos;s already at or past the target stage, the rule is skipped.</p>
+        <p>• If multiple rules fire on the same save, the WO moves to the highest-order stage triggered.</p>
+        <p>• The field key must match the exact JSONB key used in the work order data (case-insensitive).</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Business Rules Tab ───────────────────────────────────────────────────────
+
+interface RuleSection {
+  icon: React.ReactNode;
+  title: string;
+  color: string;
+  borderColor: string;
+  rules: { label: string; detail: string; tag?: string; tagColor?: string }[];
+}
+
+const BIZ_RULES: RuleSection[] = [
+  {
+    icon: <Lock className="size-4" />,
+    title: "Hard Blocks — Cannot be overridden",
+    color: "text-red-400",
+    borderColor: "border-red-900/50",
+    rules: [
+      {
+        label: "Billing prerequisites",
+        detail: "A work order cannot enter the Billing stage until BL Number, SB Number, and E-Document are all filled in. No override possible.",
+        tag: "All modules",
+        tagColor: "bg-neutral-800 text-neutral-400",
+      },
+      {
+        label: "HAZ container isolation",
+        detail: "A work order marked as HAZ (hazardous cargo) cannot share a container number with any non-HAZ work order, and vice versa. Applies to all modules. No override possible.",
+        tag: "All modules",
+        tagColor: "bg-neutral-800 text-neutral-400",
+      },
+    ],
+  },
+  {
+    icon: <ShieldAlert className="size-4" />,
+    title: "Soft Blocks — Can be overridden with confirmation",
+    color: "text-amber-400",
+    borderColor: "border-amber-900/50",
+    rules: [
+      {
+        label: "Spare parts + frames in same container",
+        detail: "Spare parts (assy_config contains 'spare') and frame/SKD units (assy_config contains 'frame', 'skd', or 'f.k.d') cannot share the same container. User sees a warning and must confirm to override.",
+        tag: "Sri Lanka · LINKS only",
+        tagColor: "bg-blue-950 text-blue-400",
+      },
+      {
+        label: "More than 25 containers per vessel",
+        detail: "A single vessel cannot carry more than 25 containers worth of LINKS Sri Lanka work orders. If adding a container would push the vessel over 25, the user is warned and must confirm to override.",
+        tag: "Sri Lanka · LINKS only",
+        tagColor: "bg-blue-950 text-blue-400",
+      },
+      {
+        label: "Required fields gate (admin-configurable)",
+        detail: "Before a card can be moved to a stage, all fields configured as 'required' for that stage must be filled. Configured per-module in the Required Fields tab. User sees which fields are missing and can override.",
+        tag: "Configurable",
+        tagColor: "bg-amber-950 text-amber-400",
+      },
+    ],
+  },
+  {
+    icon: <Zap className="size-4" />,
+    title: "Auto-Progressions — System moves the card automatically",
+    color: "text-emerald-400",
+    borderColor: "border-emerald-900/50",
+    rules: [
+      {
+        label: "LINKS invoice → Completed",
+        detail: "When a work order with agent = LINKS has its Invoice Number field filled for the first time (was empty, now set), the system automatically moves it to the Completed stage.",
+        tag: "Sri Lanka · LINKS only",
+        tagColor: "bg-blue-950 text-blue-400",
+      },
+      {
+        label: "Admin-configurable field → stage",
+        detail: "Admins can define additional field-triggered progressions in the Auto-Progression tab. When a trigger field goes from empty → filled, the WO advances to the configured target stage if it hasn't already passed it.",
+        tag: "Configurable",
+        tagColor: "bg-amber-950 text-amber-400",
+      },
+    ],
+  },
+  {
+    icon: <Bell className="size-4" />,
+    title: "Automated Alerts — Sent by email to assignees + superadmins",
+    color: "text-violet-400",
+    borderColor: "border-violet-900/50",
+    rules: [
+      {
+        label: "BL Release 48-hour overdue alert",
+        detail: "If a work order has a Sailing Date set but no BL Number, and the sailing date was between 0–48 hours ago, an alert email is sent to the BL Release column assignees and all superadmins. Fires on every field save AND via hourly cron (Vercel Cron, 0 * * * *).",
+        tag: "All modules",
+        tagColor: "bg-neutral-800 text-neutral-400",
+      },
+      {
+        label: "SI Cutoff missed alert",
+        detail: "If the SI Cutoff date has passed and the SI has not been filed (si_filed / sifiling / sifile fields all empty), an alert email is sent to the SI Filing column assignees and all superadmins. Deduped — fires at most once per work order per day. Fires on field save AND via daily cron (0 6 * * *, 6am UTC).",
+        tag: "All modules",
+        tagColor: "bg-neutral-800 text-neutral-400",
+      },
+      {
+        label: "Reminder system",
+        detail: "Admins and operators can create manual reminders with a future due date, a message, and a recipient list. The reminder cron (30 3 * * *, 3:30am UTC) fires emails for all pending reminders whose due_at has passed. Reminders with a past due date are rejected at creation time.",
+        tag: "All modules",
+        tagColor: "bg-neutral-800 text-neutral-400",
+      },
+    ],
+  },
+  {
+    icon: <Users className="size-4" />,
+    title: "Access & Roles",
+    color: "text-sky-400",
+    borderColor: "border-sky-900/50",
+    rules: [
+      {
+        label: "New user default role",
+        detail: "When an admin approves a new user access request, the user is always granted the 'viewer' role by default — regardless of any previous DB value. Role can be upgraded manually after approval.",
+        tag: "Security",
+        tagColor: "bg-red-950 text-red-400",
+      },
+      {
+        label: "Admin page access guard",
+        detail: "The Admin Panel is only accessible to users with role = 'admin' or 'superadmin' AND status = 'approved'. All other users are silently redirected to /bajaj/home. The nav link is also hidden for non-admins.",
+        tag: "Security",
+        tagColor: "bg-red-950 text-red-400",
+      },
+      {
+        label: "Superadmin-only role grants",
+        detail: "Only a superadmin can grant the superadmin role to another user. Admins can only assign admin-or-below. This prevents privilege escalation.",
+        tag: "Security",
+        tagColor: "bg-red-950 text-red-400",
+      },
+      {
+        label: "Column auto-assignment",
+        detail: "When a card is moved to a new stage, if exactly one user is assigned to that column with can_edit = true, the system auto-populates the assigned_to_<stage> field on the work order. If multiple users are assigned, no auto-assignment (ambiguous — human decides).",
+        tag: "Configurable",
+        tagColor: "bg-amber-950 text-amber-400",
+      },
+    ],
+  },
+  {
+    icon: <Eye className="size-4" />,
+    title: "Validations & Data Integrity",
+    color: "text-neutral-300",
+    borderColor: "border-neutral-700",
+    rules: [
+      {
+        label: "Reminder due date must be in the future",
+        detail: "Creating a reminder with a due date in the past or equal to now is rejected with a 400 error at the API level.",
+        tag: "All modules",
+        tagColor: "bg-neutral-800 text-neutral-400",
+      },
+      {
+        label: "BL Release before Billing in lifecycle",
+        detail: "The workflow lifecycle order is: Planning → Booking Request → Booking → Container Allocation → SI Filing → Custom Clearance → Gate Open → BL Release → Billing → Completed. BL Release (7) always comes before Billing (8).",
+        tag: "All modules",
+        tagColor: "bg-neutral-800 text-neutral-400",
+      },
+      {
+        label: "Violations audit (admin tool)",
+        detail: "The Data tab provides a manual audit tool that scans all Sri Lanka LINKS work orders for: (1) spare/frame container conflicts, and (2) vessels with more than 25 containers. Results show expandable vessel rows with deep-links to each work order.",
+        tag: "Sri Lanka · LINKS only",
+        tagColor: "bg-blue-950 text-blue-400",
+      },
+      {
+        label: "Country field repair tool",
+        detail: "The Data tab includes a repair utility that finds work orders with null or misspelled country values per module and normalises them to the canonical country name. Supports dry-run mode before writing.",
+        tag: "Admin tool",
+        tagColor: "bg-neutral-800 text-neutral-400",
+      },
+    ],
+  },
+];
+
+function BusinessRulesTab() {
+  return (
+    <div className="max-w-3xl space-y-6 pb-8">
+      <div>
+        <h2 className="text-[15px] font-semibold text-neutral-100 flex items-center gap-2">
+          <BookOpen className="size-4 text-amber-400" />
+          Custom Business Rules — Reference
+        </h2>
+        <p className="text-[12px] text-neutral-500 mt-1">
+          Every rule enforced by the system. Read-only — for engineering changes, update <code className="text-amber-400/80">lib/bajaj/workflow.ts</code>.
+        </p>
+      </div>
+
+      {BIZ_RULES.map(section => (
+        <div key={section.title} className={`rounded-xl border ${section.borderColor} overflow-hidden`}>
+          {/* Section header */}
+          <div className="flex items-center gap-2.5 px-4 py-3 bg-neutral-900/80 border-b border-neutral-800">
+            <span className={section.color}>{section.icon}</span>
+            <span className={`text-[13px] font-semibold ${section.color}`}>{section.title}</span>
+          </div>
+
+          {/* Rules */}
+          <div className="divide-y divide-neutral-800/60">
+            {section.rules.map((rule, i) => (
+              <div key={i} className="px-4 py-3.5 bg-neutral-950/40 hover:bg-neutral-900/30 transition-colors">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-[13px] font-medium text-neutral-200">{rule.label}</p>
+                  {rule.tag && (
+                    <span className={`flex-shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full ${rule.tagColor}`}>
+                      {rule.tag}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[12px] text-neutral-500 mt-1 leading-relaxed">{rule.detail}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      <div className="text-[11px] text-neutral-700 pt-2">
+        Last updated: auto-generated from workflow engine · {new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Admin Panel ──────────────────────────────────────────────────────────────
 export function AdminPanel() {
-  const [tab, setTab] = useState<"requests" | "columns" | "rules" | "audit" | "data">("requests");
+  const [tab, setTab] = useState<"requests" | "columns" | "rules" | "autoprogress" | "bizrules" | "audit" | "data">("requests");
   const [clearing, setClearing] = useState(false);
   const [clearMsg, setClearMsg] = useState<string | null>(null);
   const [searchEmail, setSearchEmail] = useState("");
@@ -756,12 +1117,14 @@ export function AdminPanel() {
     "edited_field", "approved_user", "rejected_user", "requested_access",
   ];
 
-  const tabs: { key: "requests" | "columns" | "rules" | "audit" | "data"; label: string; badge: number; danger?: boolean }[] = [
-    { key: "requests", label: "Access Requests", badge: pendingUsers.length },
-    { key: "columns",  label: "Column Access",   badge: 0 },
-    { key: "rules",    label: "Column Rules",    badge: 0 },
-    { key: "audit",    label: "Audit Log",        badge: 0 },
-    { key: "data",     label: "Data",             badge: 0, danger: true },
+  const tabs: { key: "requests" | "columns" | "rules" | "autoprogress" | "bizrules" | "audit" | "data"; label: string; badge: number; danger?: boolean }[] = [
+    { key: "requests",     label: "Access Requests",  badge: pendingUsers.length },
+    { key: "columns",      label: "Column Access",    badge: 0 },
+    { key: "rules",        label: "Required Fields",  badge: 0 },
+    { key: "autoprogress", label: "Auto-Progression", badge: 0 },
+    { key: "bizrules",     label: "Business Rules",   badge: 0 },
+    { key: "audit",        label: "Audit Log",        badge: 0 },
+    { key: "data",         label: "Data",             badge: 0, danger: true },
   ];
 
   return (
@@ -888,8 +1251,14 @@ export function AdminPanel() {
         </div>
       )}
 
-      {/* ── Column Rules tab ─────────────────────────────────────── */}
+      {/* ── Required Fields tab ──────────────────────────────────── */}
       {tab === "rules" && <ColumnRulesTab />}
+
+      {/* ── Auto-Progression tab ─────────────────────────────────── */}
+      {tab === "autoprogress" && <AutoProgressionTab />}
+
+      {/* ── Business Rules tab ───────────────────────────────────── */}
+      {tab === "bizrules" && <BusinessRulesTab />}
 
       {/* ── Audit Log tab ─────────────────────────────────────────── */}
       {tab === "audit" && (
