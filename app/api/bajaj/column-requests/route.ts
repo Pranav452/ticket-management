@@ -14,7 +14,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
-import { getCurrentUserEmail, isAdmin } from "@/lib/bajaj/permissions";
+import { getCurrentUserEmail, isAdminEmail } from "@/lib/bajaj/permissions";
 
 async function getSupabase() {
   const cookieStore = await cookies();
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
 
   let query = supabase.from("bajaj_column_requests").select("*");
   if (moduleSlug) query = query.eq("module_slug", moduleSlug);
-  if (!isAdmin(actorEmail)) query = query.eq("user_email", actorEmail);
+  if (!(await isAdminEmail(actorEmail))) query = query.eq("user_email", actorEmail);
   query = query.order("created_at", { ascending: false });
 
   const { data, error } = await query;
@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   const actorEmail = await getCurrentUserEmail();
-  if (!isAdmin(actorEmail)) return NextResponse.json({ error: "Admin only" }, { status: 403 });
+  if (!(await isAdminEmail(actorEmail))) return NextResponse.json({ error: "Admin only" }, { status: 403 });
 
   const url = new URL(req.url);
   const id = url.searchParams.get("id");

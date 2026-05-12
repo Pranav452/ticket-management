@@ -5,11 +5,11 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getCurrentUserEmail, isAdmin } from "@/lib/bajaj/permissions";
+import { getCurrentUserEmail, isAdminEmail } from "@/lib/bajaj/permissions";
 
 export async function DELETE(req: NextRequest) {
   const actorEmail = await getCurrentUserEmail();
-  if (!isAdmin(actorEmail)) {
+  if (!(await isAdminEmail(actorEmail))) {
     return NextResponse.json({ error: "Admin only" }, { status: 403 });
   }
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getCurrentUserEmail, isAdmin } from "@/lib/bajaj/permissions";
+import { getCurrentUserEmail, isAdminEmail } from "@/lib/bajaj/permissions";
 
 export async function GET() {
   const sb = createAdminClient();
@@ -17,7 +17,7 @@ export async function GET() {
 export async function PUT(req: NextRequest) {
   try {
     const actorEmail = await getCurrentUserEmail();
-    if (!isAdmin(actorEmail))
+    if (!(await isAdminEmail(actorEmail)))
       return NextResponse.json({ error: "Admin only" }, { status: 403 });
 
     const body = await req.json();

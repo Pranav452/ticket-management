@@ -222,7 +222,14 @@ CREATE TRIGGER bajaj_work_orders_updated_at
 
 CREATE OR REPLACE FUNCTION is_bajaj_admin()
 RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE AS $$
-  SELECT auth.email() = 'pranavnairop090@gmail.com'
+  SELECT
+    auth.email() = 'pranavnairop090@gmail.com'
+    OR EXISTS (
+      SELECT 1 FROM bajaj_users
+      WHERE email  = auth.email()
+        AND status = 'approved'
+        AND role   IN ('admin', 'superadmin')
+    )
 $$;
 
 CREATE OR REPLACE FUNCTION is_bajaj_approved()

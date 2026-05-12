@@ -15,7 +15,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { checkColumnAccess, getCurrentUserEmail, isAdmin } from "@/lib/bajaj/permissions";
+import { checkColumnAccess, getCurrentUserEmail, isAdminEmail } from "@/lib/bajaj/permissions";
 import { validateWorkOrderRules } from "@/lib/bajaj/validation";
 import {
   getStatusName,
@@ -109,7 +109,7 @@ export async function PATCH(
     };
 
     // ── Permission check for non-admins ─────────────────────────────────────
-    if (!isAdmin(actorEmail)) {
+    if (!(await isAdminEmail(actorEmail))) {
       if (moduleSlug) {
         if ("data" in body) {
           const perm = await checkColumnAccess("can_edit", moduleSlug, curStatusId);

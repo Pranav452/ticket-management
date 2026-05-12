@@ -3,23 +3,67 @@
  * Called from server-side API routes only.
  *
  * Model:
- *   - Super admin (ADMIN_EMAIL) → always allowed, no checks
+ *   - Users with role = 'admin' or 'superadmin' in bajaj_users → always allowed
  *   - Approved user with assignment for the column → allowed per flags
  *   - Approved user with module-wide assignment (status_id IS NULL) → allowed per flags
  *   - No assignment → can_view only; edit/move/assign denied
  *   - Unapproved / unauthenticated → denied
+ *
+ * NOTE: The old ADMIN_EMAIL hardcode is kept as a fallback only so the original
+ * owner never gets locked out if their bajaj_users row is missing.
  */
 
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { createAdminClient } from "@/lib/supabase/admin";
 
-const ADMIN_EMAIL = "pranavnairop090@gmail.com";
+const FALLBACK_ADMIN_EMAIL = "pranavnairop090@gmail.com";
+const ADMIN_ROLES = ["admin", "superadmin"] as const;
 
 export type ColumnAction = "can_edit" | "can_move" | "can_assign";
 
 export interface PermResult {
   allowed: boolean;
   reason?: string;
+}
+
+/** Build an anon supabase client for reading the session. */
+function buildAnonClient() {
+  const cookieStore = cookies();
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    // @ts-expect-error — cookies() is a promise in Next 15 but sync in 14
+    { cookies: { getAll: () => (cookieStore as Awaited<typeof cookieStore>).getAll?.() ?? [], setAll: () => {} } }
+  );
+}
+
+/**
+ * Checks if the given email belongs to an admin/superadmin in bajaj_users.
+ * Also returns true for the fallback hardcoded owner email.
+ * Async — queries DB. Use this for API route guards.
+ */
+export async function isAdminEmail(email: string | null): Promise<boolean> {
+  if (!email) return false;
+  if (email === FALLBACK_ADMIN_EMAIL) return true;
+
+  const sb = createAdminClient();
+  const { data } = await sb
+    .from("bajaj_users")
+    .select("role, status")
+    .eq("email", email)
+    .maybeSingle();
+
+  return !!data && data.status === "approved" && ADMIN_ROLES.includes(data.role as typeof ADMIN_ROLES[number]);
+}
+
+/**
+ * Synchronous best-effort check using ONLY the fallback email.
+ * Only used in legacy call sites that can't be made async yet.
+ * Prefer isAdminEmail() for all new code.
+ */
+export function isAdmin(email: string | null): boolean {
+  return email === FALLBACK_ADMIN_EMAIL;
 }
 
 export async function checkColumnAccess(
@@ -37,8 +81,8 @@ export async function checkColumnAccess(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user?.email) return { allowed: false, reason: "Not authenticated" };
 
-  // Super admin bypasses everything
-  if (user.email === ADMIN_EMAIL) return { allowed: true };
+  // Admin / superadmin bypass everything
+  if (await isAdminEmail(user.email)) return { allowed: true };
 
   // Must be approved bajaj user
   const { data: bajajUser } = await supabase
@@ -79,7 +123,7 @@ export async function checkColumnAccess(
     return { allowed: Boolean((moduleWide as Record<string, unknown>)[action]) };
   }
 
-  // 3. No assignment → deny write actions, allow view
+  // 3. No assignment → deny write actions
   return {
     allowed: false,
     reason: "Not assigned to this column. Request access from your admin.",
@@ -98,8 +142,4 @@ export async function getCurrentUserEmail(): Promise<string | null> {
     const { data: { user } } = await supabase.auth.getUser();
     return user?.email ?? null;
   } catch { return null; }
-}
-
-export function isAdmin(email: string | null): boolean {
-  return email === ADMIN_EMAIL;
 }

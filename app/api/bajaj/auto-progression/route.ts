@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isAdmin, getCurrentUserEmail } from "@/lib/bajaj/permissions";
+import { isAdminEmail, getCurrentUserEmail } from "@/lib/bajaj/permissions";
 
 export async function GET(req: NextRequest) {
   const moduleSlug = req.nextUrl.searchParams.get("module_slug");
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const actorEmail = await getCurrentUserEmail();
-  if (!isAdmin(actorEmail))
+  if (!(await isAdminEmail(actorEmail)))
     return NextResponse.json({ error: "Admin only" }, { status: 403 });
 
   const body = await req.json() as {
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   const actorEmail = await getCurrentUserEmail();
-  if (!isAdmin(actorEmail))
+  if (!(await isAdminEmail(actorEmail)))
     return NextResponse.json({ error: "Admin only" }, { status: 403 });
 
   const id = req.nextUrl.searchParams.get("id");

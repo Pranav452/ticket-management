@@ -1,15 +1,15 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import {
-  LayoutGrid, BarChart2, Upload, ShieldCheck, LogOut,
+  LayoutGrid, BarChart2, Upload, ShieldCheck,
   Search, ChevronDown, ChevronRight as ChevronRightIcon,
   PanelLeft, Settings, Globe,
-  Inbox, MessageSquare, Home,
+  Inbox, MessageSquare, Home, Loader2, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -120,9 +120,163 @@ function ModuleGroup({ module, isActiveBoard }: { module: typeof MODULES[0]; isA
   );
 }
 
+// ─── Global Search Result type ────────────────────────────────────────────────
+interface SearchResult {
+  id: string;
+  module_slug: string;
+  module_name: string;
+  module_flag: string;
+  wo: string;
+  brand: string;
+  variant: string;
+  port: string;
+  vslname: string;
+  status_name: string;
+  status_color: string;
+}
+
+// ─── Sidebar Search Component ─────────────────────────────────────────────────
+function SidebarSearch() {
+  const router    = useRouter();
+  const [query,   setQuery]   = useState("");
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [open,    setOpen]    = useState(false);
+  const wrapRef   = useRef<HTMLDivElement>(null);
+  const inputRef  = useRef<HTMLInputElement>(null);
+
+  // Debounced search
+  useEffect(() => {
+    if (query.length < 2) { setResults([]); setOpen(false); return; }
+    const t = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const res  = await fetch(`/api/bajaj/search?q=${encodeURIComponent(query)}&limit=12`);
+        const data = await res.json();
+        setResults(Array.isArray(data) ? data : []);
+        setOpen(true);
+      } catch { setResults([]); }
+      finally { setLoading(false); }
+    }, 280);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  // Close on outside click
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, []);
+
+  // Keyboard shortcut: / to focus
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "/" && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+      if (e.key === "Escape") { setOpen(false); inputRef.current?.blur(); }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  function navigate(r: SearchResult) {
+    setOpen(false);
+    setQuery("");
+    router.push(`/bajaj/work-orders/${r.id}`);
+  }
+
+  return (
+    <div ref={wrapRef} className="px-2 pt-2.5 pb-1 relative">
+      <div className={cn(
+        "flex items-center gap-2 rounded-md px-2.5 py-1.5 transition-colors",
+        open ? "ring-1 ring-amber-500/40" : ""
+      )} style={{ background: "rgba(0,0,0,0.05)", color: SB_MUTED }}>
+        {loading
+          ? <Loader2 className="size-3.5 flex-shrink-0 animate-spin" />
+          : <Search className="size-3.5 flex-shrink-0" />
+        }
+        <input
+          ref={inputRef}
+          type="text"
+          placeholder="Search any WO, vessel, BL…"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onFocus={() => { if (results.length > 0) setOpen(true); }}
+          className="flex-1 bg-transparent text-[13px] outline-none placeholder-current min-w-0"
+          style={{ color: SB_MUTED }}
+        />
+        {query
+          ? <button onClick={() => { setQuery(""); setResults([]); setOpen(false); }} className="flex-shrink-0 hover:text-white/70 transition-colors"><X className="size-3" /></button>
+          : <span className="text-[11px] font-medium px-1 rounded flex-shrink-0" style={{ background: "rgba(0,0,0,0.08)", color: SB_MUTED }}>/</span>
+        }
+      </div>
+
+      {/* Results dropdown */}
+      {open && results.length > 0 && (
+        <div className="absolute left-2 right-2 top-full mt-1 z-50 rounded-xl border overflow-hidden shadow-xl"
+          style={{ background: "var(--sb-bg)", borderColor: SB_BORDER }}>
+          {results.map((r, i) => (
+            <button
+              key={r.id}
+              onClick={() => navigate(r)}
+              className={cn(
+                "w-full flex items-start gap-2.5 px-3 py-2 text-left transition-colors hover:bg-white/5",
+                i !== 0 && "border-t"
+              )}
+              style={{ borderColor: SB_BORDER }}
+            >
+              {/* Module flag + status dot */}
+              <div className="flex flex-col items-center gap-1 pt-0.5 flex-shrink-0">
+                <span className="text-[12px] leading-none">{r.module_flag}</span>
+                <span className="size-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: `#${r.status_color}` }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[12px] font-semibold font-mono" style={{ color: SB_TEXT }}>
+                    {r.wo || r.id.slice(0, 8)}
+                  </span>
+                  {r.status_name && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+                      style={{ background: `#${r.status_color}22`, color: `#${r.status_color}` }}>
+                      {r.status_name}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] truncate" style={{ color: SB_MUTED }}>
+                  {[r.brand, r.variant].filter(Boolean).join(" · ")}
+                  {r.vslname && ` · ${r.vslname}`}
+                  {r.port && ` · ${r.port}`}
+                </p>
+                <p className="text-[10px] mt-0.5" style={{ color: SB_MUTED, opacity: 0.6 }}>
+                  {r.module_name}
+                </p>
+              </div>
+            </button>
+          ))}
+          {results.length === 12 && (
+            <div className="px-3 py-1.5 text-[10px] text-center border-t" style={{ borderColor: SB_BORDER, color: SB_MUTED }}>
+              Showing first 12 — refine your search for more
+            </div>
+          )}
+        </div>
+      )}
+
+      {open && query.length >= 2 && results.length === 0 && !loading && (
+        <div className="absolute left-2 right-2 top-full mt-1 z-50 rounded-xl border px-3 py-3 text-center text-[12px] shadow-xl"
+          style={{ background: "var(--sb-bg)", borderColor: SB_BORDER, color: SB_MUTED }}>
+          No results for &ldquo;{query}&rdquo;
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const [collapsed,    setCollapsed]    = useState(false);
-  const [searchQuery,  setSearchQuery]  = useState("");
+  const [collapsed, setCollapsed] = useState(false);
   const pathname  = usePathname();
   const router    = useRouter();
   const clearAuth = useAuthStore((s) => s.clearAuth);
@@ -191,21 +345,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* ── Search ────────────────────────────────────────────────── */}
-        <div className="px-2 pt-2.5 pb-1">
-          <div className="flex items-center gap-2 rounded-md px-2.5 py-1.5 transition-colors"
-            style={{ background: "rgba(0,0,0,0.05)", color: SB_MUTED }}>
-            <Search className="size-3.5 flex-shrink-0" />
-            <input
-              type="text"
-              placeholder="Search…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1 bg-transparent text-[13px] outline-none placeholder-current min-w-0"
-              style={{ color: SB_MUTED }}
-            />
-            <span className="text-[11px] font-medium px-1 rounded" style={{ background: "rgba(0,0,0,0.08)", color: SB_MUTED }}>/</span>
-          </div>
-        </div>
+        <SidebarSearch />
 
         {/* ── Scrollable nav ────────────────────────────────────────── */}
         <nav className="flex flex-col flex-1 px-1.5 pb-3 overflow-y-auto overflow-x-hidden">
