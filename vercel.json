@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/bajaj/cron/bl-alert",
-      "schedule": "0 * * * *"
+      "schedule": "0 2 * * *"
     },
     {
       "path": "/api/bajaj/cron/si-cutoff",
