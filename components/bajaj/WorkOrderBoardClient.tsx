@@ -22,103 +22,6 @@ const MODULE_META: Record<string, { name: string; flag: string; port: string }> 
   triumph:    { name: "Triumph",    flag: "⚡", port: "United Kingdom" },
 };
 
-// ─── Stage Filter ─────────────────────────────────────────────────────────────
-// Pills on xl+ screens; a compact dropdown on smaller screens.
-function StageFilter({
-  statuses,
-  activeStatusId,
-  onSelect,
-}: {
-  statuses: { id: string; name: string; color_hex: string }[];
-  activeStatusId?: string;
-  onSelect: (id: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  // Close on outside click
-  React.useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  const active = statuses.find((s) => s.id === activeStatusId);
-
-  return (
-    <>
-      {/* Dropdown — shown below 2xl */}
-      <div ref={ref} className="relative 2xl:hidden">
-        <button
-          onClick={() => setOpen((v) => !v)}
-          className={cn(
-            "flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg text-[12px] font-medium border transition-colors",
-            active
-              ? "border-opacity-60 text-white"
-              : "bg-white dark:bg-[#1a1a1a] border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/50 hover:bg-gray-50 dark:hover:bg-white/5"
-          )}
-          style={active
-            ? { backgroundColor: `#${active.color_hex}22`, borderColor: `#${active.color_hex}66`, color: `#${active.color_hex}` }
-            : undefined}
-        >
-          {active
-            ? <span className="size-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: `#${active.color_hex}` }} />
-            : <span className="size-1.5 rounded-full border border-gray-400 flex-shrink-0" />}
-          <span className="hidden sm:inline max-w-[90px] truncate">{active?.name ?? "Stage"}</span>
-          <ChevronDown className="size-3 opacity-60" />
-        </button>
-
-        {open && (
-          <div className="absolute right-0 top-full mt-1 z-50 w-48 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] shadow-lg py-1 overflow-hidden">
-            {activeStatusId && (
-              <button
-                onClick={() => { onSelect(activeStatusId); setOpen(false); }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
-              >
-                <X className="size-3" /> Clear filter
-              </button>
-            )}
-            {statuses.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => { onSelect(s.id); setOpen(false); }}
-                className={cn(
-                  "w-full flex items-center gap-2 px-3 py-1.5 text-[12px] transition-colors",
-                  s.id === activeStatusId
-                    ? "font-semibold"
-                    : "text-gray-700 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5"
-                )}
-                style={s.id === activeStatusId ? { color: `#${s.color_hex}` } : undefined}
-              >
-                <span className="size-2 rounded-full flex-shrink-0" style={{ backgroundColor: `#${s.color_hex}` }} />
-                {s.name}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Pills — shown on 2xl+ (≥1536px) only */}
-      <div className="hidden 2xl:flex items-center gap-1 mr-1">
-        {statuses.map((s) => (
-          <button
-            key={s.id}
-            onClick={() => onSelect(s.id)}
-            className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border transition-all"
-            style={s.id === activeStatusId
-              ? { backgroundColor: `#${s.color_hex}22`, borderColor: `#${s.color_hex}66`, color: `#${s.color_hex}` }
-              : { backgroundColor: "transparent", borderColor: "#E5E7EB", color: "#9CA3AF" }}
-          >
-            <span className="size-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: `#${s.color_hex}` }} />
-            {s.name}
-          </button>
-        ))}
-      </div>
-    </>
-  );
-}
 
 interface WorkOrderBoardClientProps { slug: string; isAdmin: boolean; }
 
@@ -191,7 +94,6 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
   }
 
   const filteredOrders = workOrders.filter((wo) => {
-    if (filters.statusId && wo.status_id !== filters.statusId) return false;
     if (searchInput.trim() && !JSON.stringify(wo.data).toLowerCase().includes(searchInput.toLowerCase())) return false;
     return true;
   });
@@ -261,7 +163,7 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
     }
   }
 
-  const hasActiveFilter = !!(searchInput || filters.dateFrom || filters.dateTo || filters.statusId);
+  const hasActiveFilter = !!(searchInput || filters.dateFrom || filters.dateTo);
 
   return (
     <div className="bajaj-board-bg flex h-full flex-col overflow-hidden" style={{ background: "var(--card-bg)" }}>
@@ -307,13 +209,6 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
 
         {/* Right actions */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
-
-          {/* Stage filter — dropdown on small/medium, pills on xl+ */}
-          <StageFilter
-            statuses={statuses}
-            activeStatusId={filters.statusId}
-            onSelect={(id) => setFilters((f) => ({ ...f, statusId: f.statusId === id ? undefined : id }))}
-          />
 
           <ReminderBell />
 
