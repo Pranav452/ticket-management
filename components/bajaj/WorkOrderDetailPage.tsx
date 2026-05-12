@@ -4,13 +4,13 @@ import React, { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Loader2, Check,
-  MessageSquare, Clock, User, Send, Bell, Mail,
-  ChevronDown, AlertTriangle, Edit2, X,
+  MessageSquare, Clock, Send, Bell, Mail,
+  ChevronDown, AlertTriangle, Edit2,
 } from "lucide-react";
 import {
   useWorkOrder, useUpdateWorkOrder, useBajajComments,
-  useAddBajajComment, useBajajStatuses, useBajajUsers,
-  useBajajAuditLogs,
+  useAddBajajComment, useBajajStatuses,
+  useBajajAuditLogs, useColumnRequiredFields,
 } from "@/lib/queries/bajaj";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { cn } from "@/lib/utils";
@@ -49,22 +49,6 @@ const SECTIONS = [
   { title: "Notes",         fields: ["clearance_point", "open_order", "buffer_yard", "courier_dt", "assy_config", "remark"] },
 ];
 
-const STAGE_REQUIRED_FIELDS: Array<{ match: string; fields: string[] }> = [
-  { match: "planning",    fields: ["wo", "plant", "veh", "type", "qty", "country"] },
-  { match: "booking req", fields: ["s_line", "vessel_name", "agent"] },
-  { match: "booking",     fields: ["booking_no", "s_line", "vessel_name"] },
-  { match: "container",   fields: ["container_no", "transporter"] },
-  { match: "si",          fields: ["sbno", "ff_job"] },
-  { match: "clearance",   fields: ["blno"] },
-  { match: "gate",        fields: ["pol_gate"] },
-  { match: "billing",     fields: [] },
-];
-
-function getRequiredFields(statusName: string): string[] {
-  const lower = statusName.toLowerCase();
-  const entry = STAGE_REQUIRED_FIELDS.find((e) => lower.includes(e.match));
-  return entry?.fields ?? [];
-}
 
 // ─── Inline editable field ────────────────────────────────────────────────────
 function EditField({ fieldKey, label, value, onSave, boolean: isBool = false }: {
@@ -171,9 +155,8 @@ function countryToSlug(country: string): string {
 export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
   const router = useRouter();
   const { data: workOrder, isLoading } = useWorkOrder(workOrderId);
-  const { data: comments = [] }        = useBajajComments(workOrderId);
-  const { data: bajajUsers = [] }      = useBajajUsers();
-  const { data: auditLogs = [] }       = useBajajAuditLogs({ limit: 50, targetId: workOrderId });
+  const { data: comments = [] }  = useBajajComments(workOrderId);
+  const { data: auditLogs = [] } = useBajajAuditLogs({ limit: 50, targetId: workOrderId });
   const updateWorkOrder = useUpdateWorkOrder();
   const addComment      = useAddBajajComment();
   const { bajajUser }   = useAuthStore();
@@ -182,13 +165,13 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
   const moduleSlug = workOrder
     ? countryToSlug(String((workOrder.data as Record<string, unknown>)?.country ?? ""))
     : undefined;
-  const { data: allStatuses = [] } = useBajajStatuses(moduleSlug);
+  const { data: allStatuses = [] }          = useBajajStatuses(moduleSlug);
+  const { data: columnRequiredFields = [] } = useColumnRequiredFields(moduleSlug ?? "");
 
-  const [showStatusPicker,   setShowStatusPicker]   = useState(false);
-  const [showAssigneePicker, setShowAssigneePicker] = useState(false);
-  const [commentText,        setCommentText]        = useState("");
-  const [savingField,        setSavingField]        = useState<string | null>(null);
-  const [autoAdvanced,       setAutoAdvanced]       = useState(false);
+  const [showStatusPicker, setShowStatusPicker] = useState(false);
+  const [commentText,      setCommentText]      = useState("");
+  const [savingField,      setSavingField]      = useState<string | null>(null);
+  const [autoAdvanced,     setAutoAdvanced]     = useState(false);
 
   const handleFieldSave = useCallback((key: string, val: string | boolean) => {
     setSavingField(key);
@@ -198,14 +181,16 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
       {
         onSettled: () => setSavingField(null),
         onSuccess: () => {
-          const resolvedStatus = allStatuses.find((s) => s.id === workOrder?.status_id);
-          const statusName = resolvedStatus?.name ?? workOrder?.status?.name ?? "";
-          const required = getRequiredFields(statusName);
-          const allFilled = required.every((f) => {
+          const statusName = workOrder?.status?.name
+            ?? allStatuses.find((s) => s.id === workOrder?.status_id)?.name
+            ?? "";
+          const reqEntry = columnRequiredFields.find((r) => r.status_name === statusName);
+          const required = reqEntry?.field_keys ?? [];
+          const allFilled = required.length > 0 && required.every((f) => {
             const v = merged[f];
             return v != null && v !== "" && v !== false;
           });
-          if (allFilled && required.length > 0) {
+          if (allFilled) {
             const idx = allStatuses.findIndex((s) => s.id === workOrder?.status_id);
             const next = allStatuses[idx + 1];
             if (next) {
@@ -217,7 +202,7 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
         },
       }
     );
-  }, [workOrderId, workOrder, allStatuses, updateWorkOrder]);
+  }, [workOrderId, workOrder, allStatuses, columnRequiredFields, updateWorkOrder]);
 
   async function handleComment() {
     if (!commentText.trim() || !bajajUser) return;
@@ -241,7 +226,6 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
   // workOrder.status is returned directly by the API — always correct
   // allStatuses lookup is fallback for after a status change (optimistic update)
   const currentStatus = workOrder.status ?? allStatuses.find((s) => s.id === workOrder.status_id) ?? null;
-  const assignedUser  = bajajUsers.find((u) => u.id === workOrder.assigned_to || u.email === workOrder.assigned_to);
 
   return (
     <div className="flex h-full overflow-hidden" style={{ background: "var(--main-bg, #F5F5F5)" }}>
@@ -283,9 +267,8 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">{title}</h1>
             <p className="text-[13px] text-gray-400 dark:text-white/40 mb-6 font-mono">{wo}</p>
 
-            {/* Status + Assignee */}
+            {/* Status */}
             <div className="flex items-center gap-3 mb-8">
-              {/* Status picker */}
               <div className="relative">
                 <button
                   onClick={() => setShowStatusPicker((v) => !v)}
@@ -303,42 +286,6 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
                         <span className="size-2 rounded-full flex-shrink-0" style={{ backgroundColor: `#${s.color_hex}` }} />
                         {s.name}
                         {workOrder.status_id === s.id && <Check className="size-3 text-amber-500 ml-auto" />}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Assignee picker */}
-              <div className="relative">
-                <button
-                  onClick={() => setShowAssigneePicker((v) => !v)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] hover:border-gray-300 dark:hover:border-white/20 transition-colors shadow-sm"
-                >
-                  <div className="size-5 rounded-full bg-gray-100 dark:bg-white/10 flex items-center justify-center text-[9px] font-bold text-gray-500 dark:text-white/50 flex-shrink-0">
-                    {assignedUser ? (assignedUser.full_name ?? assignedUser.email)[0].toUpperCase() : <User className="size-3 text-gray-400 dark:text-white/40" aria-hidden />}
-                  </div>
-                  <span className="text-[13px] text-gray-700 dark:text-white/80">{assignedUser ? (assignedUser.full_name ?? assignedUser.email.split("@")[0]) : "Unassigned"}</span>
-                  <ChevronDown className="size-3 text-gray-400 dark:text-white/40" />
-                </button>
-                {showAssigneePicker && (
-                  <div className="absolute top-full mt-1 left-0 z-50 bg-white dark:bg-[#111] border border-gray-200 dark:border-white/10 rounded-xl shadow-xl ring-1 ring-black/5 dark:ring-white/5 py-1.5 min-w-[200px]">
-                    <button onClick={() => { updateWorkOrder.mutate({ id: workOrderId, updates: { assigned_to: null } }); setShowAssigneePicker(false); }}
-                      className="flex items-center gap-2.5 w-full px-3 py-2 text-[13px] text-gray-500 dark:text-white/50 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                      <div className="size-5 rounded-full bg-gray-100 dark:bg-white/10 flex items-center justify-center"><X className="size-2.5 text-gray-400 dark:text-white/40" /></div>
-                      Unassigned
-                    </button>
-                    {bajajUsers.map((u) => (
-                      <button key={u.id} onClick={() => { updateWorkOrder.mutate({ id: workOrderId, updates: { assigned_to: u.id } }); setShowAssigneePicker(false); }}
-                        className="flex items-center gap-2.5 w-full px-3 py-2 text-[13px] text-gray-700 dark:text-white/80 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                        <div className="size-5 rounded-full bg-amber-100 flex items-center justify-center text-[9px] font-bold text-amber-700">
-                          {(u.full_name ?? u.email)[0].toUpperCase()}
-                        </div>
-                        <div className="text-left min-w-0">
-                          <p className="truncate">{u.full_name ?? u.email.split("@")[0]}</p>
-                          <p className="text-[10px] text-gray-400 dark:text-white/40 truncate">{u.email}</p>
-                        </div>
-                        {(workOrder.assigned_to === u.id || workOrder.assigned_to === u.email) && <Check className="size-3 text-amber-500 ml-auto flex-shrink-0" />}
                       </button>
                     ))}
                   </div>
@@ -461,20 +408,6 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
               className="flex items-center gap-2 w-full px-2.5 py-2 rounded-lg border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#1a1a1a] hover:border-gray-300 dark:hover:border-white/20 transition-colors">
               <span className="size-2 rounded-full flex-shrink-0" style={{ backgroundColor: currentStatus ? `#${currentStatus.color_hex}` : "#D1D5DB" }} />
               <span className="text-[13px] text-gray-700 dark:text-white/80 truncate flex-1 text-left">{currentStatus?.name ?? "No Status"}</span>
-            </button>
-          </div>
-
-          {/* Assignee */}
-          <div className="mb-4">
-            <p className="text-[10px] text-gray-400 dark:text-white/40 uppercase tracking-wider mb-1.5">Assignee</p>
-            <button onClick={() => setShowAssigneePicker((v) => !v)}
-              className="flex items-center gap-2 w-full px-2.5 py-2 rounded-lg border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#1a1a1a] hover:border-gray-300 dark:hover:border-white/20 transition-colors">
-              <div className="size-5 rounded-full bg-gray-200 dark:bg-white/10 flex items-center justify-center text-[9px] font-bold text-gray-600 dark:text-white/60 flex-shrink-0">
-                {assignedUser ? (assignedUser.full_name ?? assignedUser.email)[0].toUpperCase() : <User className="size-3 text-gray-400 dark:text-white/40" aria-hidden />}
-              </div>
-              <span className="text-[13px] text-gray-700 dark:text-white/80 truncate flex-1 text-left">
-                {assignedUser ? (assignedUser.full_name ?? assignedUser.email.split("@")[0]) : "Unassigned"}
-              </span>
             </button>
           </div>
 

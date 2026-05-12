@@ -1,202 +1,121 @@
-/**
- * GET /api/bajaj/analytics?module=<slug>
- * Queries bajaj_work_orders + bajaj_wo_meta + bajaj_statuses
- */
-
 import { NextRequest, NextResponse } from "next/server";
-import { getLinksPool, sql } from "@/lib/db";
-
-const MODULE_COUNTRY_MAP: Record<string, string[]> = {
-  srilanka:   ["Sri Lanka"],
-  nigeria:    ["Nigeria"],
-  bangladesh: ["Bangladesh", "BANGALDESH"],
-  triumph:    ["United Kingdom"],
-};
-
-function buildModuleFilter(moduleSlug: string | null, req: import("mssql").Request): string {
-  if (!moduleSlug) return "";
-  if (moduleSlug === "vipar") {
-    const allOther = Object.values(MODULE_COUNTRY_MAP).flat();
-    const placeholders = allOther.map((c, i) => {
-      req.input(`vipar_exc${i}`, sql.VarChar, c);
-      return `@vipar_exc${i}`;
-    }).join(",");
-    return `AND (w.country NOT IN (${placeholders}) OR w.country IS NULL)`;
-  }
-  const countries = MODULE_COUNTRY_MAP[moduleSlug];
-  if (!countries) return "";
-  const placeholders = countries.map((c, i) => {
-    req.input(`country${i}`, sql.VarChar, c);
-    return `@country${i}`;
-  }).join(",");
-  return `AND w.country IN (${placeholders})`;
-}
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(req: NextRequest) {
   try {
     const moduleSlug = req.nextUrl.searchParams.get("module") || null;
-    const pool = await getLinksPool();
+    const sb = createAdminClient();
 
-    // Build a dummy request just to add params — we'll reuse the filter string
-    // but each query needs its own request object with its own params
-    function makeFilter() {
-      const r = pool.request();
-      const f = buildModuleFilter(moduleSlug, r);
-      return { r, f };
+    let woQuery = sb
+      .from("bajaj_work_orders")
+      .select("id, module_slug, status_id, data, created_at, bajaj_statuses(name, color_hex)");
+
+    if (moduleSlug) woQuery = woQuery.eq("module_slug", moduleSlug);
+
+    const { data: wos, error } = await woQuery;
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    const rows = wos ?? [];
+
+    // Total
+    const totalWorkOrders = rows.length;
+
+    // By status
+    const statusMap = new Map<string, { statusName: string; colorHex: string; count: number }>();
+    for (const wo of rows) {
+      const st = wo.bajaj_statuses as unknown as { name: string; color_hex: string } | null;
+      const name = st?.name ?? "Unassigned";
+      const hex  = st?.color_hex ?? "6b7280";
+      const key  = name;
+      const entry = statusMap.get(key) ?? { statusName: name, colorHex: hex, count: 0 };
+      entry.count++;
+      statusMap.set(key, entry);
+    }
+    const byStatus = [...statusMap.values()].sort((a, b) => b.count - a.count);
+
+    // By module
+    const moduleMap = new Map<string, number>();
+    for (const wo of rows) {
+      const slug = wo.module_slug ?? "unknown";
+      moduleMap.set(slug, (moduleMap.get(slug) ?? 0) + 1);
+    }
+    const MODULE_NAMES: Record<string, string> = {
+      srilanka: "Sri Lanka", nigeria: "Nigeria", bangladesh: "Bangladesh",
+      triumph: "Triumph", vipar: "VIPAR",
+    };
+    const byModule = [...moduleMap.entries()].map(([slug, count]) => ({
+      slug, moduleName: MODULE_NAMES[slug] ?? slug, count,
+    })).sort((a, b) => b.count - a.count);
+
+    // Import timeline by month
+    const timelineMap = new Map<string, number>();
+    for (const wo of rows) {
+      if (!wo.created_at) continue;
+      const month = wo.created_at.slice(0, 7);
+      timelineMap.set(month, (timelineMap.get(month) ?? 0) + 1);
+    }
+    const importTimeline = [...timelineMap.entries()]
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([date, addedCount]) => ({ date, addedCount, batchId: "" }));
+
+    // Containers (sum data->>'cont')
+    let totalContainers = 0;
+    for (const wo of rows) {
+      const d = wo.data as Record<string, unknown>;
+      totalContainers += parseInt(String(d?.cont ?? 0), 10) || 0;
     }
 
-    const { r: r1, f: f1 } = makeFilter();
-    const { r: r2, f: f2 } = makeFilter();
-    const { r: r3, f: f3 } = makeFilter();
-    const { r: r4, f: f4 } = makeFilter();
-    const { r: r5, f: f5 } = makeFilter();
-    const { r: r6, f: f6 } = makeFilter();
-    const { r: r7, f: f7 } = makeFilter();
-    const { r: r8, f: f8 } = makeFilter();
-    const { r: r9, f: f9 } = makeFilter();
+    // BLs (data->>'blno' non-empty)
+    const totalBLs = rows.filter((wo) => {
+      const d = wo.data as Record<string, unknown>;
+      return d?.blno != null && String(d.blno).trim() !== "";
+    }).length;
 
-    const [
-      totalRes, byStatusRes, byModuleRes, timelineRes,
-      blPendingRes, containerRes, blTotalRes, lineRes, overLimitRes,
-    ] = await Promise.all([
+    // BL pending after ETD (no blno but vessel_etd set)
+    const blPendingAfterETD = rows.filter((wo) => {
+      const d = wo.data as Record<string, unknown>;
+      const hasBlno = d?.blno != null && String(d.blno).trim() !== "";
+      const hasEtd  = d?.vessel_etd != null && String(d.vessel_etd).trim() !== "";
+      return !hasBlno && hasEtd;
+    }).length;
 
-      // Total WOs
-      r1.query(`
-        SELECT COUNT(*) AS n
-        FROM bajaj_work_orders w
-        LEFT JOIN bajaj_wo_meta m ON m.wo_id = w.id
-        WHERE 1=1 ${f1}
-      `),
+    // Top agents (as "by line")
+    const agentMap = new Map<string, number>();
+    for (const wo of rows) {
+      const d = wo.data as Record<string, unknown>;
+      const agent = String(d?.agent ?? "Unknown");
+      agentMap.set(agent, (agentMap.get(agent) ?? 0) + 1);
+    }
+    const containersByLine = [...agentMap.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([lineName, containerCount]) => ({ lineName, containerCount }));
 
-      // By status
-      r2.query(`
-        SELECT
-          ISNULL(s.name, 'Unassigned') AS statusName,
-          ISNULL(s.color_hex, '6b7280') AS colorHex,
-          COUNT(*) AS cnt
-        FROM bajaj_work_orders w
-        LEFT JOIN bajaj_wo_meta  m ON m.wo_id = w.id
-        LEFT JOIN bajaj_statuses s ON s.id = m.status_id
-        WHERE 1=1 ${f2}
-        GROUP BY s.name, s.color_hex
-        ORDER BY cnt DESC
-      `),
-
-      // By module
-      r3.query(`
-        SELECT
-          CASE
-            WHEN w.country IN ('Sri Lanka')               THEN 'srilanka'
-            WHEN w.country IN ('Nigeria')                 THEN 'nigeria'
-            WHEN w.country IN ('Bangladesh','BANGALDESH') THEN 'bangladesh'
-            WHEN w.country IN ('United Kingdom')          THEN 'triumph'
-            ELSE 'vipar'
-          END AS slug,
-          CASE
-            WHEN w.country IN ('Sri Lanka')               THEN 'Sri Lanka'
-            WHEN w.country IN ('Nigeria')                 THEN 'Nigeria'
-            WHEN w.country IN ('Bangladesh','BANGALDESH') THEN 'Bangladesh'
-            WHEN w.country IN ('United Kingdom')          THEN 'Triumph'
-            ELSE 'VIPAR'
-          END AS moduleName,
-          COUNT(*) AS cnt
-        FROM bajaj_work_orders w
-        LEFT JOIN bajaj_wo_meta m ON m.wo_id = w.id
-        WHERE 1=1 ${f3}
-        GROUP BY
-          CASE WHEN w.country IN ('Sri Lanka') THEN 'srilanka' WHEN w.country IN ('Nigeria') THEN 'nigeria' WHEN w.country IN ('Bangladesh','BANGALDESH') THEN 'bangladesh' WHEN w.country IN ('United Kingdom') THEN 'triumph' ELSE 'vipar' END,
-          CASE WHEN w.country IN ('Sri Lanka') THEN 'Sri Lanka' WHEN w.country IN ('Nigeria') THEN 'Nigeria' WHEN w.country IN ('Bangladesh','BANGALDESH') THEN 'Bangladesh' WHEN w.country IN ('United Kingdom') THEN 'Triumph' ELSE 'VIPAR' END
-        ORDER BY cnt DESC
-      `),
-
-      // Import timeline by wodt month
-      r4.query(`
-        SELECT
-          LEFT(CONVERT(varchar(10), w.wodt, 23), 7) AS date,
-          COUNT(*) AS addedCount
-        FROM bajaj_work_orders w
-        LEFT JOIN bajaj_wo_meta m ON m.wo_id = w.id
-        WHERE w.wodt IS NOT NULL ${f4}
-        GROUP BY LEFT(CONVERT(varchar(10), w.wodt, 23), 7)
-        ORDER BY LEFT(CONVERT(varchar(10), w.wodt, 23), 7) DESC
-      `),
-
-      // BL pending after sailing (no blno but sailingdt set)
-      r5.query(`
-        SELECT COUNT(*) AS n
-        FROM bajaj_work_orders w
-        LEFT JOIN bajaj_wo_meta m ON m.wo_id = w.id
-        WHERE (w.blno IS NULL OR LTRIM(RTRIM(ISNULL(w.blno,'')))='')
-          AND w.sailingdt IS NOT NULL
-          ${f5}
-      `),
-
-      // Total containers (hc40 + std20)
-      r6.query(`
-        SELECT
-          ISNULL(SUM(ISNULL(w.hc40,0) + ISNULL(w.std20,0)), 0) AS n
-        FROM bajaj_work_orders w
-        LEFT JOIN bajaj_wo_meta m ON m.wo_id = w.id
-        WHERE 1=1 ${f6}
-      `),
-
-      // Total BLs
-      r7.query(`
-        SELECT COUNT(*) AS n
-        FROM bajaj_work_orders w
-        LEFT JOIN bajaj_wo_meta m ON m.wo_id = w.id
-        WHERE w.blno IS NOT NULL AND LTRIM(RTRIM(w.blno)) != '' ${f7}
-      `),
-
-      // WOs by brand (used as "by line" equivalent)
-      r8.query(`
-        SELECT TOP 10
-          ISNULL(w.brand, 'Unknown') AS lineName,
-          COUNT(*) AS containerCount
-        FROM bajaj_work_orders w
-        LEFT JOIN bajaj_wo_meta m ON m.wo_id = w.id
-        WHERE 1=1 ${f8}
-        GROUP BY w.brand
-        ORDER BY containerCount DESC
-      `),
-
-      // Variants with high qty (equivalent to "over limit")
-      r9.query(`
-        SELECT TOP 10
-          ISNULL(w.variant, 'Unknown') AS vesselName,
-          ISNULL(SUM(ISNULL(w.hc40,0) + ISNULL(w.std20,0)), 0) AS containerCount
-        FROM bajaj_work_orders w
-        LEFT JOIN bajaj_wo_meta m ON m.wo_id = w.id
-        WHERE 1=1 ${f9}
-        GROUP BY w.variant
-        HAVING ISNULL(SUM(ISNULL(w.hc40,0) + ISNULL(w.std20,0)), 0) > 5
-        ORDER BY containerCount DESC
-      `),
-    ]);
+    // Top vessels by container count
+    const vesselMap = new Map<string, number>();
+    for (const wo of rows) {
+      const d = wo.data as Record<string, unknown>;
+      const vsl = String(d?.vslname ?? d?.veh ?? "Unknown");
+      const cont = parseInt(String(d?.cont ?? 0), 10) || 0;
+      vesselMap.set(vsl, (vesselMap.get(vsl) ?? 0) + cont);
+    }
+    const containersByVessel = [...vesselMap.entries()]
+      .filter(([, c]) => c > 5)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([vesselName, containerCount]) => ({ vesselName, containerCount }));
 
     return NextResponse.json({
-      totalWorkOrders:   totalRes.recordset[0].n,
-      byStatus: byStatusRes.recordset.map((r) => ({
-        statusName: r.statusName,
-        colorHex:   r.colorHex,
-        count:      r.cnt,
-      })),
-      byModule: byModuleRes.recordset.map((r) => ({
-        moduleName: r.moduleName,
-        slug:       r.slug,
-        count:      r.cnt,
-      })),
-      importTimeline: timelineRes.recordset.map((r) => ({
-        date:       r.date,
-        addedCount: r.addedCount,
-        batchId:    "",
-      })),
-      totalContainers:    containerRes.recordset[0].n ?? 0,
-      totalBLs:           blTotalRes.recordset[0].n ?? 0,
-      containersByVessel: overLimitRes.recordset,
-      containersByLine:   lineRes.recordset,
-      blPendingAfterETD:  blPendingRes.recordset[0].n ?? 0,
-      vesselsOverLimit:   overLimitRes.recordset,
+      totalWorkOrders,
+      byStatus,
+      byModule,
+      importTimeline,
+      totalContainers,
+      totalBLs,
+      blPendingAfterETD,
+      containersByLine,
+      containersByVessel,
+      vesselsOverLimit: containersByVessel,
     });
   } catch (err) {
     console.error("[GET /api/bajaj/analytics]", err);

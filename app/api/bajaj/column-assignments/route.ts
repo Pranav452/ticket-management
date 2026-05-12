@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json() as {
     module_slug: string;
     status_id: string | null;
+    status_name?: string | null;
     user_email: string;
     can_edit?: boolean;
     can_move?: boolean;
@@ -62,6 +63,7 @@ export async function POST(req: NextRequest) {
     .upsert({
       module_slug: body.module_slug,
       status_id:   body.status_id ?? null,
+      status_name: body.status_name ?? null,
       user_email:  body.user_email,
       can_edit:    body.can_edit  ?? true,
       can_move:    body.can_move  ?? true,

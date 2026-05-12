@@ -1,23 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getLinksPool, sql } from "@/lib/db";
+import { createAdminClient } from "@/lib/supabase/admin";
 
-/** GET /api/bajaj/statuses?module_id=... */
+/** GET /api/bajaj/statuses?module_id=<uuid>&module_slug=<slug> */
 export async function GET(req: NextRequest) {
-  try {
-    const moduleId = req.nextUrl.searchParams.get("module_id");
-    const pool = await getLinksPool();
-    const request = pool.request();
-    let query =
-      "SELECT id, module_id, name, color_hex, display_order FROM bajaj_statuses";
-    if (moduleId) {
-      request.input("mid", sql.VarChar, moduleId);
-      query += " WHERE module_id=@mid";
-    }
-    query += " ORDER BY display_order";
-    const result = await request.query(query);
-    return NextResponse.json(result.recordset);
-  } catch (err) {
-    console.error("[GET /api/bajaj/statuses]", err);
-    return NextResponse.json({ error: "Failed to fetch statuses" }, { status: 500 });
+  const sp         = req.nextUrl.searchParams;
+  const moduleId   = sp.get("module_id");
+  const moduleSlug = sp.get("module_slug");
+  const sb = createAdminClient();
+
+  let query = sb
+    .from("bajaj_statuses")
+    .select("id, module_id, name, color_hex, display_order")
+    .order("display_order");
+
+  if (moduleId) {
+    query = query.eq("module_id", moduleId);
+  } else if (moduleSlug) {
+    const { data: mod } = await sb
+      .from("bajaj_modules")
+      .select("id")
+      .eq("slug", moduleSlug)
+      .single();
+    if (mod) query = query.eq("module_id", mod.id);
   }
+
+  const { data, error } = await query;
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json(data ?? []);
 }

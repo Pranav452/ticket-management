@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { RefreshCw, Calendar, AlignJustify, User } from "lucide-react";
+import { RefreshCw, Calendar, AlignJustify, GripVertical } from "lucide-react";
 import type { BajajWorkOrder } from "@/lib/types/bajaj";
 import { cn } from "@/lib/utils";
 
@@ -10,12 +10,13 @@ interface WorkOrderCardProps {
   cardFaceFields: string[];
   isLight?: boolean;
   isSelected: boolean;
+  canDrag: boolean;
   onSelect: () => void;
   onDragStart: (e: React.DragEvent) => void;
   statusColor: string;
 }
 
-export function WorkOrderCard({ workOrder, isSelected, onSelect, onDragStart, statusColor }: WorkOrderCardProps) {
+export function WorkOrderCard({ workOrder, isSelected, canDrag, onSelect, onDragStart, statusColor }: WorkOrderCardProps) {
   const d = workOrder.data as Record<string, unknown>;
 
   const woId    = String(d["wo"]     ?? d["WO"]      ?? workOrder.id.slice(0, 8));
@@ -34,11 +35,12 @@ export function WorkOrderCard({ workOrder, isSelected, onSelect, onDragStart, st
 
   return (
     <div
-      draggable
-      onDragStart={onDragStart}
+      draggable={canDrag}
+      onDragStart={canDrag ? onDragStart : undefined}
       onClick={onSelect}
       className={cn(
-        "mb-2 rounded-lg cursor-pointer select-none transition-all overflow-hidden group bg-white dark:bg-[#1c1c1c]",
+        "mb-2 rounded-lg select-none transition-all overflow-hidden group bg-white dark:bg-[#1c1c1c]",
+        canDrag ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
         isSelected
           ? "ring-2 ring-amber-400 shadow-md border border-amber-300 dark:border-amber-500/40"
           : "shadow-sm hover:shadow-md border border-gray-100 dark:border-white/[0.07]"
@@ -52,18 +54,8 @@ export function WorkOrderCard({ workOrder, isSelected, onSelect, onDragStart, st
             <span className="text-[11px] font-medium text-gray-400 dark:text-white/30 font-mono">{woId}</span>
           </div>
 
-          {workOrder.assignee ? (
-            workOrder.assignee.avatar_url ? (
-              <img src={workOrder.assignee.avatar_url} alt="" className="size-5 rounded-full object-cover flex-shrink-0" />
-            ) : (
-              <div className="size-5 rounded-full flex items-center justify-center flex-shrink-0 text-[9px] font-bold bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400">
-                {((workOrder.assignee.full_name || workOrder.assignee.email || "?")[0] ?? "?").toUpperCase()}
-              </div>
-            )
-          ) : (
-            <div className="size-5 rounded-full flex items-center justify-center flex-shrink-0 bg-gray-100 dark:bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity">
-              <User className="size-2.5 text-gray-400" aria-hidden />
-            </div>
+          {canDrag && (
+            <GripVertical className="size-3.5 text-gray-300 dark:text-white/20 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
           )}
         </div>
 

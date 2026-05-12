@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
-import { Plus, MoreHorizontal, Clock } from "lucide-react";
+import React, { useRef, useState } from "react";
+import { Search, X, Clock } from "lucide-react";
 import { WorkOrderCard } from "@/components/bajaj/WorkOrderCard";
 import type { BajajStatus, BajajWorkOrder } from "@/lib/types/bajaj";
+import type { ColPerm } from "@/lib/queries/bajaj";
 import { cn } from "@/lib/utils";
 
 interface WorkOrderBoardProps {
@@ -14,6 +15,8 @@ interface WorkOrderBoardProps {
   isLight?: boolean;
   isLoading: boolean;
   selectedId: string | null;
+  isAdmin: boolean;
+  userPerms: Map<string | null, ColPerm>;
   onSelectCard: (id: string) => void;
   onDrop: (workOrderId: string, newStatusId: string, newOrder: number) => void;
 }
@@ -43,16 +46,30 @@ function StatusIcon({ colorHex, name }: { colorHex: string; name: string }) {
 }
 
 function Column({
-  status, workOrders, cardFaceFields, selectedId, onSelectCard, onDrop,
+  status, workOrders, cardFaceFields, selectedId, canDropHere, getCardCanDrag, onSelectCard, onDrop,
 }: {
   status: BajajStatus;
   workOrders: BajajWorkOrder[];
   cardFaceFields: string[];
   selectedId: string | null;
+  canDropHere: boolean;
+  getCardCanDrag: (wo: BajajWorkOrder) => boolean;
   onSelectCard: (id: string) => void;
   onDrop: (workOrderId: string, newStatusId: string, newOrder: number) => void;
 }) {
-  const [active, setActive] = useState(false);
+  const [active,        setActive]        = useState(false);
+  const [searchOpen,    setSearchOpen]    = useState(false);
+  const [searchQuery,   setSearchQuery]   = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  function openSearch() {
+    setSearchOpen(true);
+    setTimeout(() => searchInputRef.current?.focus(), 50);
+  }
+  function closeSearch() {
+    setSearchOpen(false);
+    setSearchQuery("");
+  }
 
   function getIndicators() {
     return Array.from(document.querySelectorAll<HTMLElement>(`[data-status="${status.id}"]`));
@@ -86,6 +103,7 @@ function Column({
   function handleDragLeave() { clearHighlights(); setActive(false); }
   function handleDrop(e: React.DragEvent) {
     e.preventDefault(); clearHighlights(); setActive(false);
+    if (!canDropHere) return;
     const workOrderId = e.dataTransfer.getData("workOrderId");
     if (!workOrderId) return;
     const indicators = getIndicators();
@@ -105,23 +123,49 @@ function Column({
     onDrop(workOrderId, status.id, newOrder);
   }
 
-  const columnOrders = [...workOrders].sort((a, b) => a.column_order - b.column_order);
+  const sorted = [...workOrders].sort((a, b) => a.column_order - b.column_order);
+  const columnOrders = searchQuery.trim()
+    ? sorted.filter((wo) => JSON.stringify(wo.data).toLowerCase().includes(searchQuery.toLowerCase()))
+    : sorted;
 
   return (
     <div className="flex flex-col w-[280px] flex-shrink-0 border-r border-gray-100 dark:border-white/[0.06] last:border-r-0 min-h-full" style={{ background: "var(--card-bg)" }}>
-      {/* Column header — Linear style */}
-      <div className="flex items-center gap-2 px-4 py-3 mb-0 group border-b border-gray-100 dark:border-white/[0.06]">
-        <StatusIcon colorHex={status.color_hex} name={status.name} />
-        <span className="text-[13px] font-semibold text-gray-700 dark:text-white/80 flex-1 truncate">{status.name}</span>
-        <span className="text-[11px] font-medium text-gray-400 dark:text-white/30 tabular-nums">{workOrders.length}</span>
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button className="size-5 flex items-center justify-center rounded hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400 dark:text-white/30 transition-colors">
-            <Plus className="size-3.5" />
-          </button>
-          <button className="size-5 flex items-center justify-center rounded hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400 dark:text-white/30 transition-colors">
-            <MoreHorizontal className="size-3.5" />
-          </button>
-        </div>
+      {/* Column header */}
+      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 dark:border-white/[0.06] group min-h-[40px]">
+        {searchOpen ? (
+          /* Expanded search input */
+          <div className="flex items-center gap-1.5 flex-1">
+            <Search className="size-3 text-gray-400 dark:text-white/30 flex-shrink-0" />
+            <input
+              ref={searchInputRef}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Escape" && closeSearch()}
+              placeholder={`Search ${status.name}…`}
+              className="flex-1 bg-transparent text-[12px] text-gray-700 dark:text-white/80 placeholder-gray-400 dark:placeholder-white/25 focus:outline-none min-w-0"
+            />
+            <button
+              onClick={closeSearch}
+              className="size-4 flex items-center justify-center rounded text-gray-400 dark:text-white/30 hover:text-gray-600 dark:hover:text-white/60 flex-shrink-0 transition-colors"
+            >
+              <X className="size-3" />
+            </button>
+          </div>
+        ) : (
+          /* Normal header */
+          <>
+            <StatusIcon colorHex={status.color_hex} name={status.name} />
+            <span className="text-[13px] font-semibold text-gray-700 dark:text-white/80 flex-1 truncate">{status.name}</span>
+            <span className="text-[11px] font-medium text-gray-400 dark:text-white/30 tabular-nums">{workOrders.length}</span>
+            <button
+              onClick={openSearch}
+              className="size-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400 dark:text-white/30 transition-all"
+              title="Search this column"
+            >
+              <Search className="size-3.5" />
+            </button>
+          </>
+        )}
       </div>
 
       {/* Drop zone */}
@@ -140,6 +184,7 @@ function Column({
             <WorkOrderCard
               workOrder={wo} cardFaceFields={cardFaceFields} isLight={true}
               isSelected={selectedId === wo.id}
+              canDrag={getCardCanDrag(wo)}
               onSelect={() => onSelectCard(wo.id)}
               onDragStart={(e) => handleDragStart(e, wo)}
               statusColor={status.color_hex}
@@ -153,7 +198,7 @@ function Column({
             "flex items-center justify-center h-16 rounded-lg border border-dashed text-[11px] transition-colors",
             active ? "border-amber-300 text-amber-500 dark:border-amber-500/50" : "border-gray-200 dark:border-white/[0.08] text-gray-300 dark:text-white/20"
           )}>
-            {active ? "Drop here" : "No work orders"}
+            {active ? "Drop here" : searchQuery.trim() ? "No matches" : "No work orders"}
           </div>
         )}
       </div>
@@ -161,7 +206,20 @@ function Column({
   );
 }
 
-export function WorkOrderBoard({ statuses, workOrders, cardFaceFields, isLoading, selectedId, onSelectCard, onDrop }: WorkOrderBoardProps) {
+export function WorkOrderBoard({ statuses, workOrders, cardFaceFields, isLoading, selectedId, isAdmin, userPerms, onSelectCard, onDrop }: WorkOrderBoardProps) {
+  function resolvedPerm(statusName: string): ColPerm | null {
+    return userPerms.get(statusName) ?? userPerms.get(null) ?? null;
+  }
+  function canDropHere(statusName: string) {
+    if (isAdmin) return true;
+    return resolvedPerm(statusName)?.can_move ?? false;
+  }
+  function getCardCanDrag(wo: BajajWorkOrder) {
+    if (isAdmin) return true;
+    const name = wo.status?.name ?? null;
+    const perm = name ? resolvedPerm(name) : null;
+    return perm?.can_move ?? false;
+  }
   if (isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center gap-2.5">
@@ -184,6 +242,8 @@ export function WorkOrderBoard({ statuses, workOrders, cardFaceFields, isLoading
           )}
           cardFaceFields={cardFaceFields}
           selectedId={selectedId}
+          canDropHere={canDropHere(status.name)}
+          getCardCanDrag={getCardCanDrag}
           onSelectCard={onSelectCard}
           onDrop={onDrop}
         />

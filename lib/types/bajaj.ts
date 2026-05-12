@@ -12,7 +12,7 @@ export interface BajajModule {
 
 export interface BajajStatus {
   id: string;
-  module_id: string;
+  module_id: string | null;
   name: string;
   color_hex: string;
   display_order: number;

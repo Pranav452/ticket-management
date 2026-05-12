@@ -512,3 +512,71 @@ export function useReviewColumnRequest() {
     },
   });
 }
+
+// ─── My Column Permissions ────────────────────────────────────────────────────
+// Returns a Map<status_name, { can_edit, can_move, can_assign }> for the
+// current user in the given module. Null entry means module-wide access.
+
+export interface ColPerm { can_edit: boolean; can_move: boolean; can_assign: boolean; }
+
+export function useMyColumnPerms(moduleSlug: string) {
+  return useQuery<Map<string | null, ColPerm>>({
+    queryKey: ["bajaj", "my-col-perms", moduleSlug],
+    queryFn: async () => {
+      const data: BajajColumnAssignment[] = await apiFetch(
+        `/api/bajaj/column-assignments?module_slug=${moduleSlug}`
+      );
+      const map = new Map<string | null, ColPerm>();
+      for (const row of data) {
+        const key = (row as BajajColumnAssignment & { status_name?: string | null }).status_name ?? null;
+        map.set(key, { can_edit: row.can_edit, can_move: row.can_move, can_assign: row.can_assign });
+      }
+      return map;
+    },
+    staleTime: 30_000,
+  });
+}
+
+// ─── Column Required Fields ────────────────────────────────────────────────────
+
+export interface ColumnRequiredFields { status_name: string; field_keys: string[]; }
+
+export function useColumnRequiredFields(moduleSlug: string) {
+  return useQuery<ColumnRequiredFields[]>({
+    queryKey: ["bajaj", "column-required-fields", moduleSlug],
+    queryFn: () => apiFetch(`/api/bajaj/column-required-fields?module=${moduleSlug}`),
+    staleTime: 60_000,
+  });
+}
+
+export function useUpsertColumnRequiredField() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: { module_slug: string; status_name: string; field_key: string }) => {
+      await apiFetch("/api/bajaj/column-required-fields", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    },
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["bajaj", "column-required-fields", vars.module_slug] });
+    },
+  });
+}
+
+export function useDeleteColumnRequiredField() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: { module_slug: string; status_name: string; field_key: string }) => {
+      await apiFetch("/api/bajaj/column-required-fields", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    },
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["bajaj", "column-required-fields", vars.module_slug] });
+    },
+  });
+}

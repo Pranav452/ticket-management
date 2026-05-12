@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Upload, Eye, Search, X, SlidersHorizontal, RefreshCw, Star, LayoutGrid, Table2 } from "lucide-react";
+import { Upload, Eye, Search, X, SlidersHorizontal, RefreshCw, Star, LayoutGrid, Table2, ChevronDown } from "lucide-react";
 
 import { WorkOrderBoard } from "@/components/bajaj/WorkOrderBoard";
 import { WorkOrderSpreadsheet } from "@/components/bajaj/WorkOrderSpreadsheet";
-import { useBajajStatuses, useBajajBoardConfig, useWorkOrders, useUpdateWorkOrder } from "@/lib/queries/bajaj";
+import { useBajajStatuses, useBajajBoardConfig, useWorkOrders, useUpdateWorkOrder, useMyColumnPerms } from "@/lib/queries/bajaj";
 import type { WorkOrderFilters } from "@/lib/types/bajaj";
 import { ReminderBell } from "@/components/bajaj/ReminderBell";
 import { cn } from "@/lib/utils";
@@ -21,6 +21,104 @@ const MODULE_META: Record<string, { name: string; flag: string; port: string }> 
   bangladesh: { name: "Bangladesh", flag: "🔴", port: "Chattogram / BDCGP" },
   triumph:    { name: "Triumph",    flag: "⚡", port: "United Kingdom" },
 };
+
+// ─── Stage Filter ─────────────────────────────────────────────────────────────
+// Pills on xl+ screens; a compact dropdown on smaller screens.
+function StageFilter({
+  statuses,
+  activeStatusId,
+  onSelect,
+}: {
+  statuses: { id: string; name: string; color_hex: string }[];
+  activeStatusId?: string;
+  onSelect: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  React.useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const active = statuses.find((s) => s.id === activeStatusId);
+
+  return (
+    <>
+      {/* Dropdown — shown below 2xl */}
+      <div ref={ref} className="relative 2xl:hidden">
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className={cn(
+            "flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg text-[12px] font-medium border transition-colors",
+            active
+              ? "border-opacity-60 text-white"
+              : "bg-white dark:bg-[#1a1a1a] border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/50 hover:bg-gray-50 dark:hover:bg-white/5"
+          )}
+          style={active
+            ? { backgroundColor: `#${active.color_hex}22`, borderColor: `#${active.color_hex}66`, color: `#${active.color_hex}` }
+            : undefined}
+        >
+          {active
+            ? <span className="size-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: `#${active.color_hex}` }} />
+            : <span className="size-1.5 rounded-full border border-gray-400 flex-shrink-0" />}
+          <span className="hidden sm:inline max-w-[90px] truncate">{active?.name ?? "Stage"}</span>
+          <ChevronDown className="size-3 opacity-60" />
+        </button>
+
+        {open && (
+          <div className="absolute right-0 top-full mt-1 z-50 w-48 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] shadow-lg py-1 overflow-hidden">
+            {activeStatusId && (
+              <button
+                onClick={() => { onSelect(activeStatusId); setOpen(false); }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+              >
+                <X className="size-3" /> Clear filter
+              </button>
+            )}
+            {statuses.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => { onSelect(s.id); setOpen(false); }}
+                className={cn(
+                  "w-full flex items-center gap-2 px-3 py-1.5 text-[12px] transition-colors",
+                  s.id === activeStatusId
+                    ? "font-semibold"
+                    : "text-gray-700 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5"
+                )}
+                style={s.id === activeStatusId ? { color: `#${s.color_hex}` } : undefined}
+              >
+                <span className="size-2 rounded-full flex-shrink-0" style={{ backgroundColor: `#${s.color_hex}` }} />
+                {s.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Pills — shown on 2xl+ (≥1536px) only */}
+      <div className="hidden 2xl:flex items-center gap-1 mr-1">
+        {statuses.map((s) => (
+          <button
+            key={s.id}
+            onClick={() => onSelect(s.id)}
+            className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border transition-all"
+            style={s.id === activeStatusId
+              ? { backgroundColor: `#${s.color_hex}22`, borderColor: `#${s.color_hex}66`, color: `#${s.color_hex}` }
+              : { backgroundColor: "transparent", borderColor: "#E5E7EB", color: "#9CA3AF" }}
+          >
+            <span className="size-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: `#${s.color_hex}` }} />
+            {s.name}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
 
 interface WorkOrderBoardClientProps { slug: string; isAdmin: boolean; }
 
@@ -67,7 +165,8 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
       display_order: i,
     };
   });
-  const { data: boardConfig }                              = useBajajBoardConfig(slug);
+  const { data: boardConfig }  = useBajajBoardConfig(slug);
+  const { data: myPerms = new Map() } = useMyColumnPerms(slug);
   const { data: workOrders = [], isLoading: woLoading, refetch } = useWorkOrders(slug, filters);
   const updateWorkOrder = useUpdateWorkOrder();
 
@@ -147,48 +246,39 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
 
         {/* Right actions */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          {/* Status filter chips — desktop */}
-          <div className="hidden md:flex items-center gap-1 mr-2 flex-wrap">
-            {statuses.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => setFilters((f) => ({ ...f, statusId: f.statusId === s.id ? undefined : s.id }))}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border transition-all"
-                style={filters.statusId === s.id
-                  ? { backgroundColor: `#${s.color_hex}22`, borderColor: `#${s.color_hex}66`, color: `#${s.color_hex}` }
-                  : { backgroundColor: "transparent", borderColor: "#E5E7EB", color: "#9CA3AF" }}
-              >
-                <span className="size-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: `#${s.color_hex}` }} />
-                {s.name}
-              </button>
-            ))}
-          </div>
+
+          {/* Stage filter — dropdown on small/medium, pills on xl+ */}
+          <StageFilter
+            statuses={statuses}
+            activeStatusId={filters.statusId}
+            onSelect={(id) => setFilters((f) => ({ ...f, statusId: f.statusId === id ? undefined : id }))}
+          />
 
           <ReminderBell />
 
           <button
             onClick={() => setShowFilters((v) => !v)}
             className={cn(
-              "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] font-medium border transition-colors",
+              "flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg text-[12px] font-medium border transition-colors",
               showFilters || hasActiveFilter
                 ? "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-500/30 text-amber-700 dark:text-amber-400"
                 : "bg-white dark:bg-[#1a1a1a] border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/50 hover:bg-gray-50 dark:hover:bg-white/5 hover:border-gray-300 dark:hover:border-white/20"
             )}
           >
             <SlidersHorizontal className="size-3.5" />
-            <span>Filter</span>
+            <span className="hidden sm:inline">Filter</span>
             {hasActiveFilter && <span className="size-1.5 rounded-full bg-amber-500" />}
           </button>
 
           <button
             onClick={() => setShowViewPanel((v) => !v)}
             className={cn(
-              "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] font-medium border transition-colors",
+              "flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg text-[12px] font-medium border transition-colors",
               showViewPanel ? "bg-gray-100 dark:bg-white/10 border-gray-300 dark:border-white/20 text-gray-800 dark:text-white/90" : "bg-white dark:bg-[#1a1a1a] border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/50 hover:bg-gray-50 dark:hover:bg-white/5 hover:border-gray-300 dark:hover:border-white/20"
             )}
           >
             <Eye className="size-3.5" />
-            <span>View</span>
+            <span className="hidden sm:inline">View</span>
           </button>
 
           <button
@@ -201,10 +291,10 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
 
           <Link
             href={`/bajaj/import?module=${slug}`}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-amber-500 text-white hover:bg-amber-600 transition-colors shadow-sm"
+            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-amber-500 text-white hover:bg-amber-600 transition-colors shadow-sm"
           >
             <Upload className="size-3.5" />
-            <span>Import</span>
+            <span className="hidden sm:inline">Import</span>
           </Link>
         </div>
       </div>
@@ -286,6 +376,8 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
             slug={slug} statuses={statuses} workOrders={filteredOrders}
             cardFaceFields={cardFaceFields} isLight={true}
             isLoading={statusLoading || woLoading} selectedId={selectedId}
+            isAdmin={_isAdmin}
+            userPerms={myPerms}
             onSelectCard={(id) => { setSelectedId(id); router.push(`/bajaj/work-orders/${id}`); }}
             onDrop={handleDrop}
           />

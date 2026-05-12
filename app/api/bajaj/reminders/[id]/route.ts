@@ -1,10 +1,5 @@
-/**
- * PATCH /api/bajaj/reminders/[id]  — update status, sent_at, done_at, message etc.
- * DELETE /api/bajaj/reminders/[id]
- */
-
 import { NextRequest, NextResponse } from "next/server";
-import { getLinksPool, sql } from "@/lib/db";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function PATCH(
   req: NextRequest,
@@ -21,23 +16,20 @@ export async function PATCH(
       recipients?: string[];
     };
 
-    const pool    = await getLinksPool();
-    const request = pool.request().input("id", sql.VarChar, id);
-    const sets: string[] = ["updated_at = GETDATE()"];
+    const update: Record<string, unknown> = {};
+    if (body.status !== undefined)     update.status     = body.status;
+    if ("sent_at" in body)             update.sent_at    = body.sent_at;
+    if ("done_at" in body)             update.done_at    = body.done_at;
+    if (body.message !== undefined)    update.message    = body.message;
+    if (body.due_at !== undefined)     update.due_at     = body.due_at;
+    if (body.recipients !== undefined) update.recipients = body.recipients;
 
-    if (body.status)     { request.input("status",  sql.VarChar,  body.status);           sets.push("status=@status"); }
-    if ("sent_at" in body) { request.input("sent_at", sql.DateTime, body.sent_at ? new Date(body.sent_at) : null); sets.push("sent_at=@sent_at"); }
-    if ("done_at" in body) { request.input("done_at", sql.DateTime, body.done_at ? new Date(body.done_at) : null); sets.push("done_at=@done_at"); }
-    if (body.message)    { request.input("msg",     sql.NVarChar, body.message);           sets.push("message=@msg"); }
-    if (body.due_at)     { request.input("due",     sql.DateTime, new Date(body.due_at));  sets.push("due_at=@due"); }
-    if (body.recipients) { request.input("recips",  sql.NVarChar, JSON.stringify(body.recipients)); sets.push("recipients=@recips"); }
-
-    // bajaj_reminders doesn't have updated_at — remove that set
-    const filteredSets = sets.filter(s => s !== "updated_at = GETDATE()");
-    if (filteredSets.length === 0)
+    if (Object.keys(update).length === 0)
       return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
 
-    await request.query(`UPDATE bajaj_reminders SET ${filteredSets.join(",")} WHERE id=@id`);
+    const sb = createAdminClient();
+    const { error } = await sb.from("bajaj_reminders").update(update).eq("id", id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("[PATCH /api/bajaj/reminders/[id]]", err);
@@ -51,9 +43,9 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const pool = await getLinksPool();
-    await pool.request().input("id", sql.VarChar, id)
-      .query("DELETE FROM bajaj_reminders WHERE id=@id");
+    const sb = createAdminClient();
+    const { error } = await sb.from("bajaj_reminders").delete().eq("id", id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("[DELETE /api/bajaj/reminders/[id]]", err);

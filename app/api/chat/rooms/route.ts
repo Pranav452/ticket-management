@@ -2,11 +2,9 @@ import { NextResponse } from "next/server"
 import { randomUUID } from "crypto"
 import { getChatAuthContext } from "@/lib/chat-auth"
 import { createClient } from "@/lib/supabase/server"
-import { getLinksPool, sql } from "@/lib/db"
+import { createAdminClient } from "@/lib/supabase/admin"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
-// Fetch user display names from MSSQL bajaj_users by their Supabase auth UIDs.
-// bajaj_users.id stores the Supabase UID (NEWID() was used with the UID when the user first logged in).
 async function fetchUserProfiles(
   userIds: string[]
 ): Promise<Map<string, { full_name: string | null; email: string | null }>> {
@@ -14,15 +12,15 @@ async function fetchUserProfiles(
   if (unique.length === 0) return new Map()
 
   try {
-    const pool = await getLinksPool()
-    // Build IN clause — safe because UUIDs match a strict format
-    const idList = unique.map((id) => `'${id.replace(/'/g, "''")}'`).join(",")
-    const result = await pool.request().query(
-      `SELECT supabase_uid, full_name, email FROM bajaj_users WHERE supabase_uid IN (${idList})`
-    )
+    const sb = createAdminClient()
+    const { data } = await sb
+      .from("bajaj_users")
+      .select("supabase_uid, full_name, email")
+      .in("supabase_uid", unique)
+
     const map = new Map<string, { full_name: string | null; email: string | null }>()
-    for (const row of result.recordset ?? []) {
-      map.set(row.supabase_uid, { full_name: row.full_name ?? null, email: row.email ?? null })
+    for (const row of data ?? []) {
+      if (row.supabase_uid) map.set(row.supabase_uid, { full_name: row.full_name ?? null, email: row.email ?? null })
     }
     return map
   } catch {

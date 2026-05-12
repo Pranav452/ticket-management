@@ -1,19 +1,22 @@
 import { NextResponse } from "next/server"
 import { getChatAuthContext } from "@/lib/chat-auth"
 import { createClient } from "@/lib/supabase/server"
-import { getLinksPool } from "@/lib/db"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 async function getSenderNames(senderIds: string[]): Promise<Map<string, string>> {
   const unique = [...new Set(senderIds)].filter(Boolean)
   if (unique.length === 0) return new Map()
   try {
-    const pool = await getLinksPool()
-    const idList = unique.map((id) => `'${id.replace(/'/g, "''")}'`).join(",")
-    const result = await pool.request().query(
-      `SELECT supabase_uid, full_name FROM bajaj_users WHERE supabase_uid IN (${idList})`
-    )
+    const sb = createAdminClient()
+    const { data } = await sb
+      .from("bajaj_users")
+      .select("supabase_uid, full_name")
+      .in("supabase_uid", unique)
+
     const map = new Map<string, string>()
-    for (const row of result.recordset ?? []) map.set(row.supabase_uid, row.full_name ?? "")
+    for (const row of data ?? []) {
+      if (row.supabase_uid) map.set(row.supabase_uid, row.full_name ?? "")
+    }
     return map
   } catch {
     return new Map()

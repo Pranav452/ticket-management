@@ -1,30 +1,28 @@
 /**
- * DELETE /api/bajaj/work-orders/clear
- * Truncates bajaj_wo_meta then bajaj_work_orders.
- * Requires active Supabase session with admin email.
+ * DELETE /api/bajaj/work-orders/clear?module=<slug>
+ * Admin only. Deletes all work orders for a module (or all if no slug).
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { getLinksPool } from "@/lib/db";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { getCurrentUserEmail, isAdmin } from "@/lib/bajaj/permissions";
 
-const ADMIN_EMAILS = new Set(["pranavnairop090@gmail.com", "superadmin@links.com"]);
-
-export async function DELETE(_req: NextRequest) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user || !ADMIN_EMAILS.has(user.email ?? "")) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export async function DELETE(req: NextRequest) {
+  const actorEmail = await getCurrentUserEmail();
+  if (!isAdmin(actorEmail)) {
+    return NextResponse.json({ error: "Admin only" }, { status: 403 });
   }
 
-  try {
-    const pool = await getLinksPool();
-    await pool.request().query(`DELETE FROM bajaj_wo_meta`);
-    await pool.request().query(`DELETE FROM bajaj_work_orders`);
-    return NextResponse.json({ ok: true });
-  } catch (err) {
-    console.error("[DELETE /api/bajaj/work-orders/clear]", err);
-    return NextResponse.json({ error: String(err) }, { status: 500 });
-  }
+  const moduleSlug = req.nextUrl.searchParams.get("module");
+  const sb = createAdminClient();
+
+  let query = sb.from("bajaj_work_orders").delete();
+  if (moduleSlug) query = query.eq("module_slug", moduleSlug);
+  // Without a filter Supabase requires neq trick to delete all
+  else query = (query as unknown as typeof query).neq("id", "00000000-0000-0000-0000-000000000000");
+
+  const { error } = await query;
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  return NextResponse.json({ ok: true });
 }

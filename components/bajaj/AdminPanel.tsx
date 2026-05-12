@@ -3,12 +3,13 @@
 import React, { useState } from "react";
 import {
   CheckCircle, XCircle, Loader2, Search, Filter,
-  Trash2, Plus, ShieldCheck, ShieldOff,
+  Trash2, Plus, ShieldCheck, ShieldOff, Check,
 } from "lucide-react";
 import {
   useBajajUsers, useApproveBajajUser, useRejectBajajUser, useBajajAuditLogs,
   useBajajColumnAssignments, useUpsertColumnAssignment, useDeleteColumnAssignment,
   useBajajColumnRequests, useReviewColumnRequest,
+  useColumnRequiredFields, useUpsertColumnRequiredField, useDeleteColumnRequiredField,
 } from "@/lib/queries/bajaj";
 import { useBajajModules, useBajajStatuses } from "@/lib/queries/bajaj";
 import { useAuthStore } from "@/lib/stores/auth-store";
@@ -115,7 +116,8 @@ function ColumnAssignmentsTab() {
   const { data: assignments = [], isLoading: loadingAssign } = useBajajColumnAssignments(moduleSlug);
   const { data: requests = [], isLoading: loadingReqs } = useBajajColumnRequests(moduleSlug);
   const { data: statuses = [] } = useBajajStatuses(moduleSlug);
-  const { data: allUsers = [] } = useBajajUsers("approved");
+  const { data: allUsersRaw = [] } = useBajajUsers();
+  const allUsers = allUsersRaw.filter((u) => u.status === "approved");
 
   const upsert = useUpsertColumnAssignment();
   const deleteAssign = useDeleteColumnAssignment();
@@ -350,9 +352,171 @@ function ColumnAssignmentsTab() {
   );
 }
 
+// ─── Column Rules Tab ─────────────────────────────────────────────────────────
+const LIFECYCLE_NAMES = [
+  "Planning", "Booking Request", "Booking", "Container Allocation",
+  "SI Filing", "Custom Clearance", "Gate Open", "Billing", "BL Release", "Completed",
+];
+
+// All known field keys with friendly labels
+const ALL_FIELD_KEYS: { key: string; label: string }[] = [
+  { key: "wo",             label: "WO Number" },
+  { key: "agent",          label: "CHA / Agent" },
+  { key: "plant",          label: "Plant" },
+  { key: "veh",            label: "Brand / Vehicle" },
+  { key: "type",           label: "Variant" },
+  { key: "qty",            label: "Quantity" },
+  { key: "cont",           label: "Containers" },
+  { key: "country",        label: "Country" },
+  { key: "ib_stuffing_date", label: "IB Stuffing Date" },
+  { key: "s_line",         label: "Carrier / Shipping Line" },
+  { key: "vslname",        label: "Vessel Name" },
+  { key: "vessel_etd",     label: "Vessel ETD" },
+  { key: "booking_no",     label: "Booking Number" },
+  { key: "port_cut_off",   label: "Port Cut-off" },
+  { key: "si_cutoff",      label: "SI Cut-off" },
+  { key: "docs_cut_off",   label: "Docs Cut-off" },
+  { key: "do_etd",         label: "DO ETD" },
+  { key: "vgm_cut_off",    label: "VGM Cut-off" },
+  { key: "transporter",    label: "Transporter" },
+  { key: "current_etd",    label: "Current ETD" },
+  { key: "erp_exp_no",     label: "ERP-EXP Number" },
+  { key: "container_no",   label: "Container Numbers" },
+  { key: "sbno",           label: "SB Number" },
+  { key: "hbl_no",         label: "HBL Number" },
+  { key: "gross_weight",   label: "Gross Weight" },
+  { key: "net_weight",     label: "Net Weight" },
+  { key: "pkgs_cases",     label: "Pkgs / Cases" },
+  { key: "mbl_no",         label: "MBL Number" },
+  { key: "pol",            label: "POL" },
+  { key: "leo_date",       label: "LEO Date" },
+  { key: "gate_in_date",   label: "Gate In Date" },
+  { key: "gate_details",   label: "Gate Details" },
+  { key: "e_doc",          label: "E-Docs" },
+  { key: "bldt",           label: "BL Date" },
+  { key: "invoice_no",     label: "Invoice Number" },
+];
+
+const MODULE_SLUGS = ["vipar", "srilanka", "nigeria", "bangladesh", "triumph"];
+
+function ColumnRulesTab() {
+  const [selectedModule, setSelectedModule] = useState("vipar");
+  const [openStage, setOpenStage]           = useState<string | null>("Booking Request");
+
+  const { data: rules = [], isLoading } = useColumnRequiredFields(selectedModule);
+  const upsert = useUpsertColumnRequiredField();
+  const remove  = useDeleteColumnRequiredField();
+
+  function isRequired(statusName: string, fieldKey: string) {
+    const row = rules.find((r) => r.status_name === statusName);
+    return row?.field_keys.includes(fieldKey) ?? false;
+  }
+
+  function toggle(statusName: string, fieldKey: string) {
+    const currently = isRequired(statusName, fieldKey);
+    if (currently) {
+      remove.mutate({ module_slug: selectedModule, status_name: statusName, field_key: fieldKey });
+    } else {
+      upsert.mutate({ module_slug: selectedModule, status_name: statusName, field_key: fieldKey });
+    }
+  }
+
+  // Stages with requirements (skip Planning + Completed for simplicity)
+  const activeStages = LIFECYCLE_NAMES.filter(
+    (n) => n !== "Planning" && n !== "Completed"
+  );
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-[15px] font-semibold text-neutral-100">Column Rules</h2>
+          <p className="text-[12px] text-neutral-500 mt-0.5">
+            Check the fields that must be filled before a card auto-advances to the next column.
+          </p>
+        </div>
+        <select
+          value={selectedModule}
+          onChange={(e) => setSelectedModule(e.target.value)}
+          className="px-3 py-1.5 bg-neutral-900 border border-neutral-700 rounded-lg text-sm text-neutral-300 focus:outline-none focus:border-amber-600"
+        >
+          {MODULE_SLUGS.map((s) => (
+            <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+          ))}
+        </select>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-neutral-500 py-8">
+          <Loader2 className="size-4 animate-spin" /> Loading…
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {activeStages.map((stageName) => {
+            const stageRules = rules.find((r) => r.status_name === stageName);
+            const count = stageRules?.field_keys.length ?? 0;
+            const isOpen = openStage === stageName;
+
+            return (
+              <div key={stageName} className="rounded-xl border border-neutral-800 overflow-hidden">
+                {/* Accordion header */}
+                <button
+                  onClick={() => setOpenStage(isOpen ? null : stageName)}
+                  className="flex items-center justify-between w-full px-4 py-3 bg-neutral-900 hover:bg-neutral-900/80 transition-colors text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-[13px] font-medium text-neutral-200">{stageName}</span>
+                    {count > 0 && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-600/20 text-amber-400 border border-amber-600/30 font-medium">
+                        {count} required
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-neutral-600 text-xs">{isOpen ? "▲" : "▼"}</span>
+                </button>
+
+                {/* Accordion body */}
+                {isOpen && (
+                  <div className="px-4 py-4 bg-neutral-950 grid grid-cols-2 gap-x-6 gap-y-2.5">
+                    {ALL_FIELD_KEYS.map(({ key, label }) => {
+                      const checked = isRequired(stageName, key);
+                      const busy = upsert.isPending || remove.isPending;
+                      return (
+                        <label
+                          key={key}
+                          className="flex items-center gap-2.5 cursor-pointer group"
+                        >
+                          <button
+                            disabled={busy}
+                            onClick={() => toggle(stageName, key)}
+                            className={`size-4 rounded flex items-center justify-center flex-shrink-0 border transition-colors ${
+                              checked
+                                ? "bg-amber-500 border-amber-500 text-white"
+                                : "bg-neutral-900 border-neutral-700 group-hover:border-amber-600/60"
+                            }`}
+                          >
+                            {checked && <Check className="size-2.5" />}
+                          </button>
+                          <span className={`text-[12px] transition-colors ${checked ? "text-neutral-200 font-medium" : "text-neutral-500 group-hover:text-neutral-400"}`}>
+                            {label}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Admin Panel ──────────────────────────────────────────────────────────────
 export function AdminPanel() {
-  const [tab, setTab] = useState<"requests" | "columns" | "audit" | "data">("requests");
+  const [tab, setTab] = useState<"requests" | "columns" | "rules" | "audit" | "data">("requests");
   const [clearing, setClearing] = useState(false);
   const [clearMsg, setClearMsg] = useState<string | null>(null);
   const [searchEmail, setSearchEmail] = useState("");
@@ -376,9 +540,10 @@ export function AdminPanel() {
     "edited_field", "approved_user", "rejected_user", "requested_access",
   ];
 
-  const tabs: { key: "requests" | "columns" | "audit" | "data"; label: string; badge: number; danger?: boolean }[] = [
+  const tabs: { key: "requests" | "columns" | "rules" | "audit" | "data"; label: string; badge: number; danger?: boolean }[] = [
     { key: "requests", label: "Access Requests", badge: pendingUsers.length },
     { key: "columns",  label: "Column Access",   badge: 0 },
+    { key: "rules",    label: "Column Rules",    badge: 0 },
     { key: "audit",    label: "Audit Log",        badge: 0 },
     { key: "data",     label: "Data",             badge: 0, danger: true },
   ];
@@ -502,6 +667,9 @@ export function AdminPanel() {
           </div>
         </div>
       )}
+
+      {/* ── Column Rules tab ─────────────────────────────────────── */}
+      {tab === "rules" && <ColumnRulesTab />}
 
       {/* ── Audit Log tab ─────────────────────────────────────────── */}
       {tab === "audit" && (
