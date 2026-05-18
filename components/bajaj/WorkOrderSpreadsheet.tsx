@@ -250,7 +250,7 @@ export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate
         <thead>
           <tr className={cn("h-[34px]", headerBg, `border-b border-gray-200 dark:border-white/[0.06]`)}>
             <th
-              className={cn("sticky left-0 z-30", headerBg, "border-r border-gray-200 dark:border-white/[0.06]")}
+              className={cn("sticky left-0 top-0 z-40", headerBg, "border-r border-gray-200 dark:border-white/[0.06]")}
               style={{ width: ROW_NUM_WIDTH }}
             />
 
@@ -263,9 +263,10 @@ export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate
                   className={cn(
                     "relative border-r border-b border-gray-200 dark:border-white/[0.06]",
                     headerBg,
-                    col.sticky ? "sticky z-20" : "",
+                    col.sticky ? "sticky z-30" : "sticky z-20",
                   )}
                   style={{
+                    top: 0,
                     left: col.sticky ? stickyWoLeft : undefined,
                     width: widths[colIdx],
                     padding: "0 10px",
@@ -299,21 +300,22 @@ export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate
             const status = statusMap[wo.status_id ?? ""];
             const isHov  = hovRow === rowIdx;
             const isEven = rowIdx % 2 === 0;
+            const isParts = String(d.veh ?? "").toUpperCase().includes("PART");
 
             const rowClass = cn(
               "h-8 border-b border-gray-100 dark:border-white/[0.04] transition-colors",
               isHov
                 ? "bg-amber-50 dark:bg-amber-900/20"
-                : isEven
-                  ? "bg-white dark:bg-[#0d0d0d]"
-                  : "bg-gray-50 dark:bg-[#111]",
+                : isParts
+                  ? isEven ? "bg-blue-50 dark:bg-blue-950/30" : "bg-blue-100/60 dark:bg-blue-900/20"
+                  : isEven ? "bg-emerald-50/70 dark:bg-emerald-950/20" : "bg-emerald-100/50 dark:bg-emerald-900/10",
             );
 
             const stickyBgClass = isHov
               ? "bg-amber-50 dark:bg-amber-900/20"
-              : isEven
-                ? "bg-white dark:bg-[#0d0d0d]"
-                : "bg-gray-50 dark:bg-[#111]";
+              : isParts
+                ? isEven ? "bg-blue-50 dark:bg-blue-950/30" : "bg-blue-100/60 dark:bg-blue-900/20"
+                : isEven ? "bg-emerald-50/70 dark:bg-emerald-950/20" : "bg-emerald-100/50 dark:bg-emerald-900/10";
 
             return (
               <tr
