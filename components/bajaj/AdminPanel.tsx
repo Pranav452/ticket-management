@@ -411,10 +411,37 @@ const MODULE_SLUGS = ["vipar", "srilanka", "nigeria", "bangladesh", "triumph"];
 function ColumnRulesTab() {
   const [selectedModule, setSelectedModule] = useState("vipar");
   const [openStage, setOpenStage]           = useState<string | null>("Booking Request");
+  const [applyingModule, setApplyingModule] = useState(false);
+  const [applyingAll,    setApplyingAll]    = useState(false);
+  const [applyResult,    setApplyResult]    = useState<{ moved: number; details: { wo_number: string; from: string; to: string }[] } | null>(null);
+  const [applyError,     setApplyError]     = useState<string | null>(null);
 
   const { data: rules = [], isLoading } = useColumnRequiredFields(selectedModule);
   const upsert = useUpsertColumnRequiredField();
   const remove  = useDeleteColumnRequiredField();
+
+  async function runApply(all: boolean) {
+    const label = all ? "ALL modules" : `"${selectedModule}"`;
+    if (!confirm(`Apply required field rules to ${label}? Every card will be placed in the correct column based on which fields are filled. Cards may move forward OR backward.`)) return;
+    all ? setApplyingAll(true) : setApplyingModule(true);
+    setApplyResult(null);
+    setApplyError(null);
+    try {
+      const body = all ? { all: true } : { module_slug: selectedModule };
+      const res = await fetch("/api/bajaj/column-required-fields/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setApplyResult(await res.json());
+    } catch (e) {
+      setApplyError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setApplyingModule(false);
+      setApplyingAll(false);
+    }
+  }
 
   function isRequired(statusName: string, fieldKey: string) {
     const row = rules.find((r) => r.status_name === statusName);
@@ -519,6 +546,57 @@ function ColumnRulesTab() {
           })}
         </div>
       )}
+
+      {/* ── Apply rules to cards ──────────────────────────────────────── */}
+      <div className="rounded-xl border border-neutral-700 bg-neutral-900/50 p-4 space-y-3 mt-6">
+        <div>
+          <p className="text-sm font-semibold text-neutral-200">Apply rules to existing cards</p>
+          <p className="text-xs text-neutral-500 mt-0.5">
+            Each card is placed in the highest column whose cumulative required fields are all filled.
+            Rules are progressive — column N requires all fields from columns 1 through N.
+            If a field is missing, the card lands in the column before it.
+          </p>
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            onClick={() => runApply(false)}
+            disabled={applyingModule || applyingAll}
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 disabled:opacity-50 text-white text-sm font-medium transition-colors"
+          >
+            {applyingModule ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+            {applyingModule ? "Applying…" : `Apply to ${selectedModule}`}
+          </button>
+          <button
+            onClick={() => runApply(true)}
+            disabled={applyingModule || applyingAll}
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-neutral-700 hover:bg-neutral-600 disabled:opacity-50 text-white text-sm font-medium transition-colors border border-neutral-600"
+          >
+            {applyingAll ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+            {applyingAll ? "Applying all…" : "Apply to All Countries"}
+          </button>
+        </div>
+        {applyError && <p className="text-sm text-red-400">Error: {applyError}</p>}
+        {applyResult && (
+          <div className="space-y-2">
+            <p className="text-sm text-emerald-400">
+              ✓ Moved {applyResult.moved} card{applyResult.moved !== 1 ? "s" : ""}
+              {applyResult.moved === 0 && " — all cards already in correct column"}
+            </p>
+            {applyResult.details.length > 0 && (
+              <div className="max-h-56 overflow-y-auto rounded-lg border border-neutral-800 divide-y divide-neutral-800">
+                {applyResult.details.map((d, i) => (
+                  <div key={i} className="px-3 py-2 text-xs flex items-center gap-2">
+                    <span className="text-neutral-200 font-medium">{d.wo_number}</span>
+                    <span className="text-neutral-600">{d.from}</span>
+                    <span className="text-neutral-500">→</span>
+                    <span className="text-amber-400">{d.to}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -757,6 +835,29 @@ function AutoProgressionTab() {
   const [triggerField,   setTriggerField]   = useState("");
   const [targetStage,    setTargetStage]    = useState(LIFECYCLE_TARGETS[2]);
   const [description,    setDescription]    = useState("");
+  const [applying,       setApplying]       = useState(false);
+  const [applyResult,    setApplyResult]    = useState<{ moved: number; details: { wo_number: string; from: string; to: string }[] } | null>(null);
+  const [applyError,     setApplyError]     = useState<string | null>(null);
+
+  async function handleApplyToExisting() {
+    if (!confirm(`Apply all auto-progression rules to existing cards in "${selectedModule}"? Cards will be moved forward if their trigger fields are already filled.`)) return;
+    setApplying(true);
+    setApplyResult(null);
+    setApplyError(null);
+    try {
+      const res = await fetch("/api/bajaj/auto-progression/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ module_slug: selectedModule }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setApplyResult(await res.json());
+    } catch (e) {
+      setApplyError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setApplying(false);
+    }
+  }
 
   const { data: rules = [], isLoading } = useAutoProgressionRules(selectedModule);
   const upsert = useUpsertAutoProgressionRule();
@@ -869,6 +970,44 @@ function AutoProgressionTab() {
           </table>
         </div>
       )}
+
+      {/* Apply to existing cards */}
+      <div className="rounded-xl border border-neutral-700 bg-neutral-900/50 p-4 space-y-3">
+        <div>
+          <p className="text-sm font-semibold text-neutral-200">Apply rules to existing cards</p>
+          <p className="text-xs text-neutral-500 mt-0.5">
+            Scans all cards in <span className="text-amber-400">{selectedModule}</span> and moves forward any whose trigger fields are already filled. Never moves backwards.
+          </p>
+        </div>
+        <button
+          onClick={handleApplyToExisting}
+          disabled={applying}
+          className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 disabled:opacity-50 text-white text-sm font-medium transition-colors"
+        >
+          {applying ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+          {applying ? "Applying…" : "Apply to Existing Cards"}
+        </button>
+        {applyError && <p className="text-sm text-red-400">Error: {applyError}</p>}
+        {applyResult && (
+          <div className="space-y-2">
+            <p className="text-sm text-emerald-400">
+              ✓ Moved {applyResult.moved} card{applyResult.moved !== 1 ? "s" : ""}
+            </p>
+            {applyResult.details.length > 0 && (
+              <div className="max-h-48 overflow-y-auto rounded-lg border border-neutral-800 divide-y divide-neutral-800">
+                {applyResult.details.map((d, i) => (
+                  <div key={i} className="px-3 py-2 text-xs text-neutral-400 flex items-center gap-2">
+                    <span className="text-neutral-200 font-medium">{d.wo_number}</span>
+                    <span className="text-neutral-600">{d.from}</span>
+                    <span className="text-neutral-500">→</span>
+                    <span className="text-amber-400">{d.to}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 px-4 py-3 text-xs text-neutral-500 space-y-1">
         <p className="font-semibold text-neutral-400">⚠ Notes</p>
