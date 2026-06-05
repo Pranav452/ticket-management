@@ -125,6 +125,7 @@ function ColumnAssignmentsTab() {
   const upsert = useUpsertColumnAssignment();
   const deleteAssign = useDeleteColumnAssignment();
   const reviewRequest = useReviewColumnRequest();
+  const [assignError, setAssignError] = useState<string | null>(null);
 
   const [newEmail, setNewEmail] = useState("");
   const [newStatusId, setNewStatusId] = useState<string>("__all__");
@@ -136,6 +137,7 @@ function ColumnAssignmentsTab() {
 
   function handleAdd() {
     if (!newEmail || !moduleSlug) return;
+    setAssignError(null);
     upsert.mutate({
       module_slug: moduleSlug,
       status_id: newStatusId === "__all__" ? null : newStatusId,
@@ -151,6 +153,7 @@ function ColumnAssignmentsTab() {
         setNewCanMove(true);
         setNewCanAssign(true);
       },
+      onError: (e) => setAssignError(e instanceof Error ? e.message : String(e)),
     });
   }
 
@@ -292,6 +295,9 @@ function ColumnAssignmentsTab() {
             Assign
           </button>
         </div>
+        {assignError && (
+          <p className="text-sm text-red-400 mb-3">Error: {assignError}</p>
+        )}
 
         {loadingAssign ? (
           <div className="flex items-center gap-2 py-6 text-neutral-500 text-sm">

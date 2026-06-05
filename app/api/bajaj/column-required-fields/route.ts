@@ -12,8 +12,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
-
-const ADMIN_EMAIL = "pranavnairop090@gmail.com";
+import { getCurrentUserEmail, isAdminEmail } from "@/lib/bajaj/permissions";
 
 async function getSupabase() {
   const cookieStore = await cookies();
@@ -53,11 +52,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = await getSupabase();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (user?.email !== ADMIN_EMAIL) {
+  const actorEmail = await getCurrentUserEmail();
+  if (!(await isAdminEmail(actorEmail))) {
     return NextResponse.json({ error: "Admin only" }, { status: 403 });
   }
+  const supabase = await getSupabase();
 
   const body = await req.json() as { module_slug: string; status_name: string; field_key: string };
   if (!body.module_slug || !body.status_name || !body.field_key) {
@@ -73,11 +72,11 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const supabase = await getSupabase();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (user?.email !== ADMIN_EMAIL) {
+  const actorEmail = await getCurrentUserEmail();
+  if (!(await isAdminEmail(actorEmail))) {
     return NextResponse.json({ error: "Admin only" }, { status: 403 });
   }
+  const supabase = await getSupabase();
 
   const body = await req.json() as { module_slug: string; status_name: string; field_key: string };
   if (!body.module_slug || !body.status_name || !body.field_key) {
