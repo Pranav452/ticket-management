@@ -68,6 +68,23 @@ export function useBajajBoardConfig(moduleSlug: string) {
   });
 }
 
+export function useUpdateBajajBoardConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { moduleId: string; cardFaceFields: string[]; uniqueKeyField: string | null }) =>
+      apiFetch("/api/bajaj/board-config", {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          module_id:        vars.moduleId,
+          card_face_fields: vars.cardFaceFields,
+          unique_key_field: vars.uniqueKeyField,
+        }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["bajaj", "board-config"] }),
+  });
+}
+
 // ─── Statuses ─────────────────────────────────────────────────────────────────
 // Components pass module_id directly; also accept slug (for board client).
 

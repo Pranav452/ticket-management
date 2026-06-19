@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getCurrentUserEmail, isAdminEmail } from "@/lib/bajaj/permissions";
 
 export async function GET(req: NextRequest) {
   const moduleId = req.nextUrl.searchParams.get("module_id");
@@ -17,6 +18,11 @@ export async function GET(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
+    const email = await getCurrentUserEmail();
+    if (!email || !(await isAdminEmail(email))) {
+      return NextResponse.json({ error: "Admin only" }, { status: 403 });
+    }
+
     const { module_id, card_face_fields, unique_key_field } = await req.json();
     if (!module_id) return NextResponse.json({ error: "module_id required" }, { status: 400 });
 

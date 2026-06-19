@@ -14,7 +14,7 @@ import {
   useColumnRequiredFields, useUpsertColumnRequiredField, useDeleteColumnRequiredField,
   useAutoProgressionRules, useUpsertAutoProgressionRule, useDeleteAutoProgressionRule,
 } from "@/lib/queries/bajaj";
-import { useBajajModules, useBajajStatuses } from "@/lib/queries/bajaj";
+import { useBajajModules, useBajajStatuses, useBajajBoardConfig, useUpdateBajajBoardConfig } from "@/lib/queries/bajaj";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import type { BajajUser, BajajAuditLog, BajajColumnAssignment, BajajColumnRequest } from "@/lib/types/bajaj";
 
@@ -407,6 +407,138 @@ const ALL_FIELD_KEYS: { key: string; label: string }[] = [
 ];
 
 const MODULE_SLUGS = ["vipar", "srilanka", "nigeria", "bangladesh", "triumph"];
+
+// Canonical work-order data keys that can be shown as chips on board cards.
+const CARD_FIELD_OPTIONS: { key: string; label: string }[] = [
+  { key: "category",     label: "Category (Parts/Frames)" },
+  { key: "veh",          label: "Vehicle" },
+  { key: "variant",      label: "Variant" },
+  { key: "qty",          label: "Qty" },
+  { key: "cont",         label: "Containers" },
+  { key: "cont_type",    label: "Container Type" },
+  { key: "veh_category", label: "Assembly" },
+  { key: "haz",          label: "HAZ" },
+  { key: "country",      label: "Country" },
+  { key: "port",         label: "Port" },
+  { key: "vslname",      label: "Vessel" },
+  { key: "s_line",       label: "Shipping Line" },
+  { key: "agent",        label: "Agent / CHA" },
+  { key: "transporter",  label: "Transporter" },
+  { key: "consignee",    label: "Consignee" },
+  { key: "booking_no",   label: "Booking No" },
+  { key: "container_no", label: "Container No" },
+  { key: "current_etd",  label: "Current ETD" },
+  { key: "stuffing_dt",  label: "Stuffing Date" },
+  { key: "si_cutoff",    label: "SI Cutoff" },
+  { key: "blno",         label: "BL No" },
+  { key: "bldt",         label: "BL Date" },
+  { key: "sbno",         label: "SB No" },
+  { key: "plant",        label: "Plant" },
+  { key: "po_no",        label: "PO No" },
+  { key: "e_doc_status", label: "E-Doc Status" },
+];
+
+function CardDisplayTab() {
+  const { data: modules = [] } = useBajajModules();
+  const [slug, setSlug] = useState("vipar");
+  const { data: config } = useBajajBoardConfig(slug);
+  const update = useUpdateBajajBoardConfig();
+  const [fields, setFields]       = useState<string[]>([]);
+  const [uniqueKey, setUniqueKey] = useState("wo");
+  const [saved, setSaved]         = useState(false);
+
+  React.useEffect(() => {
+    setFields(config?.card_face_fields ?? []);
+    setUniqueKey(config?.unique_key_field ?? "wo");
+    setSaved(false);
+  }, [config, slug]);
+
+  const moduleId = modules.find((m) => m.slug === slug)?.id;
+
+  function toggle(key: string) {
+    setSaved(false);
+    setFields((prev) => prev.includes(key) ? prev.filter((f) => f !== key) : [...prev, key]);
+  }
+  async function save() {
+    if (!moduleId) return;
+    await update.mutateAsync({ moduleId, cardFaceFields: fields, uniqueKeyField: uniqueKey || null });
+    setSaved(true);
+  }
+
+  return (
+    <div className="max-w-3xl">
+      <p className="text-sm text-neutral-400 mb-4">
+        Choose which fields appear as chips on the board cards for each module. Applies to all users
+        (individual users can still override locally via the board&apos;s <span className="text-neutral-300">View</span> panel).
+      </p>
+
+      <div className="flex items-center gap-2 mb-5">
+        {MODULE_SLUGS.map((s) => (
+          <button
+            key={s}
+            onClick={() => setSlug(s)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+              slug === s
+                ? "bg-amber-500/15 border-amber-500/40 text-amber-300"
+                : "bg-neutral-900 border-neutral-700 text-neutral-400 hover:border-neutral-600"
+            }`}
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+
+      <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-4 mb-4">
+        <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">Card chips ({fields.length})</p>
+        <div className="flex flex-wrap gap-1.5">
+          {CARD_FIELD_OPTIONS.map(({ key, label }) => {
+            const on = fields.includes(key);
+            return (
+              <button
+                key={key}
+                onClick={() => toggle(key)}
+                className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
+                  on
+                    ? "bg-amber-500 border-amber-500 text-white"
+                    : "bg-neutral-900 border-neutral-700 text-neutral-400 hover:border-amber-600/60"
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-4 mb-5">
+        <label className="block text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-2">Unique key field</label>
+        <select
+          value={uniqueKey}
+          onChange={(e) => { setUniqueKey(e.target.value); setSaved(false); }}
+          className="px-3 py-1.5 bg-neutral-900 border border-neutral-700 rounded-lg text-sm text-neutral-200 focus:outline-none focus:border-amber-600"
+        >
+          {[{ key: "wo", label: "WO Number" }, ...CARD_FIELD_OPTIONS].map(({ key, label }) => (
+            <option key={key} value={key}>{label}</option>
+          ))}
+        </select>
+        <p className="text-[11px] text-neutral-600 mt-1.5">Used for dedup on import and as the card&apos;s primary identifier.</p>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <button
+          onClick={save}
+          disabled={update.isPending || !moduleId}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 disabled:opacity-50 transition-colors"
+        >
+          {update.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
+          Save for {slug}
+        </button>
+        {saved && <span className="flex items-center gap-1 text-sm text-emerald-400"><CheckCircle2 className="size-4" /> Saved</span>}
+        {update.isError && <span className="text-sm text-red-400">Failed — admin only.</span>}
+      </div>
+    </div>
+  );
+}
 
 function ColumnRulesTab() {
   const [selectedModule, setSelectedModule] = useState("vipar");
@@ -1238,7 +1370,7 @@ function BusinessRulesTab() {
 
 // ─── Admin Panel ──────────────────────────────────────────────────────────────
 export function AdminPanel() {
-  const [tab, setTab] = useState<"requests" | "columns" | "rules" | "autoprogress" | "bizrules" | "audit" | "data">("requests");
+  const [tab, setTab] = useState<"requests" | "columns" | "rules" | "autoprogress" | "bizrules" | "audit" | "data" | "card-display">("requests");
   const [clearing, setClearing] = useState(false);
   const [clearMsg, setClearMsg] = useState<string | null>(null);
   const [searchEmail, setSearchEmail] = useState("");
@@ -1262,9 +1394,10 @@ export function AdminPanel() {
     "edited_field", "approved_user", "rejected_user", "requested_access",
   ];
 
-  const tabs: { key: "requests" | "columns" | "rules" | "autoprogress" | "bizrules" | "audit" | "data"; label: string; badge: number; danger?: boolean }[] = [
+  const tabs: { key: "requests" | "columns" | "rules" | "autoprogress" | "bizrules" | "audit" | "data" | "card-display"; label: string; badge: number; danger?: boolean }[] = [
     { key: "requests",     label: "Access Requests",  badge: pendingUsers.length },
     { key: "columns",      label: "Column Access",    badge: 0 },
+    { key: "card-display", label: "Card Display",     badge: 0 },
     { key: "rules",        label: "Required Fields",  badge: 0 },
     { key: "autoprogress", label: "Auto-Progression", badge: 0 },
     { key: "bizrules",     label: "Business Rules",   badge: 0 },
@@ -1349,6 +1482,8 @@ export function AdminPanel() {
 
       {/* ── Column Access tab ─────────────────────────────────────── */}
       {tab === "columns" && <ColumnAssignmentsTab />}
+
+      {tab === "card-display" && <CardDisplayTab />}
 
       {/* ── Data tab ─────────────────────────────────────────────── */}
       {tab === "data" && (

@@ -91,7 +91,7 @@ export function ReminderBell() {
 
   useEffect(() => {
     if (!due.length) return;
-    const toSend = due.filter((r) => r.status === "scheduled");
+    const toSend = due.filter((r) => r.status === "pending");
     if (toSend.length === 0) return;
 
     let cancelled = false;

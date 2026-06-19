@@ -34,6 +34,10 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
   const [showFilters,   setShowFilters]   = useState(false);
   const [customFields,  setCustomFields]  = useState<string[]>([]);
   const [viewMode,      setViewMode]      = useState<ViewMode>("board");
+  const [fCountry,      setFCountry]      = useState("");
+  const [fAgent,        setFAgent]        = useState("");
+  const [fVessel,       setFVessel]       = useState("");
+  const [fHaz,          setFHaz]          = useState("");
 
   const { data: dbStatuses = [], isLoading: statusLoading } = useBajajStatuses(slug);
 
@@ -93,8 +97,23 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
     });
   }
 
+  const distinctVals = (key: string) =>
+    Array.from(new Set(workOrders.map((w) => String((w.data as Record<string, unknown>)?.[key] ?? "").trim()).filter(Boolean))).sort();
+  const countryOpts = distinctVals("country");
+  const agentOpts   = distinctVals("agent");
+  const vesselOpts  = distinctVals("vslname");
+
   const filteredOrders = workOrders.filter((wo) => {
-    if (searchInput.trim() && !JSON.stringify(wo.data).toLowerCase().includes(searchInput.toLowerCase())) return false;
+    const d = wo.data as Record<string, unknown>;
+    if (searchInput.trim() && !JSON.stringify(d).toLowerCase().includes(searchInput.toLowerCase())) return false;
+    if (fCountry && String(d?.country ?? "") !== fCountry) return false;
+    if (fAgent   && String(d?.agent ?? "")   !== fAgent)   return false;
+    if (fVessel  && String(d?.vslname ?? "")  !== fVessel)  return false;
+    if (fHaz) {
+      const yes = ["YES", "TRUE", "1"].includes(String(d?.haz ?? "").toUpperCase());
+      if (fHaz === "yes" && !yes) return false;
+      if (fHaz === "no"  &&  yes) return false;
+    }
     return true;
   });
 
@@ -163,7 +182,8 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
     }
   }
 
-  const hasActiveFilter = !!(searchInput || filters.dateFrom || filters.dateTo);
+  const hasActiveFilter = !!(searchInput || filters.dateFrom || filters.dateTo || fCountry || fAgent || fVessel || fHaz);
+  const selectCls = "rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] px-2 py-1.5 text-[12px] text-gray-700 dark:text-white/80 focus:border-amber-500 focus:outline-none max-w-[150px]";
 
   return (
     <div className="bajaj-board-bg flex h-full flex-col overflow-hidden" style={{ background: "var(--card-bg)" }}>
@@ -257,15 +277,34 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
 
       {/* ── Filter bar ───────────────────────────────────────────────── */}
       {showFilters && (
-        <div className="flex items-center gap-2.5 px-5 py-2 border-b border-gray-100 dark:border-white/6 bg-gray-50 dark:bg-[#111] flex-shrink-0">
+        <div className="flex items-center flex-wrap gap-2.5 px-5 py-2 border-b border-gray-100 dark:border-white/6 bg-gray-50 dark:bg-[#111] flex-shrink-0">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-gray-400 dark:text-white/40 pointer-events-none" />
             <input
               type="text" placeholder="Search WO, vessel, port…"
               value={searchInput} onChange={(e) => setSearchInput(e.target.value)}
-              className="rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] pl-8 pr-3 py-1.5 text-[12px] text-gray-800 dark:text-white/90 placeholder-gray-400 dark:placeholder-white/30 focus:border-amber-500 focus:outline-none transition-colors w-56"
+              className="rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] pl-8 pr-3 py-1.5 text-[12px] text-gray-800 dark:text-white/90 placeholder-gray-400 dark:placeholder-white/30 focus:border-amber-500 focus:outline-none transition-colors w-52"
             />
           </div>
+
+          <select value={fCountry} onChange={(e) => setFCountry(e.target.value)} className={selectCls} title="Country">
+            <option value="">All countries</option>
+            {countryOpts.map((o) => <option key={o} value={o}>{o}</option>)}
+          </select>
+          <select value={fAgent} onChange={(e) => setFAgent(e.target.value)} className={selectCls} title="Agent / CHA">
+            <option value="">All agents</option>
+            {agentOpts.map((o) => <option key={o} value={o}>{o}</option>)}
+          </select>
+          <select value={fVessel} onChange={(e) => setFVessel(e.target.value)} className={selectCls} title="Vessel">
+            <option value="">All vessels</option>
+            {vesselOpts.map((o) => <option key={o} value={o}>{o}</option>)}
+          </select>
+          <select value={fHaz} onChange={(e) => setFHaz(e.target.value)} className={selectCls} title="HAZ">
+            <option value="">HAZ: any</option>
+            <option value="yes">HAZ only</option>
+            <option value="no">Non-HAZ</option>
+          </select>
+
           <div className="flex items-center gap-1.5 text-[12px] text-gray-400 dark:text-white/40">
             <span>From</span>
             <input type="date" value={filters.dateFrom ?? ""} onChange={(e) => setFilters((f) => ({ ...f, dateFrom: e.target.value || undefined }))}
@@ -275,7 +314,7 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
               className="rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] px-2 py-1.5 text-[12px] text-gray-700 dark:text-white/80 focus:border-amber-500 focus:outline-none" />
           </div>
           {hasActiveFilter && (
-            <button onClick={() => { setSearchInput(""); setFilters({}); }} className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-amber-600 transition-colors">
+            <button onClick={() => { setSearchInput(""); setFilters({}); setFCountry(""); setFAgent(""); setFVessel(""); setFHaz(""); }} className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-amber-600 transition-colors">
               <X className="size-3" /> Clear
             </button>
           )}

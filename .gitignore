@@ -23,6 +23,10 @@ build
 .env.*
 !.env.example
 
+# Local data dumps / backups (contain work-order data + emails)
+backups/
+_tmp_*.js
+
 # Vercel
 .vercel
 

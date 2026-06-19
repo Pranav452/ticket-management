@@ -1,7 +1,11 @@
 /**
  * POST /api/bajaj/import
- * Accepts multipart/form-data: file (.xlsx) + moduleSlug
- * Parses Excel, maps columns to work order data, inserts into Supabase.
+ * Accepts multipart/form-data: file (.xlsx) + moduleSlug + optional sheetName
+ * Parses Excel, maps every column to canonical work-order data, derives the
+ * lifecycle status + parts/frames tag, dedups by (wo|container|booking), inserts.
+ *
+ * Mapping / derivation logic is shared with scripts/import-june-2026.mjs via
+ * lib/bajaj/import-map.mjs so the UI import and the one-off refill stay in sync.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -9,47 +13,9 @@ import ExcelJS from "exceljs";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUserEmail } from "@/lib/bajaj/permissions";
 import { validateWorkOrderRules } from "@/lib/bajaj/validation";
-
-const HEADER_MAP: Record<string, string> = {
-  "wo":             "wo",
-  "wo no":          "wo",
-  "wo no.":         "wo",
-  "work order":     "wo",
-  "work order no":  "wo",
-  "wodt":           "wodt",
-  "wo date":        "wodt",
-  "port":           "port",
-  "port (wo/pod)":  "port",
-  "pod":            "port",
-  "country":        "country",
-  "plant":          "plant",
-  "brand":          "brand",
-  "variant":        "variant",
-  "qty":            "qty",
-  "quantity":       "qty",
-  "40hc":           "hc40",
-  "40 hc":          "hc40",
-  "40hc qty":       "hc40",
-  "std20":          "std20",
-  "std 20":         "std20",
-  "sbno":           "sbno",
-  "sb no":          "sbno",
-  "blno":           "blno",
-  "bl no":          "blno",
-  "bldt":           "bldt",
-  "bl date":        "bldt",
-  "sailingdt":      "sailingdt",
-  "sailing date":   "sailingdt",
-  "etd":            "sailingdt",
-  "booking no":     "booking_no",
-  "booking no.":    "booking_no",
-  "bookingno":      "booking_no",
-  "agent":          "agent",
-  "cha":            "agent",
-  "remark":         "remark",
-  "remarks":        "remark",
-  "assy config":    "assy_config",
-};
+import {
+  SHEET_MODULE_MAP, normHeader, buildColMap, buildRecord, deriveStatusName,
+} from "@/lib/bajaj/import-map.mjs";
 
 const MODULE_DEFAULT_COUNTRY: Record<string, string> = {
   srilanka:   "Sri Lanka",
@@ -59,8 +25,9 @@ const MODULE_DEFAULT_COUNTRY: Record<string, string> = {
   vipar:      "VIPAR",
 };
 
-function matchHeader(h: string): string | null {
-  return HEADER_MAP[h.trim().toLowerCase().replace(/\s+/g, " ")] ?? null;
+/** Composite dedup key — a WO can span multiple container/booking rows. */
+function rowKey(d: Record<string, unknown>): string {
+  return [d["wo"], d["container_no"], d["booking_no"]].map((v) => String(v ?? "").trim()).join("|");
 }
 
 export async function POST(req: NextRequest) {
@@ -68,11 +35,12 @@ export async function POST(req: NextRequest) {
     const formData   = await req.formData();
     const file       = formData.get("file") as File | null;
     const moduleSlug = (formData.get("moduleSlug") as string | null) ?? "";
+    const sheetName  = (formData.get("sheetName") as string | null) ?? "";
 
     if (!file) return NextResponse.json({ error: "file is required" }, { status: 400 });
 
-    const sb          = createAdminClient();
-    const actorEmail  = await getCurrentUserEmail();
+    const sb         = createAdminClient();
+    const actorEmail = await getCurrentUserEmail();
 
     // Resolve module
     const { data: mod } = await sb
@@ -82,91 +50,98 @@ export async function POST(req: NextRequest) {
       .single();
     if (!mod) return NextResponse.json({ error: `Unknown module: ${moduleSlug}` }, { status: 400 });
 
+    // Module status name → id (for auto-placement)
+    const { data: statusRows } = await sb
+      .from("bajaj_statuses")
+      .select("id, name")
+      .eq("module_id", mod.id);
+    const statusIdByName: Record<string, string> = {};
+    for (const s of statusRows ?? []) statusIdByName[s.name] = s.id;
+
     // Parse Excel
     const arrayBuf = await file.arrayBuffer();
     const workbook = new ExcelJS.Workbook();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await workbook.xlsx.load(new Uint8Array(arrayBuf) as any);
 
-    // Find sheet with a WO column
-    let sheet = workbook.worksheets[0];
+    // Pick the sheet: explicit sheetName, else first sheet with a WO column.
+    let sheet = sheetName ? workbook.getWorksheet(sheetName) : undefined;
     let colMap: Record<number, string> = {};
-    for (const ws of workbook.worksheets) {
-      const hdr = ws.getRow(1).values as (string | undefined)[];
-      const map: Record<number, string> = {};
-      hdr.forEach((h, idx) => { if (h) { const m = matchHeader(String(h)); if (m) map[idx] = m; } });
-      if (Object.values(map).includes("wo")) { sheet = ws; colMap = map; break; }
+    if (sheet) {
+      colMap = buildColMap(sheet.getRow(1).values as unknown[]);
+    } else {
+      for (const ws of workbook.worksheets) {
+        const map = buildColMap(ws.getRow(1).values as unknown[]);
+        if (Object.values(map).includes("wo")) { sheet = ws; colMap = map; break; }
+      }
+      if (!sheet) { sheet = workbook.worksheets[0]; colMap = buildColMap(sheet.getRow(1).values as unknown[]); }
     }
     if (!Object.values(colMap).includes("wo")) {
-      const hdr = workbook.worksheets[0].getRow(1).values as (string | undefined)[];
-      hdr.forEach((h, idx) => { if (h) { const m = matchHeader(String(h)); if (m) colMap[idx] = m; } });
+      return NextResponse.json({ error: "No 'WO' column found in the selected sheet." }, { status: 400 });
     }
 
-    // Fetch existing WO numbers to dedup
-    const { data: existingWOs } = await sb
-      .from("bajaj_work_orders")
-      .select("data->>'wo'")
-      .eq("module_slug", moduleSlug);
-    const existingSet = new Set((existingWOs ?? []).map((r) => String(Object.values(r)[0])));
-
+    const partsFrames = !!SHEET_MODULE_MAP[normHeader(sheet.name)]?.partsFrames;
     const defaultCountry = MODULE_DEFAULT_COUNTRY[moduleSlug] ?? null;
+
+    // Existing composite keys + current max column_order (append below existing cards)
+    const { data: existing } = await sb
+      .from("bajaj_work_orders")
+      .select("data, column_order")
+      .eq("module_slug", moduleSlug);
+    const existingKeys = new Set((existing ?? []).map((r) => rowKey(r.data as Record<string, unknown>)));
+    let order = (existing ?? []).reduce((m, r) => Math.max(m, Number(r.column_order) || 0), 0);
+
+    const totalDataRows = Math.max(0, sheet.rowCount - 1);
     const toInsert: Record<string, unknown>[] = [];
 
     for (let rowNum = 2; rowNum <= sheet.rowCount; rowNum++) {
-      const row    = sheet.getRow(rowNum);
-      const values = row.values as (string | number | undefined)[];
-      const record: Record<string, string | number | null> = {};
+      const data = buildRecord(colMap, sheet.getRow(rowNum).values as unknown[], { partsFrames }) as Record<string, unknown> | null;
+      if (!data) continue;
+      if (!data["country"]) data["country"] = defaultCountry;
 
-      Object.entries(colMap).forEach(([idx, col]) => {
-        const v = values[parseInt(idx, 10)];
-        if (col === "qty" || col === "hc40" || col === "std20") {
-          record[col] = v != null ? parseInt(String(v)) : null;
-        } else {
-          record[col] = v != null ? String(v).trim() : null;
-        }
+      const key = rowKey(data);
+      if (existingKeys.has(key)) continue;
+      existingKeys.add(key);
+
+      const statusId = statusIdByName[deriveStatusName(data) as string] ?? null;
+      toInsert.push({
+        module_id:   mod.id,
+        module_slug: moduleSlug,
+        status_id:   statusId,
+        column_order: ++order,
+        data,
       });
-
-      const wo = String(record["wo"] ?? "").trim();
-      if (!wo || existingSet.has(wo)) continue;
-
-      if (!record["country"]) record["country"] = defaultCountry;
-      existingSet.add(wo);
-      toInsert.push({ module_id: mod.id, module_slug: moduleSlug, data: record });
     }
 
-    // ── Validate business rules across all rows to insert ───────────────────
+    // ── Validate business rules (Sri Lanka · LINKS) — violations are skipped ──
     const violations: { wo: string; warnings: string[] }[] = [];
     const clean: typeof toInsert = [];
-
     for (const row of toInsert) {
       const d = row.data as Record<string, unknown>;
       const warnings = await validateWorkOrderRules(sb, [{
         country:     d["country"]     ? String(d["country"])     : (defaultCountry ?? null),
-        containerno: d["containerno"] ? String(d["containerno"]) : null,
+        agent:       d["agent"]       ? String(d["agent"])       : null,
+        containerno: d["container_no"] ? String(d["container_no"]) : null,
         vslname:     d["vslname"]     ? String(d["vslname"])     : null,
         assy_config: d["assy_config"] ? String(d["assy_config"]) : null,
       }]);
       if (warnings.length > 0) {
-        violations.push({ wo: String(d["wo"] ?? ""), warnings: warnings.map(w => w.message) });
+        violations.push({ wo: String(d["wo"] ?? ""), warnings: warnings.map((w) => w.message) });
       } else {
         clean.push(row);
       }
     }
 
-    let addedCount   = 0;
-    let skippedCount = 0;
-
+    let addedCount = 0;
     if (clean.length > 0) {
       const { data: inserted, error } = await sb
         .from("bajaj_work_orders")
         .insert(clean)
         .select("id");
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      addedCount   = inserted?.length ?? 0;
-      skippedCount = (sheet.rowCount - 1) - addedCount - violations.length;
-    } else {
-      skippedCount = sheet.rowCount - 1 - violations.length;
+      addedCount = inserted?.length ?? 0;
     }
+    const skippedCount = totalDataRows - addedCount - violations.length;
 
     // Record import batch
     await sb.from("bajaj_import_batches").insert({
@@ -174,7 +149,7 @@ export async function POST(req: NextRequest) {
       module_slug:   moduleSlug,
       filename:      file.name,
       imported_by:   actorEmail,
-      row_count:     sheet.rowCount - 1,
+      row_count:     totalDataRows,
       added_count:   addedCount,
       skipped_count: skippedCount,
     });

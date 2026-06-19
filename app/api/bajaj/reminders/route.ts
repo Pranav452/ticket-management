@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
         created_by, due_at, days_offset,
         recipients: JSON.stringify(recipients),
         message,
-        status: "scheduled",
+        status: "pending",
       })
       .select()
       .single();

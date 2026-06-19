@@ -101,7 +101,7 @@ export interface BajajAuditLog {
 
 // ─── Reminders (demo) ─────────────────────────────────────────────────────────
 
-export type BajajReminderStatus = "scheduled" | "sent" | "done";
+export type BajajReminderStatus = "pending" | "sent" | "done" | "cancelled";
 
 export interface BajajReminder {
   id: string;

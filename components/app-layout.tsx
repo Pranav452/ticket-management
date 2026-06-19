@@ -10,6 +10,7 @@ import {
   Search, ChevronDown, ChevronRight as ChevronRightIcon,
   PanelLeft, Settings, Globe,
   Inbox, MessageSquare, Home, Loader2, X,
+  Download, BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -356,6 +357,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <NavItem href="/bajaj/import"    label="Import"       icon={Inbox}         active={pathname.startsWith("/bajaj/import")} />
             <NavItem href="/bajaj/chat"      label="Chat"         icon={MessageSquare} active={pathname.startsWith("/bajaj/chat")} />
             <NavItem href="/bajaj/dashboard" label="Analytics"    icon={BarChart2}     active={pathname.startsWith("/bajaj/dashboard")} />
+            <NavItem href="/bajaj/bookings"  label="Bookings"     icon={BookOpen}      active={pathname.startsWith("/bajaj/bookings")} />
+            <NavItem href="/bajaj/export"    label="Export"       icon={Download}      active={pathname.startsWith("/bajaj/export")} />
           </div>
 
           <Divider />
