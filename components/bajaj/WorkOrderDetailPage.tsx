@@ -1,16 +1,18 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Loader2, Check,
   MessageSquare, Clock, Send, Bell, Mail,
   ChevronDown, AlertTriangle, Edit2,
+  X, CheckCircle, BellPlus, CalendarClock, Monitor,
 } from "lucide-react";
 import {
   useWorkOrder, useUpdateWorkOrder, useBajajComments,
   useAddBajajComment, useBajajStatuses,
   useBajajAuditLogs, useColumnRequiredFields,
+  useCreateBajajReminder,
 } from "@/lib/queries/bajaj";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { cn } from "@/lib/utils";
@@ -151,6 +153,259 @@ function countryToSlug(country: string): string {
   return "vipar";
 }
 
+// ─── Shared dialog helpers ────────────────────────────────────────────────────
+const DIALOG_INPUT =
+  "w-full bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2 text-[13px] text-gray-800 dark:text-white/90 placeholder-gray-400 dark:placeholder-white/30 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20 transition-colors";
+const DIALOG_CHIP =
+  "px-2.5 py-1 rounded-md text-[12px] border border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:border-amber-400 hover:text-amber-600 transition-colors";
+
+const REMINDER_REASONS = ["Follow up", "Document due", "Payment due", "Booking deadline", "ETA / sailing check", "Custom"];
+
+function pad2(n: number) { return String(n).padStart(2, "0"); }
+/** Format a Date as a value for <input type="datetime-local"> in the user's local time. */
+function toLocalInputValue(d: Date) {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+function parseEmails(raw: string): string[] {
+  const set = new Set<string>();
+  for (const part of raw.split(/[\s,;]+/g)) { const t = part.trim().toLowerCase(); if (t) set.add(t); }
+  return Array.from(set);
+}
+function atHour(daysFromNow: number, hour = 9): Date {
+  const d = new Date();
+  d.setDate(d.getDate() + daysFromNow);
+  d.setHours(hour, 0, 0, 0);
+  return d;
+}
+
+// ─── Set Reminder dialog ──────────────────────────────────────────────────────
+function ReminderDialog({
+  workOrderId, moduleId, defaultSubject, defaultEmail, createdBy, onClose,
+}: {
+  workOrderId: string; moduleId: string;
+  defaultSubject: string; defaultEmail: string; createdBy: string | null;
+  onClose: () => void;
+}) {
+  const createReminder = useCreateBajajReminder();
+
+  const [reason,  setReason]  = useState<string>(REMINDER_REASONS[0]);
+  const [subject, setSubject] = useState(defaultSubject);
+  const [channel, setChannel] = useState<"inapp" | "email">("inapp");
+  const [when,    setWhen]    = useState(() => toLocalInputValue(atHour(1)));
+  const [emails,  setEmails]  = useState(defaultEmail);
+  const [message, setMessage] = useState("");
+  const [error,   setError]   = useState<string | null>(null);
+  const [done,    setDone]    = useState(false);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  function setQuick(days: number) { setWhen(toLocalInputValue(atHour(days))); }
+
+  async function submit() {
+    setError(null);
+    const due = new Date(when);
+    if (Number.isNaN(due.getTime())) { setError("Pick a valid date and time."); return; }
+    if (due.getTime() <= Date.now()) { setError("Reminder time must be in the future."); return; }
+
+    const recipients = channel === "email" ? parseEmails(emails) : [];
+    if (channel === "email" && recipients.length === 0) { setError("Add at least one recipient email."); return; }
+
+    const label = subject.trim() || defaultSubject;
+    const reasonPrefix = reason && reason !== "Custom" ? `${reason} — ` : "";
+    try {
+      await createReminder.mutateAsync({
+        workOrderId, moduleId,
+        workOrderSummary: label,
+        due_at: due.toISOString(),
+        recipients,
+        message: message.trim() || `${reasonPrefix}${label}`,
+        createdBy,
+      });
+      setDone(true);
+      window.setTimeout(onClose, 900);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to set reminder.");
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md rounded-2xl bg-white dark:bg-[#111] border border-gray-200 dark:border-white/10 shadow-xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-white/10">
+          <div className="flex items-center gap-2">
+            <BellPlus className="size-4 text-amber-500" />
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">Set Reminder</p>
+          </div>
+          <button onClick={onClose} className="size-7 inline-flex items-center justify-center rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
+          {/* What for */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold">What&apos;s this reminder for?</label>
+            <div className="flex flex-wrap gap-1.5">
+              {REMINDER_REASONS.map((r) => (
+                <button key={r} type="button" onClick={() => setReason(r)}
+                  className={cn("px-2.5 py-1 rounded-full text-[12px] border transition-colors",
+                    reason === r
+                      ? "bg-amber-500 text-white border-amber-500"
+                      : "bg-white dark:bg-[#1a1a1a] text-gray-600 dark:text-white/70 border-gray-200 dark:border-white/10 hover:border-gray-300")}>
+                  {r}
+                </button>
+              ))}
+            </div>
+            <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject (which work order / what to do)" className={DIALOG_INPUT} />
+          </div>
+
+          {/* When */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold flex items-center gap-1.5">
+              <CalendarClock className="size-3.5" /> Remind me on
+            </label>
+            <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} className={DIALOG_INPUT} />
+            <div className="flex flex-wrap gap-1.5">
+              <button type="button" onClick={() => setQuick(1)} className={DIALOG_CHIP}>Tomorrow</button>
+              <button type="button" onClick={() => setQuick(3)} className={DIALOG_CHIP}>In 3 days</button>
+              <button type="button" onClick={() => setQuick(7)} className={DIALOG_CHIP}>Next week</button>
+            </div>
+          </div>
+
+          {/* How */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold">How do you want to be notified?</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => setChannel("inapp")}
+                className={cn("flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-[13px] transition-colors",
+                  channel === "inapp"
+                    ? "border-amber-500 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                    : "border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:border-gray-300")}>
+                <Monitor className="size-4" /> In-app
+              </button>
+              <button type="button" onClick={() => setChannel("email")}
+                className={cn("flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-[13px] transition-colors",
+                  channel === "email"
+                    ? "border-amber-500 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                    : "border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:border-gray-300")}>
+                <Mail className="size-4" /> Email
+              </button>
+            </div>
+            {channel === "email" ? (
+              <input value={emails} onChange={(e) => setEmails(e.target.value)} placeholder="Recipient emails (comma separated)" className={DIALOG_INPUT} />
+            ) : (
+              <p className="text-[11px] text-gray-400">Appears in the bell at the top when due — no email is sent.</p>
+            )}
+          </div>
+
+          {/* Message */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold">Message (optional)</label>
+            <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3} placeholder="What should the reminder say?" className={cn(DIALOG_INPUT, "resize-none")} />
+          </div>
+
+          {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">{error}</div>}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100 dark:border-white/10">
+          <button onClick={onClose} className="px-3 py-2 rounded-lg text-[13px] text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">Cancel</button>
+          <button onClick={submit} disabled={createReminder.isPending || done}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-500 text-[13px] font-medium text-white hover:bg-amber-600 disabled:opacity-50 transition-colors">
+            {done ? <CheckCircle className="size-4" /> : createReminder.isPending ? <Loader2 className="size-4 animate-spin" /> : <BellPlus className="size-4" />}
+            {done ? "Reminder set" : "Set reminder"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Email Notify dialog (send now) ───────────────────────────────────────────
+function NotifyDialog({
+  workOrderId, summary, defaultEmail, senderName, onClose,
+}: {
+  workOrderId: string; summary: string; defaultEmail: string; senderName: string; onClose: () => void;
+}) {
+  const [emails,  setEmails]  = useState(defaultEmail);
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const [done,    setDone]    = useState(false);
+  const [error,   setError]   = useState<string | null>(null);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  async function send() {
+    setError(null);
+    const recipients = parseEmails(emails);
+    if (recipients.length === 0) { setError("Add at least one recipient email."); return; }
+    if (!message.trim()) { setError("Message is required."); return; }
+    setSending(true);
+    try {
+      for (const to of recipients) {
+        const res = await fetch("/api/bajaj/notify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ to, workOrderId, workOrderSummary: summary, message: message.trim(), senderName }),
+        });
+        if (!res.ok) throw new Error("Failed to send email.");
+      }
+      setDone(true);
+      window.setTimeout(onClose, 900);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send email.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md rounded-2xl bg-white dark:bg-[#111] border border-gray-200 dark:border-white/10 shadow-xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-white/10">
+          <div className="flex items-center gap-2">
+            <Mail className="size-4 text-blue-500" />
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">Email Notify</p>
+          </div>
+          <button onClick={onClose} className="size-7 inline-flex items-center justify-center rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold">Recipients</label>
+            <input value={emails} onChange={(e) => setEmails(e.target.value)} placeholder="Recipient emails (comma separated)" className={DIALOG_INPUT} />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold">Message</label>
+            <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={4} placeholder={`Update on ${summary}…`} className={cn(DIALOG_INPUT, "resize-none")} />
+          </div>
+          {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">{error}</div>}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100 dark:border-white/10">
+          <button onClick={onClose} className="px-3 py-2 rounded-lg text-[13px] text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">Cancel</button>
+          <button onClick={send} disabled={sending || done}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-500 text-[13px] font-medium text-white hover:bg-amber-600 disabled:opacity-50 transition-colors">
+            {done ? <CheckCircle className="size-4" /> : sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+            {done ? "Sent" : "Send email"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
   const router = useRouter();
@@ -172,6 +427,8 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
   const [commentText,      setCommentText]      = useState("");
   const [savingField,      setSavingField]      = useState<string | null>(null);
   const [autoAdvanced,     setAutoAdvanced]     = useState(false);
+  const [showReminder,     setShowReminder]     = useState(false);
+  const [showNotify,       setShowNotify]       = useState(false);
 
   const handleFieldSave = useCallback((key: string, val: string | boolean) => {
     setSavingField(key);
@@ -448,15 +705,35 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
         <div className="px-4 py-4">
           <p className="text-[10px] uppercase tracking-widest text-gray-400 dark:text-white/40 font-semibold mb-3">Quick Actions</p>
           <div className="space-y-2">
-            <button className="flex items-center gap-2 w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#0d0d0d] hover:bg-gray-50 dark:hover:bg-white/5 hover:border-gray-300 dark:hover:border-white/20 text-[13px] text-gray-600 dark:text-white/70 transition-colors">
+            <button onClick={() => setShowReminder(true)} className="flex items-center gap-2 w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#0d0d0d] hover:bg-gray-50 dark:hover:bg-white/5 hover:border-gray-300 dark:hover:border-white/20 text-[13px] text-gray-600 dark:text-white/70 transition-colors">
               <Bell className="size-3.5 text-amber-500" /> Set Reminder
             </button>
-            <button className="flex items-center gap-2 w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#0d0d0d] hover:bg-gray-50 dark:hover:bg-white/5 hover:border-gray-300 dark:hover:border-white/20 text-[13px] text-gray-600 dark:text-white/70 transition-colors">
+            <button onClick={() => setShowNotify(true)} className="flex items-center gap-2 w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#0d0d0d] hover:bg-gray-50 dark:hover:bg-white/5 hover:border-gray-300 dark:hover:border-white/20 text-[13px] text-gray-600 dark:text-white/70 transition-colors">
               <Mail className="size-3.5 text-blue-500" /> Email Notify
             </button>
           </div>
         </div>
       </div>
+
+      {showReminder && (
+        <ReminderDialog
+          workOrderId={workOrderId}
+          moduleId={workOrder.module_id}
+          defaultSubject={title}
+          defaultEmail={bajajUser?.email ?? ""}
+          createdBy={bajajUser?.email ?? null}
+          onClose={() => setShowReminder(false)}
+        />
+      )}
+      {showNotify && (
+        <NotifyDialog
+          workOrderId={workOrderId}
+          summary={title}
+          defaultEmail={bajajUser?.email ?? ""}
+          senderName={bajajUser?.full_name ?? bajajUser?.email ?? "Team"}
+          onClose={() => setShowNotify(false)}
+        />
+      )}
     </div>
   );
 }

@@ -81,7 +81,9 @@ export async function POST(req: NextRequest) {
       .insert({
         work_order_id, module_id, work_order_summary,
         created_by, due_at, days_offset,
-        recipients: JSON.stringify(recipients),
+        // Store as a native JSON array so the cron's Array.isArray(...) check passes
+        // and scheduled emails actually send. (GET defensively parses either shape.)
+        recipients: Array.isArray(recipients) ? recipients : [],
         message,
         status: "pending",
       })
