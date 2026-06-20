@@ -143,7 +143,7 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
   const [file,     setFile]     = useState<File | null>(null);
   const [step,     setStep]     = useState<Step>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [result,   setResult]   = useState<{ added: number; skipped: number } | null>(null);
+  const [result,   setResult]   = useState<{ added: number; skipped: number; perModule?: Record<string, number> } | null>(null);
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const f = acceptedFiles[0];
@@ -160,7 +160,7 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
       const res  = await fetch("/api/bajaj/import", { method: "POST", body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Import failed");
-      setResult({ added: data.addedCount, skipped: data.skippedCount });
+      setResult({ added: data.addedCount, skipped: data.skippedCount, perModule: data.perModule });
       setStep("done");
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : "Import failed");
@@ -281,6 +281,20 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
             <p className="text-[12px] text-gray-400 dark:text-white/40 mt-1">Skipped (duplicate)</p>
           </div>
         </div>
+        {result.perModule && Object.keys(result.perModule).length > 0 && (
+          <div className="mt-1">
+            <p className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-white/40 font-semibold mb-2">Routed to boards</p>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(result.perModule).map(([slug, n]) => (
+                <a key={slug} href={`/bajaj/boards/${slug}`}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-gray-200 dark:border-white/10 bg-white dark:bg-[#0d0d0d] text-[12px] text-gray-700 dark:text-white/70 hover:border-amber-400 transition-colors">
+                  <span className="font-medium capitalize">{slug}</span>
+                  <span className="tabular-nums text-amber-600 dark:text-amber-400 font-semibold">{n}</span>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="flex gap-3 mt-2">
           <a
             href={`/bajaj/boards/${moduleSlug}`}
