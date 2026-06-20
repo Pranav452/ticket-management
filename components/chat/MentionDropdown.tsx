@@ -60,10 +60,10 @@ export function MentionDropdown({ search, members, onSelect, onClose, anchorRect
     <div
       ref={listRef}
       style={style}
-      className="bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden"
+      className="bg-white dark:bg-[#111] border border-gray-200 dark:border-white/10 rounded-lg shadow-lg overflow-hidden"
     >
-      <div className="px-2.5 py-1.5 border-b border-gray-100">
-        <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Mention</span>
+      <div className="px-2.5 py-1.5 border-b border-gray-100 dark:border-white/[0.06]">
+        <span className="text-[10px] font-semibold text-gray-400 dark:text-white/40 uppercase tracking-wider">Mention</span>
       </div>
       {filtered.map((member, i) => {
         const initials = (member.full_name ?? "?")
@@ -77,13 +77,13 @@ export function MentionDropdown({ search, members, onSelect, onClose, anchorRect
             onMouseEnter={() => setActiveIdx(i)}
             className={cn(
               "w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors",
-              i === activeIdx ? "bg-amber-50" : "hover:bg-gray-50"
+              i === activeIdx ? "bg-amber-50 dark:bg-amber-500/10" : "hover:bg-gray-50 dark:hover:bg-white/5"
             )}
           >
             <div className="h-6 w-6 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">
               {initials}
             </div>
-            <span className="truncate font-medium text-gray-800">{member.full_name}</span>
+            <span className="truncate font-medium text-gray-800 dark:text-white/90">{member.full_name}</span>
           </button>
         )
       })}

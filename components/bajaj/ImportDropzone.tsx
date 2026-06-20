@@ -242,8 +242,8 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
         <Loader2 className="size-10 text-amber-500 animate-spin" />
-        <p className="text-gray-700 text-sm font-medium">Importing work orders…</p>
-        {file && <p className="text-[13px] text-gray-400">{file.name}</p>}
+        <p className="text-gray-700 dark:text-white/80 text-sm font-medium">Importing work orders…</p>
+        {file && <p className="text-[13px] text-gray-400 dark:text-white/40">{file.name}</p>}
       </div>
     );
   }
@@ -253,9 +253,9 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
     return (
       <div className="flex flex-col items-center gap-4 py-20 text-center">
         <AlertCircle className="size-10 text-red-500" />
-        <p className="text-gray-800 font-medium">Import failed</p>
-        <p className="text-[13px] text-red-600 bg-red-50 rounded-lg px-4 py-2 max-w-sm border border-red-100">{errorMsg}</p>
-        <button onClick={reset} className="text-[13px] text-gray-400 hover:text-amber-600 underline transition-colors">
+        <p className="text-gray-800 dark:text-white/90 font-medium">Import failed</p>
+        <p className="text-[13px] text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10 rounded-lg px-4 py-2 max-w-sm border border-red-100 dark:border-red-500/30">{errorMsg}</p>
+        <button onClick={reset} className="text-[13px] text-gray-400 dark:text-white/40 hover:text-amber-600 underline transition-colors">
           Try again
         </button>
       </div>
@@ -268,17 +268,17 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
       <div className="flex flex-col items-center gap-5 py-20 text-center">
         <CheckCircle className="size-14 text-amber-500" />
         <div>
-          <h3 className="text-xl font-bold text-gray-900">Import Complete</h3>
-          <p className="text-[13px] text-gray-400 mt-1">Work orders are now on the board</p>
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white">Import Complete</h3>
+          <p className="text-[13px] text-gray-400 dark:text-white/40 mt-1">Work orders are now on the board</p>
         </div>
         <div className="flex gap-10 mt-2">
           <div>
             <p className="text-3xl font-bold text-amber-500 tabular-nums">{result.added}</p>
-            <p className="text-[12px] text-gray-400 mt-1">Added</p>
+            <p className="text-[12px] text-gray-400 dark:text-white/40 mt-1">Added</p>
           </div>
           <div>
-            <p className="text-3xl font-bold text-gray-300 tabular-nums">{result.skipped}</p>
-            <p className="text-[12px] text-gray-400 mt-1">Skipped (duplicate)</p>
+            <p className="text-3xl font-bold text-gray-300 dark:text-white/30 tabular-nums">{result.skipped}</p>
+            <p className="text-[12px] text-gray-400 dark:text-white/40 mt-1">Skipped (duplicate)</p>
           </div>
         </div>
         <div className="flex gap-3 mt-2">
@@ -290,7 +290,7 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
           </a>
           <button
             onClick={reset}
-            className="px-5 py-2.5 rounded-lg bg-white text-sm text-gray-500 hover:text-gray-800 border border-gray-200 transition-colors"
+            className="px-5 py-2.5 rounded-lg bg-white dark:bg-[#0d0d0d] text-sm text-gray-500 dark:text-white/50 hover:text-gray-800 dark:hover:text-white/90 border border-gray-200 dark:border-white/10 transition-colors"
           >
             Import More
           </button>
@@ -306,10 +306,10 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
       <div className="space-y-5">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-base font-semibold text-gray-900">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white">
               Preview — {pastePreview.rows.length} rows parsed
             </h3>
-            <p className="text-[13px] text-gray-400 mt-0.5">
+            <p className="text-[13px] text-gray-400 dark:text-white/40 mt-0.5">
               {filterCHA
                 ? `Showing ${rows.length} LINKS rows only.`
                 : `Showing all ${rows.length} rows (all CHAs).`}
@@ -323,17 +323,17 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
                 onChange={(e) => setFilterCHA(e.target.checked)}
                 className="accent-amber-500"
               />
-              <span className="text-[13px] text-gray-500">LINKS rows only</span>
+              <span className="text-[13px] text-gray-500 dark:text-white/50">LINKS rows only</span>
             </label>
-            <button onClick={reset} className="text-gray-400 hover:text-gray-700 transition-colors">
+            <button onClick={reset} className="text-gray-400 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/80 transition-colors">
               <X className="size-4" />
             </button>
           </div>
         </div>
 
         {rows.length === 0 ? (
-          <div className="rounded-xl border border-gray-200 bg-white px-6 py-10 text-center shadow-sm">
-            <p className="text-sm text-gray-400">No LINKS rows found in the pasted data.</p>
+          <div className="rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#0d0d0d] px-6 py-10 text-center shadow-sm">
+            <p className="text-sm text-gray-400 dark:text-white/40">No LINKS rows found in the pasted data.</p>
             <button
               onClick={() => setFilterCHA(false)}
               className="mt-3 text-[13px] text-amber-500 hover:text-amber-600 underline"
@@ -342,13 +342,13 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
             </button>
           </div>
         ) : (
-          <div className="overflow-auto rounded-xl border border-gray-200 max-h-80 shadow-sm">
+          <div className="overflow-auto rounded-xl border border-gray-200 dark:border-white/10 max-h-80 shadow-sm">
             <table className="text-[12px] min-w-full">
-              <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+              <thead className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10 sticky top-0">
                 <tr>
                   {pastePreview.headers.filter(h => h !== "agent").map((h, idx) => (
-                    <th key={`h-${idx}-${h}`} className="px-3 py-2 text-left font-medium text-gray-500 whitespace-nowrap">
-                      {h || <span className="text-gray-300 italic">col{idx}</span>}
+                    <th key={`h-${idx}-${h}`} className="px-3 py-2 text-left font-medium text-gray-500 dark:text-white/50 whitespace-nowrap">
+                      {h || <span className="text-gray-300 dark:text-white/30 italic">col{idx}</span>}
                     </th>
                   ))}
                 </tr>
@@ -356,11 +356,11 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
               <tbody>
                 {rows.slice(0, 50).map((row, i) => (
                   <tr key={i} className={cn(
-                    "border-b border-gray-100",
-                    i % 2 === 0 ? "bg-white" : "bg-gray-50"
+                    "border-b border-gray-100 dark:border-white/[0.06]",
+                    i % 2 === 0 ? "bg-white dark:bg-[#0d0d0d]" : "bg-gray-50 dark:bg-white/5"
                   )}>
                     {pastePreview.headers.filter(h => h !== "agent").map((h, idx) => (
-                      <td key={`c-${i}-${idx}`} className="px-3 py-1.5 text-gray-700 whitespace-nowrap max-w-[140px] truncate">
+                      <td key={`c-${i}-${idx}`} className="px-3 py-1.5 text-gray-700 dark:text-white/80 whitespace-nowrap max-w-[140px] truncate">
                         {row[h] ?? ""}
                       </td>
                     ))}
@@ -382,7 +382,7 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
           </button>
           <button
             onClick={reset}
-            className="px-4 py-2.5 rounded-lg bg-white text-sm text-gray-500 hover:text-gray-800 border border-gray-200 transition-colors"
+            className="px-4 py-2.5 rounded-lg bg-white dark:bg-[#0d0d0d] text-sm text-gray-500 dark:text-white/50 hover:text-gray-800 dark:hover:text-white/90 border border-gray-200 dark:border-white/10 transition-colors"
           >
             Cancel
           </button>
@@ -396,7 +396,7 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
     <div className="space-y-6">
       {/* Module selector */}
       <div>
-        <p className="text-[11px] uppercase tracking-widest text-gray-400 font-semibold mb-2">
+        <p className="text-[11px] uppercase tracking-widest text-gray-400 dark:text-white/40 font-semibold mb-2">
           Target Module
         </p>
         <div className="flex flex-wrap gap-2">
@@ -407,8 +407,8 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
               className={cn(
                 "flex items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] font-medium border transition-colors",
                 m.slug === moduleSlug
-                  ? "bg-amber-50 text-amber-700 border-amber-200"
-                  : "bg-white text-gray-500 border-gray-200 hover:text-gray-700 hover:border-gray-300"
+                  ? "bg-amber-50 dark:bg-amber-500/10 text-amber-700 border-amber-200"
+                  : "bg-white dark:bg-[#0d0d0d] text-gray-500 dark:text-white/50 border-gray-200 dark:border-white/10 hover:text-gray-700 dark:hover:text-white/80 hover:border-gray-300 dark:hover:border-white/20"
               )}
             >
               <span className="text-sm">{m.flag}</span>
@@ -419,7 +419,7 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
       </div>
 
       {/* Mode tabs */}
-      <div className="flex gap-1 border-b border-gray-200">
+      <div className="flex gap-1 border-b border-gray-200 dark:border-white/10">
         {[
           { id: "paste",  label: "Paste from Email",  icon: ClipboardPaste },
           { id: "excel",  label: "Upload Excel",       icon: FileSpreadsheet },
@@ -432,7 +432,7 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
               "flex items-center gap-2 px-4 py-2.5 text-[13px] font-medium border-b-2 transition-colors -mb-px",
               mode === id
                 ? "border-amber-500 text-amber-600"
-                : "border-transparent text-gray-400 hover:text-gray-700"
+                : "border-transparent text-gray-400 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/80"
             )}
           >
             <Icon className="size-4" />
@@ -444,7 +444,7 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
       {/* ── PASTE MODE ───────────────────────────────────────────── */}
       {mode === "paste" && (
         <div className="space-y-4 max-w-3xl">
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-500/10 px-4 py-3">
             <p className="text-[13px] font-semibold text-amber-700 mb-1">
               📧 How to import from the Bajaj dispatch email
             </p>
@@ -457,7 +457,7 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
           </div>
 
           <div>
-            <label className="block text-[12px] text-gray-500 mb-2 uppercase tracking-wider font-semibold">
+            <label className="block text-[12px] text-gray-500 dark:text-white/50 mb-2 uppercase tracking-wider font-semibold">
               Paste dispatch plan table here
             </label>
             <textarea
@@ -465,7 +465,7 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
               onChange={(e) => setPasteText(e.target.value)}
               placeholder={`CHA\tWO NO\tCOUNTRY\tPlant\tBrand\tVariant\tQTY\t40 HC\tSTD 20\tPlant Ready / Dispatch Date\tLSD\tAssy Config\tPort (WO/POD)\tQuotation No/Ref\tPO NO\tPLAN-ADD/RVSD\tIB Plan-ZORD\nLINKS\t5584880\tBangladesh\tWA01\tDISCOVER\t125 DI\t0\t2\t\t\t12-Jun\tPLP\tCHATTOGRAM\t5233061\t5233061\tRVSD\t18-Apr`}
               rows={10}
-              className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-[13px] text-gray-800 placeholder-gray-300 focus:border-amber-500 focus:outline-none font-mono resize-y transition-colors"
+              className="w-full rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] px-4 py-3 text-[13px] text-gray-800 dark:text-white/90 placeholder-gray-300 dark:placeholder-white/30 focus:border-amber-500 focus:outline-none font-mono resize-y transition-colors"
             />
           </div>
 
@@ -488,23 +488,23 @@ export function ImportDropzone({ defaultModule, userId: _userId }: ImportDropzon
             className={cn(
               "border-2 border-dashed rounded-2xl px-10 py-16 text-center cursor-pointer transition-colors",
               isDragActive
-                ? "border-amber-400 bg-amber-50"
-                : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                ? "border-amber-400 bg-amber-50 dark:bg-amber-500/10"
+                : "border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20 hover:bg-gray-50 dark:hover:bg-white/5"
             )}
           >
             <input {...getInputProps()} />
-            <FileSpreadsheet className={cn("size-10 mx-auto mb-4", isDragActive ? "text-amber-500" : "text-gray-300")} />
-            <p className="text-gray-700 font-medium mb-1">
+            <FileSpreadsheet className={cn("size-10 mx-auto mb-4", isDragActive ? "text-amber-500" : "text-gray-300 dark:text-white/30")} />
+            <p className="text-gray-700 dark:text-white/80 font-medium mb-1">
               {isDragActive ? "Drop it here…" : "Drag & drop your Excel file"}
             </p>
-            <p className="text-[12px] text-gray-400 mb-4">Accepts .xlsx files</p>
-            <span className="inline-block px-4 py-2 rounded-lg bg-white border border-gray-200 text-[13px] text-gray-500 hover:text-gray-700 transition-colors">
+            <p className="text-[12px] text-gray-400 dark:text-white/40 mb-4">Accepts .xlsx files</p>
+            <span className="inline-block px-4 py-2 rounded-lg bg-white dark:bg-[#0d0d0d] border border-gray-200 dark:border-white/10 text-[13px] text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80 transition-colors">
               Browse file
             </span>
           </div>
-          <div className="mt-4 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
-            <p className="text-[12px] text-gray-500">
-              <span className="text-gray-700 font-medium">Expected columns:</span>{" "}
+          <div className="mt-4 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#0d0d0d] px-4 py-3 shadow-sm">
+            <p className="text-[12px] text-gray-500 dark:text-white/50">
+              <span className="text-gray-700 dark:text-white/80 font-medium">Expected columns:</span>{" "}
               FFJOBNO / WO, COUNTRY, port, bookingno, SBNO, BLNO, containerno, vslname, SAILINGDT, REMARK
             </p>
           </div>

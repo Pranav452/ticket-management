@@ -54,15 +54,15 @@ export function GroupChatModal({ open, onOpenChange, onCreated }: Props) {
     <Dialog.Root open={open} onOpenChange={handleOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 bg-white border border-gray-200 rounded-xl shadow-xl">
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-[#111] border border-gray-200 dark:border-white/10 rounded-xl shadow-xl">
           {/* Header */}
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-white/[0.06]">
             <div className="flex items-center gap-2">
               <Users className="h-4 w-4 text-amber-500" />
-              <Dialog.Title className="font-semibold text-sm text-gray-900">New Group Chat</Dialog.Title>
+              <Dialog.Title className="font-semibold text-sm text-gray-900 dark:text-white">New Group Chat</Dialog.Title>
             </div>
             <Dialog.Close asChild>
-              <button type="button" className="text-gray-400 hover:text-gray-700 rounded-md p-1 hover:bg-gray-100 transition-colors">
+              <button type="button" className="text-gray-400 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/80 rounded-md p-1 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
                 <X className="h-4 w-4" />
               </button>
             </Dialog.Close>
@@ -71,22 +71,22 @@ export function GroupChatModal({ open, onOpenChange, onCreated }: Props) {
           {/* Body */}
           <div className="px-5 py-4 space-y-4">
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Group Name</label>
+              <label className="text-xs font-medium text-gray-500 dark:text-white/50 uppercase tracking-wide">Group Name</label>
               <input
                 type="text"
                 placeholder="e.g. Logistics Team"
                 value={groupName}
                 onChange={(e) => setGroupName(e.target.value)}
-                className="w-full h-9 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-300"
+                className="w-full h-9 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] px-3 text-sm text-gray-800 dark:text-white/90 placeholder-gray-400 dark:placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-300"
               />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Add Members</label>
-              <div className="max-h-52 overflow-y-auto rounded-lg border border-gray-200">
+              <label className="text-xs font-medium text-gray-500 dark:text-white/50 uppercase tracking-wide">Add Members</label>
+              <div className="max-h-52 overflow-y-auto rounded-lg border border-gray-200 dark:border-white/10">
                 {isLoading ? (
                   <div className="flex items-center justify-center py-6">
-                    <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                    <Loader2 className="h-5 w-5 animate-spin text-gray-400 dark:text-white/40" />
                   </div>
                 ) : (
                   users.map((user) => {
@@ -102,13 +102,13 @@ export function GroupChatModal({ open, onOpenChange, onCreated }: Props) {
                         onClick={() => toggleUser(user.id)}
                         className={cn(
                           "w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors",
-                          "border-b border-gray-100 last:border-0",
-                          checked ? "bg-amber-50" : "hover:bg-gray-50"
+                          "border-b border-gray-100 dark:border-white/[0.06] last:border-0",
+                          checked ? "bg-amber-50 dark:bg-amber-500/10" : "hover:bg-gray-50 dark:hover:bg-white/5"
                         )}
                       >
                         <div className={cn(
                           "h-4 w-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors",
-                          checked ? "bg-amber-500 border-amber-500" : "border-gray-300"
+                          checked ? "bg-amber-500 border-amber-500" : "border-gray-300 dark:border-white/20"
                         )}>
                           {checked && (
                             <svg viewBox="0 0 12 12" className="h-3 w-3 text-white">
@@ -118,13 +118,13 @@ export function GroupChatModal({ open, onOpenChange, onCreated }: Props) {
                         </div>
                         <div className={cn(
                           "h-7 w-7 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0",
-                          checked ? "bg-amber-500 text-white" : "bg-gray-100 text-gray-600"
+                          checked ? "bg-amber-500 text-white" : "bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-white/70"
                         )}>
                           {initials}
                         </div>
                         <div className="min-w-0">
-                          <p className="text-sm font-medium text-gray-800 truncate">{user.full_name || user.email}</p>
-                          {user.department && <p className="text-xs text-gray-400">{user.department}</p>}
+                          <p className="text-sm font-medium text-gray-800 dark:text-white/90 truncate">{user.full_name || user.email}</p>
+                          {user.department && <p className="text-xs text-gray-400 dark:text-white/40">{user.department}</p>}
                         </div>
                       </button>
                     )
@@ -135,19 +135,19 @@ export function GroupChatModal({ open, onOpenChange, onCreated }: Props) {
           </div>
 
           {/* Footer */}
-          <div className="flex flex-col gap-2 px-5 py-4 border-t border-gray-100">
+          <div className="flex flex-col gap-2 px-5 py-4 border-t border-gray-100 dark:border-white/[0.06]">
             {createRoom.error && (
-              <p className="text-xs text-red-500 bg-red-50 rounded px-2 py-1.5">{createRoom.error.message}</p>
+              <p className="text-xs text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-500/10 rounded px-2 py-1.5">{createRoom.error.message}</p>
             )}
             <div className="flex items-center justify-between">
-              <span className="text-xs text-gray-400">
+              <span className="text-xs text-gray-400 dark:text-white/40">
                 {selectedIds.size > 0
                   ? `${selectedIds.size} member${selectedIds.size > 1 ? "s" : ""} selected`
                   : "Select at least 1 member"}
               </span>
               <div className="flex gap-2">
                 <Dialog.Close asChild>
-                  <button type="button" className="h-8 px-3 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
+                  <button type="button" className="h-8 px-3 text-sm rounded-lg border border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                     Cancel
                   </button>
                 </Dialog.Close>

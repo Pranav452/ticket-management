@@ -42,17 +42,17 @@ export function ManualWorkOrderForm({ moduleSlug }: ManualWorkOrderFormProps) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="h-full flex flex-col rounded-2xl border border-gray-200 bg-white shadow-sm"
+      className="h-full flex flex-col rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#0d0d0d] shadow-sm"
     >
-      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+      <div className="px-5 py-4 border-b border-gray-100 dark:border-white/[0.06] flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-gray-900">Manual Work Order Entry</h2>
-          <p className="text-xs text-gray-400">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Manual Work Order Entry</h2>
+          <p className="text-xs text-gray-400 dark:text-white/40">
             New rows are added to the first lifecycle column for the selected board.
           </p>
         </div>
         {createdId && (
-          <div className="flex items-center gap-1 text-xs text-emerald-600">
+          <div className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
             <CheckCircle className="size-3.5" />
             <span>Saved: {createdId}</span>
           </div>
@@ -66,7 +66,7 @@ export function ManualWorkOrderForm({ moduleSlug }: ManualWorkOrderFormProps) {
             const value = values[field] ?? "";
             return (
               <div key={field} className="space-y-1">
-                <label className="block text-[11px] text-gray-400 uppercase tracking-wide">
+                <label className="block text-[11px] text-gray-400 dark:text-white/40 uppercase tracking-wide">
                   {field}
                 </label>
                 {isLongText ? (
@@ -74,14 +74,14 @@ export function ManualWorkOrderForm({ moduleSlug }: ManualWorkOrderFormProps) {
                     rows={2}
                     value={value}
                     onChange={(e) => handleChange(field, e.target.value)}
-                    className="w-full rounded-md bg-white border border-gray-200 px-3 py-2 text-xs text-gray-800 placeholder:text-gray-300 focus:outline-none focus:border-amber-500 resize-none transition-colors"
+                    className="w-full rounded-md bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 px-3 py-2 text-xs text-gray-800 dark:text-white/90 placeholder:text-gray-300 dark:placeholder:text-white/30 focus:outline-none focus:border-amber-500 resize-none transition-colors"
                   />
                 ) : (
                   <input
                     type="text"
                     value={value}
                     onChange={(e) => handleChange(field, e.target.value)}
-                    className="w-full rounded-md bg-white border border-gray-200 px-3 py-2 text-xs text-gray-800 placeholder:text-gray-300 focus:outline-none focus:border-amber-500 transition-colors"
+                    className="w-full rounded-md bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 px-3 py-2 text-xs text-gray-800 dark:text-white/90 placeholder:text-gray-300 dark:placeholder:text-white/30 focus:outline-none focus:border-amber-500 transition-colors"
                   />
                 )}
               </div>
@@ -90,9 +90,9 @@ export function ManualWorkOrderForm({ moduleSlug }: ManualWorkOrderFormProps) {
         </div>
       </div>
 
-      <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
-        <p className="text-[11px] text-gray-400">
-          Minimum recommended: <span className="text-gray-600">WO, Port, Country, Veh, Qty, CONTAINER NO, Vessel Name, S/LINE, HAZ</span>.
+      <div className="px-5 py-3 border-t border-gray-100 dark:border-white/[0.06] flex items-center justify-between">
+        <p className="text-[11px] text-gray-400 dark:text-white/40">
+          Minimum recommended: <span className="text-gray-600 dark:text-white/70">WO, Port, Country, Veh, Qty, CONTAINER NO, Vessel Name, S/LINE, HAZ</span>.
         </p>
         <button
           type="submit"

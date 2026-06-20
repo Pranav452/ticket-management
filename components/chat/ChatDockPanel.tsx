@@ -63,7 +63,7 @@ export function ChatDockPanel({ roomId, minimized }: Props) {
   return (
     <div
       className={cn(
-        "pointer-events-auto flex flex-col bg-white border border-gray-200 rounded-t-xl shadow-2xl",
+        "pointer-events-auto flex flex-col bg-white dark:bg-[#0d0d0d] border border-gray-200 dark:border-white/10 rounded-t-xl shadow-2xl",
         "w-[320px] transition-[height] duration-200 ease-in-out overflow-hidden",
         minimized ? "h-10" : "h-[450px] max-h-[calc(100vh-80px)]"
       )}
@@ -76,7 +76,7 @@ export function ChatDockPanel({ roomId, minimized }: Props) {
         onKeyDown={(e) => e.key === "Enter" && toggleMinimize(roomId)}
         className={cn(
           "flex items-center gap-2 px-3 h-10 flex-shrink-0 w-full cursor-pointer select-none",
-          "hover:bg-gray-50 transition-colors rounded-t-xl",
+          "hover:bg-gray-50 dark:hover:bg-white/5 transition-colors rounded-t-xl",
           minimized && "rounded-b-xl"
         )}
       >
@@ -87,7 +87,7 @@ export function ChatDockPanel({ roomId, minimized }: Props) {
           {isGroup ? <Users className="h-3 w-3" /> : initials}
         </div>
 
-        <span className="text-xs font-semibold truncate flex-1 text-gray-900">{displayName}</span>
+        <span className="text-xs font-semibold truncate flex-1 text-gray-900 dark:text-white">{displayName}</span>
 
         {unread > 0 && minimized && (
           <span className="h-5 min-w-5 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center px-1 flex-shrink-0">
@@ -100,7 +100,7 @@ export function ChatDockPanel({ roomId, minimized }: Props) {
             type="button"
             title="Open full page"
             onClick={() => router.push(`/bajaj/chat?room=${roomId}`)}
-            className="h-6 w-6 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
+            className="h-6 w-6 flex items-center justify-center rounded hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/80 transition-colors"
           >
             <Maximize2 className="h-3 w-3" />
           </button>
@@ -108,7 +108,7 @@ export function ChatDockPanel({ roomId, minimized }: Props) {
             type="button"
             title={minimized ? "Expand" : "Minimize"}
             onClick={() => toggleMinimize(roomId)}
-            className="h-6 w-6 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
+            className="h-6 w-6 flex items-center justify-center rounded hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/80 transition-colors"
           >
             <Minus className="h-3 w-3" />
           </button>
@@ -116,7 +116,7 @@ export function ChatDockPanel({ roomId, minimized }: Props) {
             type="button"
             title="Close"
             onClick={() => closeChat(roomId)}
-            className="h-6 w-6 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
+            className="h-6 w-6 flex items-center justify-center rounded hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/80 transition-colors"
           >
             <X className="h-3 w-3" />
           </button>
@@ -128,9 +128,9 @@ export function ChatDockPanel({ roomId, minimized }: Props) {
         <>
           <div className="flex-1 overflow-y-auto px-3 py-2 flex flex-col gap-2 min-h-0">
             {isLoading ? (
-              <div className="flex-1 flex items-center justify-center text-xs text-gray-400 py-8">Loading…</div>
+              <div className="flex-1 flex items-center justify-center text-xs text-gray-400 dark:text-white/40 py-8">Loading…</div>
             ) : allMessages.length === 0 ? (
-              <div className="flex-1 flex items-center justify-center text-xs text-gray-400 py-8">No messages yet. Say hello! 👋</div>
+              <div className="flex-1 flex items-center justify-center text-xs text-gray-400 dark:text-white/40 py-8">No messages yet. Say hello! 👋</div>
             ) : (
               allMessages.map((msg, idx) => {
                 const prev       = allMessages[idx - 1]
@@ -143,7 +143,7 @@ export function ChatDockPanel({ roomId, minimized }: Props) {
             <div ref={bottomRef} />
           </div>
 
-          <div className="flex-shrink-0 border-t border-gray-100 px-3 py-2 bg-white">
+          <div className="flex-shrink-0 border-t border-gray-100 dark:border-white/[0.06] px-3 py-2 bg-white dark:bg-[#0d0d0d]">
             <MessageInput roomId={roomId} members={members} currentUserId={currentUserId ?? ""} />
           </div>
         </>

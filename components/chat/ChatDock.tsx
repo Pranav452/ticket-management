@@ -48,14 +48,14 @@ function OverflowChip({ roomIds }: { roomIds: string[] }) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-t-xl border border-gray-200 shadow-lg bg-white text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors border-b-0"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-t-xl border border-gray-200 dark:border-white/10 shadow-lg bg-white dark:bg-[#0d0d0d] text-xs font-semibold text-gray-700 dark:text-white/80 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors border-b-0"
       >
         <MessageSquare className="h-3.5 w-3.5 text-amber-500" />
         +{roomIds.length} more
       </button>
 
       {open && (
-        <div className="absolute bottom-full mb-1 left-0 w-48 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden z-50">
+        <div className="absolute bottom-full mb-1 left-0 w-48 bg-white dark:bg-[#111] border border-gray-200 dark:border-white/10 rounded-xl shadow-xl overflow-hidden z-50">
           {roomIds.map((rid) => {
             const room = rooms.find((r) => r.id === rid)
             if (!room) return null
@@ -69,7 +69,7 @@ function OverflowChip({ roomIds }: { roomIds: string[] }) {
                 key={rid}
                 type="button"
                 onClick={() => { openChat(rid); setOpen(false) }}
-                className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors truncate"
+                className="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-white/80 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors truncate"
               >
                 {label}
               </button>

@@ -269,8 +269,8 @@ export function BajajExportClient() {
         {/* Filters */}
         <div className={cn(card, "p-4 space-y-4")}>
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2"><Filter className="size-4 text-gray-400" /><span className="text-[13px] font-medium text-gray-700 dark:text-white/80">Filters</span></div>
-            {hasFilters && <button onClick={clearFilters} className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-amber-600 transition-colors"><X className="size-3" /> Clear all</button>}
+            <div className="flex items-center gap-2"><Filter className="size-4 text-gray-400 dark:text-white/40" /><span className="text-[13px] font-medium text-gray-700 dark:text-white/80">Filters</span></div>
+            {hasFilters && <button onClick={clearFilters} className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-white/40 hover:text-amber-600 transition-colors"><X className="size-3" /> Clear all</button>}
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             <div className="flex flex-col gap-1">
@@ -295,7 +295,7 @@ export function BajajExportClient() {
               {loading ? <><RefreshCw className="size-3.5 animate-spin" /> Loading…</> : <><Filter className="size-3.5" /> Apply &amp; Fetch</>}
             </button>
           </div>
-          {error && <div className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-500/10 px-3 py-2 text-[12px] text-red-600">{error}</div>}
+          {error && <div className="rounded-lg border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 px-3 py-2 text-[12px] text-red-600 dark:text-red-400">{error}</div>}
         </div>
 
         {/* Columns */}
@@ -305,10 +305,10 @@ export function BajajExportClient() {
               <span className="text-[13px] font-medium text-gray-700 dark:text-white/80">Columns to export</span>
               <div className="flex gap-2 text-[11px]">
                 <button onClick={() => setVisibleCols(new Set(COLUMNS.map((c) => c.key)))} className="text-amber-600 hover:underline">All</button>
-                <span className="text-gray-300">/</span>
+                <span className="text-gray-300 dark:text-white/30">/</span>
                 <button onClick={() => setVisibleCols(new Set(COLUMNS.filter((c) => c.defaultOn).map((c) => c.key)))} className="text-amber-600 hover:underline">Default</button>
-                <span className="text-gray-300">/</span>
-                <button onClick={() => setVisibleCols(new Set())} className="text-gray-400 hover:underline">None</button>
+                <span className="text-gray-300 dark:text-white/30">/</span>
+                <button onClick={() => setVisibleCols(new Set())} className="text-gray-400 dark:text-white/40 hover:underline">None</button>
               </div>
             </div>
             <div className="flex flex-wrap gap-1.5">
@@ -316,7 +316,7 @@ export function BajajExportClient() {
                 const on = visibleCols.has(col.key);
                 return (
                   <button key={col.key} onClick={() => toggleCol(col.key)} className={cn("h-7 px-2.5 rounded-full text-[11px] border transition-colors",
-                    on ? "bg-amber-500 text-white border-amber-500" : "bg-white dark:bg-[#1a1a1a] text-gray-500 dark:text-white/50 border-gray-200 dark:border-white/10 hover:border-amber-300 hover:text-gray-700")}>
+                    on ? "bg-amber-500 text-white border-amber-500" : "bg-white dark:bg-[#1a1a1a] text-gray-500 dark:text-white/50 border-gray-200 dark:border-white/10 hover:border-amber-300 hover:text-gray-700 dark:hover:text-white/80")}>
                     {col.label}
                   </button>
                 );
@@ -342,7 +342,7 @@ export function BajajExportClient() {
         {fetched && showPreview && (
           <div className={cn(card, "overflow-hidden")}>
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 dark:border-white/10">
-              <span className="text-[13px] font-medium text-gray-700 dark:text-white/80">Preview <span className="ml-1.5 text-[11px] text-gray-400 font-normal">showing {Math.min(filteredRows.length, 200)} of {filteredRows.length}</span></span>
+              <span className="text-[13px] font-medium text-gray-700 dark:text-white/80">Preview <span className="ml-1.5 text-[11px] text-gray-400 dark:text-white/40 font-normal">showing {Math.min(filteredRows.length, 200)} of {filteredRows.length}</span></span>
             </div>
             <div className="overflow-x-auto max-h-[560px] overflow-y-auto">
               <table className="w-full text-[12px]">
@@ -354,7 +354,7 @@ export function BajajExportClient() {
                 </thead>
                 <tbody>
                   {filteredRows.length === 0 ? (
-                    <tr><td colSpan={activeColumns.length + 1} className="px-4 py-8 text-center text-gray-400">No records match the current filters.</td></tr>
+                    <tr><td colSpan={activeColumns.length + 1} className="px-4 py-8 text-center text-gray-400 dark:text-white/40">No records match the current filters.</td></tr>
                   ) : filteredRows.slice(0, 200).map((r) => {
                     const sel = selectedIds.has(r.id);
                     return (
@@ -362,7 +362,7 @@ export function BajajExportClient() {
                         <td className="px-3 py-2"><input type="checkbox" checked={sel} onChange={() => toggleRow(r.id)} className="size-3.5 accent-amber-500" /></td>
                         {activeColumns.map((c) => (
                           <td key={c.key} className={cn("px-3 py-2 text-gray-700 dark:text-white/70", c.key === "wo" && "font-mono font-medium", c.key === "remark" ? "max-w-[200px] whitespace-normal break-words" : "whitespace-nowrap")}>
-                            {cellValue(c.key, r) || <span className="text-gray-300">—</span>}
+                            {cellValue(c.key, r) || <span className="text-gray-300 dark:text-white/30">—</span>}
                           </td>
                         ))}
                       </tr>
@@ -371,14 +371,14 @@ export function BajajExportClient() {
                 </tbody>
               </table>
             </div>
-            {filteredRows.length > 200 && <div className="px-4 py-2 border-t border-gray-100 dark:border-white/10 text-[11px] text-gray-400">Preview limited to 200 rows — all {exportRows.length} selected rows are included in the export.</div>}
+            {filteredRows.length > 200 && <div className="px-4 py-2 border-t border-gray-100 dark:border-white/10 text-[11px] text-gray-400 dark:text-white/40">Preview limited to 200 rows — all {exportRows.length} selected rows are included in the export.</div>}
           </div>
         )}
 
         {/* Empty state */}
         {!fetched && !loading && (
           <div className="rounded-xl border border-dashed border-gray-300 dark:border-white/15 p-12 flex flex-col items-center justify-center gap-3 text-center">
-            <Download className="size-8 text-gray-300" />
+            <Download className="size-8 text-gray-300 dark:text-white/30" />
             <p className="text-[13px] text-gray-500 dark:text-white/50">Pick a board and filters, then click <strong>Apply &amp; Fetch</strong> to load work orders.</p>
           </div>
         )}

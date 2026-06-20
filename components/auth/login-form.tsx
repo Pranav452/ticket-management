@@ -151,17 +151,17 @@ export function LoginForm() {
                 <rect x="10" y="10" width="6" height="6" rx="1" fill="white" />
               </svg>
             </div>
-            <p className="text-[15px] font-semibold text-gray-900">Bajaj Logistics</p>
+            <p className="text-[15px] font-semibold text-gray-900 dark:text-white">Bajaj Logistics</p>
           </div>
 
           <div className="mb-8">
-            <h1 className="text-[22px] font-semibold text-gray-900 tracking-tight mb-1">Sign in</h1>
-            <p className="text-[13px] text-gray-500">Enter your credentials to access the workspace</p>
+            <h1 className="text-[22px] font-semibold text-gray-900 dark:text-white tracking-tight mb-1">Sign in</h1>
+            <p className="text-[13px] text-gray-500 dark:text-white/50">Enter your credentials to access the workspace</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="email" className="block text-[13px] font-medium text-gray-700 mb-1.5">
+              <label htmlFor="email" className="block text-[13px] font-medium text-gray-700 dark:text-white/80 mb-1.5">
                 Email
               </label>
               <input
@@ -173,12 +173,12 @@ export function LoginForm() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@links.com"
-                className="w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-[14px] text-gray-900 placeholder-gray-400 focus:border-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/10 transition-all"
+                className="w-full rounded-lg border border-gray-300 dark:border-white/20 bg-white dark:bg-[#1a1a1a] px-3.5 py-2.5 text-[14px] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 focus:border-gray-900 dark:focus:border-white/40 focus:outline-none focus:ring-2 focus:ring-gray-900/10 dark:focus:ring-white/10 transition-all"
               />
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-[13px] font-medium text-gray-700 mb-1.5">
+              <label htmlFor="password" className="block text-[13px] font-medium text-gray-700 dark:text-white/80 mb-1.5">
                 Password
               </label>
               <div className="relative">
@@ -190,13 +190,13 @@ export function LoginForm() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 pr-11 text-[14px] text-gray-900 placeholder-gray-400 focus:border-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/10 transition-all"
+                  className="w-full rounded-lg border border-gray-300 dark:border-white/20 bg-white dark:bg-[#1a1a1a] px-3.5 py-2.5 pr-11 text-[14px] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 focus:border-gray-900 dark:focus:border-white/40 focus:outline-none focus:ring-2 focus:ring-gray-900/10 dark:focus:ring-white/10 transition-all"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPwd(!showPwd)}
                   tabIndex={-1}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-white/40 hover:text-gray-600 dark:hover:text-white/70 transition-colors"
                 >
                   {showPwd ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>
@@ -204,7 +204,7 @@ export function LoginForm() {
             </div>
 
             {error && (
-              <div className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-[13px] text-red-700">
+              <div className="rounded-lg border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 px-3.5 py-2.5 text-[13px] text-red-700 dark:text-red-400">
                 {error}
               </div>
             )}
@@ -223,12 +223,12 @@ export function LoginForm() {
             </button>
           </form>
 
-          <div className="mt-8 pt-6 border-t border-gray-200">
-            <p className="text-[13px] text-gray-500 text-center">
+          <div className="mt-8 pt-6 border-t border-gray-200 dark:border-white/10">
+            <p className="text-[13px] text-gray-500 dark:text-white/50 text-center">
               Need access?{" "}
               <Link
                 href="/signup"
-                className="font-medium text-gray-900 underline underline-offset-2 hover:text-gray-700 transition-colors"
+                className="font-medium text-gray-900 dark:text-white underline underline-offset-2 hover:text-gray-700 dark:hover:text-white/80 transition-colors"
               >
                 Request an account
               </Link>

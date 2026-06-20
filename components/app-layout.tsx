@@ -298,7 +298,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="flex h-dvh overflow-hidden" style={{ background: "var(--main-bg)" }}>
         {/* Collapsed sidebar */}
         <aside className="flex flex-col flex-shrink-0 w-12 items-center py-3 gap-3" style={{ background: SB_BG, borderRight: `1px solid ${SB_BORDER}` }}>
-          <button onClick={() => setCollapsed(false)} className="size-7 flex items-center justify-center rounded-md transition-colors hover:bg-black/5">
+          <button onClick={() => setCollapsed(false)} className="size-7 flex items-center justify-center rounded-md transition-colors hover:bg-black/5 dark:hover:bg-white/5">
             <PanelLeft className="size-4" style={{ color: SB_MUTED }} />
           </button>
           <div className="flex size-7 items-center justify-center rounded-md bg-amber-500 flex-shrink-0">
@@ -307,7 +307,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <Divider />
           {MODULES.map((m) => (
             <Link key={m.slug} href={`/bajaj/boards/${m.slug}`} title={m.name}
-              className="size-7 flex items-center justify-center rounded-md transition-colors hover:bg-black/5 text-sm"
+              className="size-7 flex items-center justify-center rounded-md transition-colors hover:bg-black/5 dark:hover:bg-white/5 text-sm"
               style={{ background: activeModule === m.slug ? SB_ACTIVE : "transparent" }}>
               {m.flag}
             </Link>
@@ -339,7 +339,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
           <button
             onClick={() => setCollapsed(true)}
-            className="size-6 flex items-center justify-center rounded-md transition-colors hover:bg-black/5 flex-shrink-0"
+            className="size-6 flex items-center justify-center rounded-md transition-colors hover:bg-black/5 dark:hover:bg-white/5 flex-shrink-0"
           >
             <PanelLeft className="size-4" style={{ color: SB_MUTED }} />
           </button>
