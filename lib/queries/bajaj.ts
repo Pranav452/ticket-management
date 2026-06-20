@@ -158,20 +158,32 @@ export function useWorkOrder(id: string | null) {
 export function useUpdateWorkOrder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, updates, force }: {
+    mutationFn: async ({ id, updates, force, baseUpdatedAt }: {
       id:      string;
       updates: Partial<BajajWorkOrder> & { status_id?: string | null; column_order?: number; assigned_to?: string | null };
       force?:  boolean;
+      baseUpdatedAt?: string;
     }) => {
+      const payload: Record<string, unknown> = { ...updates };
+      if (force) payload.force = true;
+      if (baseUpdatedAt) payload.baseUpdatedAt = baseUpdatedAt;
+
       const res = await fetch(`/api/bajaj/work-orders/${id}`, {
         method:  "PATCH",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(force ? { ...updates, force: true } : updates),
+        body:    JSON.stringify(payload),
       });
 
-      // 409 = container/vessel soft block
+      // 409 = container/vessel soft block OR an optimistic-lock conflict
       if (res.status === 409) {
         const json = await res.json();
+        // Optimistic-lock conflict: someone else changed the row. Refresh and stop.
+        if (json.conflict) {
+          qc.invalidateQueries({ queryKey: ["bajaj", "work-orders"] });
+          qc.invalidateQueries({ queryKey: ["bajaj", "work-order"] });
+          window.alert("⚠️ This work order was just changed by someone else. Your view has been refreshed — please re-apply your edit.");
+          throw new Error("Work order changed elsewhere");
+        }
         const msgs: string[] = (json.warnings ?? []).map((w: { message: string }) => w.message);
         const confirmed = window.confirm(
           `⚠️ Business rule warning:\n\n${msgs.join("\n\n")}\n\nOverride and save anyway?`

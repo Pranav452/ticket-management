@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { ArrowUp, ArrowDown, ArrowUpDown, ExternalLink } from "lucide-react";
+import { ArrowUp, ArrowDown, ArrowUpDown, ExternalLink, Check, X } from "lucide-react";
 import type { BajajWorkOrder, BajajStatus } from "@/lib/types/bajaj";
 import { cn } from "@/lib/utils";
 
@@ -209,9 +209,39 @@ export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate
   const [focusCell,setFocusCell]= useState<[number, number] | null>(null);
   const [hovRow,   setHovRow]   = useState<number | null>(null);
   const [widths,   setWidths]   = useState<number[]>(() => COLUMNS.map((c) => c.defaultWidth));
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkCol,  setBulkCol]  = useState<string>("");
+  const [bulkVal,  setBulkVal]  = useState<string>("");
 
   const statusMap = Object.fromEntries(statuses.map((s) => [s.id, s]));
   const sorted    = sortRows(workOrders, sortKey, sortDir);
+
+  // Columns that can be bulk-applied (exclude read-only WO/status).
+  const bulkColumns = COLUMNS.filter((c) => !c.readOnly);
+  const bulkColDef  = bulkColumns.find((c) => c.key === bulkCol);
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+  function toggleSelectAll() {
+    setSelected((prev) => (prev.size === sorted.length ? new Set() : new Set(sorted.map((w) => w.id))));
+  }
+  function clearSelection() { setSelected(new Set()); }
+
+  function applyBulk() {
+    if (!bulkCol || selected.size === 0) return;
+    let val: unknown = bulkVal;
+    if (bulkColDef?.type === "boolean") val = bulkVal === "true";
+    else if (bulkColDef?.type === "number") val = bulkVal === "" ? "" : Number(bulkVal);
+    // Fire one update per selected row; each carries its own optimistic-lock base.
+    for (const id of selected) onUpdate(id, { [bulkCol]: val });
+    clearSelection();
+    setBulkVal("");
+  }
 
   function handleSort(key: string) {
     if (sortKey === key) setSortDir((d) => d === "asc" ? "desc" : d === "desc" ? null : "asc");
@@ -258,7 +288,51 @@ export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate
   const headerBorder = "border-gray-200 dark:border-white/[0.06]";
 
   return (
-    <div className="flex-1 overflow-auto" style={{ fontFamily: "inherit" }}>
+    <div className="flex flex-1 flex-col overflow-hidden">
+      {/* Bulk edit bar — appears when one or more rows are selected */}
+      {selected.size > 0 && (
+        <div className="flex items-center gap-2 flex-wrap px-3 py-2 border-b border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 flex-shrink-0">
+          <span className="text-[12px] font-semibold text-amber-700 dark:text-amber-300">{selected.size} selected</span>
+          <span className="text-[12px] text-gray-500 dark:text-white/50">Set</span>
+          <select
+            value={bulkCol}
+            onChange={(e) => { setBulkCol(e.target.value); setBulkVal(""); }}
+            className="h-7 rounded-md border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] px-2 text-[12px] text-gray-800 dark:text-white/90 focus:border-amber-500 focus:outline-none"
+          >
+            <option value="">column…</option>
+            {bulkColumns.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+          </select>
+          <span className="text-[12px] text-gray-500 dark:text-white/50">to</span>
+          {bulkColDef?.type === "boolean" ? (
+            <select value={bulkVal} onChange={(e) => setBulkVal(e.target.value)}
+              className="h-7 rounded-md border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] px-2 text-[12px] text-gray-800 dark:text-white/90 focus:border-amber-500 focus:outline-none">
+              <option value="">value…</option>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          ) : (
+            <input
+              type={bulkColDef?.type === "number" ? "number" : bulkColDef?.type === "date" ? "date" : "text"}
+              value={bulkVal}
+              onChange={(e) => setBulkVal(e.target.value)}
+              placeholder="value…"
+              disabled={!bulkCol}
+              className="h-7 w-44 rounded-md border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] px-2 text-[12px] text-gray-800 dark:text-white/90 placeholder:text-gray-300 focus:border-amber-500 focus:outline-none disabled:opacity-50"
+            />
+          )}
+          <button
+            onClick={applyBulk}
+            disabled={!bulkCol || (bulkColDef?.type !== "boolean" && bulkVal === "")}
+            className="h-7 px-3 rounded-md bg-amber-500 text-white text-[12px] font-semibold hover:bg-amber-600 disabled:opacity-50 transition-colors"
+          >
+            Apply to {selected.size}
+          </button>
+          <button onClick={clearSelection} className="h-7 px-2 inline-flex items-center gap-1 rounded-md text-[12px] text-gray-500 dark:text-white/50 hover:bg-white/60 dark:hover:bg-white/10 transition-colors">
+            <X className="size-3.5" /> Clear
+          </button>
+        </div>
+      )}
+      <div className="flex-1 overflow-auto" style={{ fontFamily: "inherit" }}>
       <table
         style={{
           borderCollapse: "collapse",
@@ -276,7 +350,21 @@ export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate
             <th
               className={cn("sticky left-0 top-0 z-40", headerBg, "border-r border-gray-200 dark:border-white/[0.06]")}
               style={{ width: ROW_NUM_WIDTH }}
-            />
+            >
+              <button
+                type="button"
+                onClick={toggleSelectAll}
+                title={selected.size === sorted.length ? "Clear selection" : "Select all"}
+                className={cn(
+                  "mx-auto flex items-center justify-center size-4 rounded border transition-colors",
+                  selected.size > 0 && selected.size === sorted.length
+                    ? "bg-amber-500 border-amber-500 text-white"
+                    : "border-gray-300 dark:border-white/30 text-transparent hover:border-amber-400",
+                )}
+              >
+                <Check className="size-3" />
+              </button>
+            </th>
 
             {COLUMNS.map((col, colIdx) => {
               const isSorted = sortKey === col.key;
@@ -325,21 +413,18 @@ export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate
             const isHov  = hovRow === rowIdx;
             const isEven = rowIdx % 2 === 0;
             const isParts = String(d.veh ?? "").toUpperCase().includes("PART");
+            const isSelected = selected.has(wo.id);
 
-            const rowClass = cn(
-              "h-8 border-b border-gray-100 dark:border-white/[0.04] transition-colors",
-              isHov
+            const bgClass = isSelected
+              ? "bg-amber-100 dark:bg-amber-500/20"
+              : isHov
                 ? "bg-amber-50 dark:bg-amber-900/20"
                 : isParts
                   ? isEven ? "bg-blue-50 dark:bg-blue-950/30" : "bg-blue-100/60 dark:bg-blue-900/20"
-                  : isEven ? "bg-emerald-50/70 dark:bg-emerald-950/20" : "bg-emerald-100/50 dark:bg-emerald-900/10",
-            );
+                  : isEven ? "bg-emerald-50/70 dark:bg-emerald-950/20" : "bg-emerald-100/50 dark:bg-emerald-900/10";
 
-            const stickyBgClass = isHov
-              ? "bg-amber-50 dark:bg-amber-900/20"
-              : isParts
-                ? isEven ? "bg-blue-50 dark:bg-blue-950/30" : "bg-blue-100/60 dark:bg-blue-900/20"
-                : isEven ? "bg-emerald-50/70 dark:bg-emerald-950/20" : "bg-emerald-100/50 dark:bg-emerald-900/10";
+            const rowClass = cn("h-8 border-b border-gray-100 dark:border-white/[0.04] transition-colors", bgClass);
+            const stickyBgClass = bgClass;
 
             return (
               <tr
@@ -349,13 +434,16 @@ export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate
                 onMouseLeave={() => setHovRow(null)}
               >
                 <td
+                  onClick={() => toggleSelect(wo.id)}
+                  title="Select row for bulk edit"
                   className={cn(
-                    "sticky left-0 z-10 border-r border-gray-100 dark:border-white/[0.04] text-center text-gray-300 dark:text-white/20 select-none transition-colors",
+                    "sticky left-0 z-10 border-r border-gray-100 dark:border-white/[0.04] text-center select-none transition-colors cursor-pointer",
                     stickyBgClass,
+                    isSelected ? "text-amber-600 dark:text-amber-300" : "text-gray-300 dark:text-white/20",
                   )}
                   style={{ fontSize: 10, userSelect: "none", fontVariantNumeric: "tabular-nums" }}
                 >
-                  {rowIdx + 1}
+                  {isSelected ? <Check className="size-3.5 mx-auto" /> : rowIdx + 1}
                 </td>
 
                 {COLUMNS.map((col, colIdx) => {
@@ -419,6 +507,7 @@ export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate
           })}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

@@ -383,7 +383,10 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
             workOrders={filteredOrders}
             statuses={statuses}
             isLoading={statusLoading || woLoading}
-            onUpdate={(id, data) => updateWorkOrder.mutate({ id, updates: { data } })}
+            onUpdate={(id, data) => {
+              const wo = filteredOrders.find((w) => w.id === id);
+              updateWorkOrder.mutate({ id, updates: { data }, baseUpdatedAt: wo?.updated_at });
+            }}
           />
         </div>
       )}

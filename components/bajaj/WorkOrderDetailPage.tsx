@@ -435,7 +435,7 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
     setSavingField(key);
     const merged = { ...(workOrder?.data as Record<string, unknown> ?? {}), [key]: val };
     updateWorkOrder.mutate(
-      { id: workOrderId, updates: { data: { [key]: val } } },
+      { id: workOrderId, updates: { data: { [key]: val } }, baseUpdatedAt: workOrder?.updated_at },
       {
         onSettled: () => setSavingField(null),
         onSuccess: () => {

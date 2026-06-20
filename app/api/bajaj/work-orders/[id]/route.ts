@@ -84,10 +84,11 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await req.json() as {
-      status_id?:    string | null;
-      column_order?: number;
-      data?:         Record<string, unknown>;
-      force?:        boolean;
+      status_id?:     string | null;
+      column_order?:  number;
+      data?:          Record<string, unknown>;
+      force?:         boolean;
+      baseUpdatedAt?: string;
     };
 
     const actorEmail = await getCurrentUserEmail();
@@ -97,7 +98,7 @@ export async function PATCH(
     // ── Fetch current WO (needed for multiple checks below) ─────────────────
     const { data: currentWO } = await sb
       .from("bajaj_work_orders")
-      .select("module_id, module_slug, status_id, data")
+      .select("module_id, module_slug, status_id, data, updated_at")
       .eq("id", id)
       .single();
 
@@ -105,6 +106,19 @@ export async function PATCH(
     const moduleId    = currentWO?.module_id   ?? "";
     const curStatusId = currentWO?.status_id   ?? null;
     const prevData    = (currentWO?.data ?? {}) as Record<string, unknown>;
+
+    // ── Optimistic concurrency check (opt-in) ───────────────────────────────
+    // If the client tells us which version it edited (baseUpdatedAt) and the row
+    // has since changed, reject the data edit instead of clobbering another
+    // user. `force` overrides (the user has chosen to apply anyway).
+    if (body.baseUpdatedAt && "data" in body && !force &&
+        currentWO?.updated_at && currentWO.updated_at !== body.baseUpdatedAt) {
+      return NextResponse.json({
+        conflict: true,
+        error:    "This work order was changed by someone else.",
+        current:  { data: prevData, status_id: curStatusId, updated_at: currentWO.updated_at },
+      }, { status: 409 });
+    }
 
     // Merged WO data for checks (prev + incoming)
     const mergedData: Record<string, unknown> = {
@@ -205,6 +219,9 @@ export async function PATCH(
 
     if (Object.keys(updates).length === 0)
       return NextResponse.json({ success: true });
+
+    // Bump updated_at so the optimistic-lock version advances on every write.
+    updates.updated_at = new Date().toISOString();
 
     const { error } = await sb
       .from("bajaj_work_orders")
