@@ -166,7 +166,8 @@ export function BajajBookingsClient() {
     const idx = bookings.indexOf(b);
     if (idx < 0) return;
     const next = bookings.map((row, i) => (i === idx ? { ...row, remark } : row));
-    setBookings(next); // optimistic
+    // persist() sets state from the server on success and reloads on conflict;
+    // on a plain failure the UI keeps the last saved value (no stale optimistic row).
     await persist(next);
   }
 

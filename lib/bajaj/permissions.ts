@@ -46,15 +46,6 @@ export async function isAdminEmail(email: string | null): Promise<boolean> {
   return !!data && data.status === "approved" && ADMIN_ROLES.includes(data.role as typeof ADMIN_ROLES[number]);
 }
 
-/**
- * Synchronous best-effort check using ONLY the fallback email.
- * Only used in legacy call sites that can't be made async yet.
- * Prefer isAdminEmail() for all new code.
- */
-export function isAdmin(email: string | null): boolean {
-  return email === FALLBACK_ADMIN_EMAIL;
-}
-
 export async function checkColumnAccess(
   action: ColumnAction,
   moduleSlug: string,

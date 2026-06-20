@@ -44,7 +44,13 @@ export async function PATCH(
       return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
 
     const sb = createAdminClient();
-    if (!(await canModifyReminder(sb, id, auth.email, auth.isAdmin)))
+
+    // The reminder bell (shown to everyone) flips status/sent_at/done_at as it
+    // sends or dismisses due reminders — any approved user may do that. Only
+    // destructive edits (message / due_at / recipients) require owner-or-admin.
+    const STATUS_KEYS = new Set(["status", "sent_at", "done_at"]);
+    const isStatusOnly = Object.keys(update).every((k) => STATUS_KEYS.has(k));
+    if (!isStatusOnly && !(await canModifyReminder(sb, id, auth.email, auth.isAdmin)))
       return NextResponse.json({ error: "Not allowed to modify this reminder" }, { status: 403 });
 
     const { error } = await sb.from("bajaj_reminders").update(update).eq("id", id);

@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkColumnAccess, getCurrentUserEmail, isAdminEmail } from "@/lib/bajaj/permissions";
+import { requireApprovedUser } from "@/lib/bajaj/guards";
 import { validateWorkOrderRules } from "@/lib/bajaj/validation";
 import {
   getStatusName,
@@ -36,6 +37,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireApprovedUser();
+    if (auth instanceof NextResponse) return auth;
+
     const { id } = await params;
     const sb = createAdminClient();
 

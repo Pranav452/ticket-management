@@ -8,11 +8,9 @@
  *
  * Fires email alert to column assignees of BL Release + all superadmins.
  *
- * Call this from a cron service (Vercel Cron, GitHub Actions, external scheduler)
- * every hour. Protected by CRON_SECRET env var.
- *
- * Vercel cron config (vercel.json):
- *   { "crons": [{ "path": "/api/bajaj/cron/bl-alert", "schedule": "0 * * * *" }] }
+ * Called by Vercel Cron daily at 02:00 UTC (see vercel.json). Protected by
+ * CRON_SECRET (verifyCronSecret accepts the Authorization: Bearer header Vercel
+ * sends automatically).
  */
 
 import { NextRequest, NextResponse } from "next/server";
