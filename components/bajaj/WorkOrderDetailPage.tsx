@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Loader2, Check,
@@ -429,6 +429,7 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
   const [autoAdvanced,     setAutoAdvanced]     = useState(false);
   const [showReminder,     setShowReminder]     = useState(false);
   const [showNotify,       setShowNotify]       = useState(false);
+  const [allBookings,      setAllBookings]      = useState<Record<string, string>[]>([]);
 
   const handleFieldSave = useCallback((key: string, val: string | boolean) => {
     setSavingField(key);
@@ -466,6 +467,31 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
     await addComment.mutateAsync({ workOrderId, authorEmail: bajajUser.email, authorName: bajajUser.full_name ?? undefined, content: commentText.trim() });
     setCommentText("");
   }
+
+  // Booking desk rows (Sheet8), fetched once; matched to this WO below.
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/bajaj/reference?type=bookings")
+      .then((r) => (r.ok ? r.json() : { rows: [] }))
+      .then((data) => { if (alive) setAllBookings(Array.isArray(data.rows) ? data.rows : []); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  // Bookings linked to this work order — matched on the booking's WO Ref or its
+  // booking number == the WO's booking_no.
+  const linkedBookings = useMemo(() => {
+    const wd = (workOrder?.data ?? {}) as Record<string, unknown>;
+    const woNo  = String(wd.wo ?? "").trim();
+    const bkgNo = String(wd.booking_no ?? "").trim();
+    if (!woNo && !bkgNo) return [];
+    return allBookings.filter((b) => {
+      const ref   = String(b.wo_ref ?? "").trim();
+      const bk    = String(b.bkg_no ?? "").trim();
+      const bkAlt = String(b.bkg_no_alt ?? "").trim();
+      return (woNo && ref && ref.includes(woNo)) || (bkgNo && (bk === bkgNo || bkAlt === bkgNo));
+    });
+  }, [allBookings, workOrder?.data]);
 
   if (isLoading) return <div className="flex h-full items-center justify-center bg-white dark:bg-black"><Loader2 className="size-6 text-amber-500 animate-spin" /></div>;
   if (!workOrder) return (
@@ -685,6 +711,30 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
             <p className="text-[13px] text-gray-700 dark:text-white/80">{d.sailingdt ? String(d.sailingdt) : "—"}</p>
           </div>
         </div>
+
+        {/* Linked bookings (from the booking desk / Sheet8) */}
+        {linkedBookings.length > 0 && (
+          <div className="px-4 py-4 border-b dark:border-white/6" style={{ borderColor: "var(--border-color, #F3F4F6)" }}>
+            <p className="text-[10px] uppercase tracking-widest text-gray-400 dark:text-white/40 font-semibold mb-3">
+              Linked Bookings ({linkedBookings.length})
+            </p>
+            <div className="space-y-2">
+              {linkedBookings.map((b, i) => (
+                <div key={i} className="rounded-lg border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#1a1a1a] px-3 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[12px] font-mono font-medium text-gray-800 dark:text-white/90 truncate">{b.bkg_no || "—"}</span>
+                    {b.remark && (
+                      <span className="text-[10px] font-medium text-gray-500 dark:text-white/50 uppercase tracking-wide shrink-0">{b.remark}</span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-gray-400 dark:text-white/40 mt-0.5 truncate">
+                    {[b.line, b.pod, b.received_vsl || b.place_req_vsl].filter(Boolean).join(" · ") || "—"}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Cargo metrics */}
         <div className="px-4 py-4 border-b dark:border-white/6" style={{ borderColor: "var(--border-color, #F3F4F6)" }}>
