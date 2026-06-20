@@ -27,17 +27,6 @@ export interface PermResult {
   reason?: string;
 }
 
-/** Build an anon supabase client for reading the session. */
-function buildAnonClient() {
-  const cookieStore = cookies();
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    // @ts-expect-error — cookies() is a promise in Next 15 but sync in 14
-    { cookies: { getAll: () => (cookieStore as Awaited<typeof cookieStore>).getAll?.() ?? [], setAll: () => {} } }
-  );
-}
-
 /**
  * Checks if the given email belongs to an admin/superadmin in bajaj_users.
  * Also returns true for the fallback hardcoded owner email.
