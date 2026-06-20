@@ -88,8 +88,11 @@ export default function SettingsPage() {
     setResetLoading(true);
     setResetMsg(null);
     const supabase = createClient();
+    // Always send the reset link to the deployed app (configurable via env),
+    // never localhost — the recipient may open it on any device.
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://ticket-management-sooty.vercel.app";
     const { error } = await supabase.auth.resetPasswordForEmail(bajajUser?.email ?? "", {
-      redirectTo: `${window.location.origin}/bajaj/settings`,
+      redirectTo: `${appUrl}/bajaj/settings`,
     });
     setResetLoading(false);
     if (error) {

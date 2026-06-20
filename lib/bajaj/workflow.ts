@@ -88,7 +88,7 @@ export async function sendAlert(opts: {
   workOrderSummary: string;
   senderName?: string;
 }) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://ticket-management-sooty.vercel.app";
   for (const email of opts.to) {
     try {
       await fetch(`${baseUrl}/api/bajaj/notify`, {
