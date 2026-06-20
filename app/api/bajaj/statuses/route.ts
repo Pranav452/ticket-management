@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireApprovedUser } from "@/lib/bajaj/guards";
 
 /** GET /api/bajaj/statuses?module_id=<uuid>&module_slug=<slug> */
 export async function GET(req: NextRequest) {
+  const auth = await requireApprovedUser();
+  if (auth instanceof NextResponse) return auth;
+
   const sp         = req.nextUrl.searchParams;
   const moduleId   = sp.get("module_id");
   const moduleSlug = sp.get("module_slug");

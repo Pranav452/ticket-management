@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireApprovedUser } from "@/lib/bajaj/guards";
 
 const SEARCH_FIELDS = [
   "wo", "brand", "variant", "vslname", "containerno", "container_no",
@@ -26,6 +27,9 @@ const MODULE_META: Record<string, { name: string; flag: string }> = {
 };
 
 export async function GET(req: NextRequest) {
+  const auth = await requireApprovedUser();
+  if (auth instanceof NextResponse) return auth;
+
   const q     = req.nextUrl.searchParams.get("q")?.trim() ?? "";
   const limit = Math.min(parseInt(req.nextUrl.searchParams.get("limit") ?? "10"), 30);
 

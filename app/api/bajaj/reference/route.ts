@@ -6,13 +6,13 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getCurrentUserEmail } from "@/lib/bajaj/permissions";
+import { requireApprovedUser } from "@/lib/bajaj/guards";
 
 const KEY = { bookings: "bajaj_bookings", rates: "bajaj_rate_card" } as const;
 
 export async function GET(req: NextRequest) {
-  const email = await getCurrentUserEmail();
-  if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireApprovedUser();
+  if (auth instanceof NextResponse) return auth;
 
   const type = (req.nextUrl.searchParams.get("type") ?? "bookings") as keyof typeof KEY;
   const key = KEY[type];

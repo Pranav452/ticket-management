@@ -13,6 +13,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAdmin } from "@/lib/bajaj/guards";
 
 const MODULE_CONFIG: Record<string, { slug: string; canonical: string; variants: string[] }> = {
   bangladesh: { slug: "bangladesh", canonical: "Bangladesh",    variants: ["BANGALDESH", "Bangaldesh", "bangladesh"] },
@@ -24,6 +25,9 @@ const MODULE_CONFIG: Record<string, { slug: string; canonical: string; variants:
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = await requireAdmin();
+    if (auth instanceof NextResponse) return auth;
+
     const body = await req.json() as { moduleSlug: string; dryRun?: boolean };
     const { moduleSlug, dryRun = true } = body;
 

@@ -18,13 +18,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkBL48hrAlert } from "@/lib/bajaj/workflow";
+import { verifyCronSecret } from "@/lib/bajaj/cron-auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  // Verify cron secret (set CRON_SECRET in env)
-  const secret = req.headers.get("x-cron-secret") ?? req.nextUrl.searchParams.get("secret");
-  if (process.env.CRON_SECRET && secret !== process.env.CRON_SECRET) {
+  // Cron-only: requires a valid CRON_SECRET (fails closed if unset).
+  if (!verifyCronSecret(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

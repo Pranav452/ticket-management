@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireApprovedUser } from "@/lib/bajaj/guards";
 
 export async function GET(req: NextRequest) {
+  const auth = await requireApprovedUser();
+  if (auth instanceof NextResponse) return auth;
+
   const sp         = req.nextUrl.searchParams;
   const limit      = Math.min(200, Math.max(1, parseInt(sp.get("limit")  ?? "50", 10) || 50));
   const offset     = Math.max(0, parseInt(sp.get("offset") ?? "0", 10) || 0);

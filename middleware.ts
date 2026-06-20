@@ -4,12 +4,15 @@ import type { NextRequest } from "next/server";
 
 const PUBLIC_PATHS = ["/login", "/signup"];
 const PUBLIC_API_PREFIX = "/api/bajaj/auth/";
+// Scheduled (cron) endpoints have no user session — they authorize themselves
+// with CRON_SECRET inside the handler, so the middleware must let them through.
+const CRON_API_PREFIX = "/api/bajaj/cron/";
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Always allow public auth API routes
-  if (pathname.startsWith(PUBLIC_API_PREFIX)) {
+  // Always allow public auth API + cron API routes (each self-authorizes)
+  if (pathname.startsWith(PUBLIC_API_PREFIX) || pathname.startsWith(CRON_API_PREFIX)) {
     return NextResponse.next({ request });
   }
 

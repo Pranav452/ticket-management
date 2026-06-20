@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireApprovedUser } from "@/lib/bajaj/guards";
 
 export async function GET(req: NextRequest) {
+  const auth = await requireApprovedUser();
+  if (auth instanceof NextResponse) return auth;
+
   const woId = req.nextUrl.searchParams.get("work_order_id");
   if (!woId) return NextResponse.json({ error: "work_order_id required" }, { status: 400 });
 
@@ -33,9 +37,15 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { work_order_id, author_email, author_name, content } = await req.json();
+    const auth = await requireApprovedUser();
+    if (auth instanceof NextResponse) return auth;
+
+    const { work_order_id, author_name, content } = await req.json();
     if (!work_order_id || !content)
       return NextResponse.json({ error: "work_order_id and content required" }, { status: 400 });
+
+    // Author identity is taken from the session, never the request body.
+    const author_email = auth.email;
 
     const sb = createAdminClient();
     const { data, error } = await sb

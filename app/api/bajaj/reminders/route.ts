@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getCurrentUserEmail } from "@/lib/bajaj/permissions";
+import { requireApprovedUser } from "@/lib/bajaj/guards";
 
 function rowToReminder(r: Record<string, unknown>) {
   return {
@@ -33,6 +33,9 @@ function rowToReminder(r: Record<string, unknown>) {
 
 export async function GET(req: NextRequest) {
   try {
+    const auth = await requireApprovedUser();
+    if (auth instanceof NextResponse) return auth;
+
     const sp       = req.nextUrl.searchParams;
     const woId     = sp.get("work_order_id");
     const moduleId = sp.get("module_id");
@@ -53,6 +56,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = await requireApprovedUser();
+    if (auth instanceof NextResponse) return auth;
+
     const body = await req.json();
     const {
       work_order_id, module_id, work_order_summary = "",
@@ -73,7 +79,7 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
 
-    const created_by = await getCurrentUserEmail();
+    const created_by = auth.email;
     const sb         = createAdminClient();
 
     const { data, error } = await sb

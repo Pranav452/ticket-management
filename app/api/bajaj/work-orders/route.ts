@@ -12,9 +12,13 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireApprovedUser } from "@/lib/bajaj/guards";
 
 export async function GET(req: NextRequest) {
   try {
+    const auth = await requireApprovedUser();
+    if (auth instanceof NextResponse) return auth;
+
     const sp         = req.nextUrl.searchParams;
     const moduleSlug = sp.get("module");
     const statusId   = sp.get("statusId");
@@ -101,6 +105,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = await requireApprovedUser();
+    if (auth instanceof NextResponse) return auth;
+
     const body = await req.json() as { moduleSlug?: string; data?: Record<string, unknown> } & Record<string, unknown>;
     const moduleSlug = String(body.moduleSlug ?? body.module_slug ?? "").toLowerCase();
     const data       = (body.data ?? {}) as Record<string, unknown>;

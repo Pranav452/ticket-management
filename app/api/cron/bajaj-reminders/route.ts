@@ -6,6 +6,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { transporter } from "@/lib/email/mailer";
+import { verifyCronSecret } from "@/lib/bajaj/cron-auth";
+import { requireAdmin } from "@/lib/bajaj/guards";
 
 function formatDate(d: Date) {
   return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
@@ -74,17 +76,20 @@ async function runCron(): Promise<NextResponse> {
   return NextResponse.json({ sent: true, total: pending.length, results });
 }
 
+// Scheduled invocation (Vercel Cron) — authorized by CRON_SECRET only.
 export async function GET(req: NextRequest) {
-  const authHeader = req.headers.get("authorization");
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!verifyCronSecret(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   return runCron();
 }
 
+// Manual trigger — allowed for an admin session OR a valid cron secret.
+// (Never fabricate the secret server-side; authorize the real request.)
 export async function POST(req: NextRequest) {
-  const syntheticReq = new NextRequest("http://localhost/api/cron/bajaj-reminders", {
-    headers: process.env.CRON_SECRET ? { authorization: `Bearer ${process.env.CRON_SECRET}` } : {},
-  });
-  return GET(syntheticReq);
+  if (!verifyCronSecret(req)) {
+    const auth = await requireAdmin();
+    if (auth instanceof NextResponse) return auth;
+  }
+  return runCron();
 }

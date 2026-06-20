@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAdmin } from "@/lib/bajaj/guards";
+import { getCurrentUserEmail } from "@/lib/bajaj/permissions";
 
 export async function GET() {
+  // The full user directory (emails, roles, status) is admin-only.
+  const auth = await requireAdmin();
+  if (auth instanceof NextResponse) return auth;
+
   const sb = createAdminClient();
   const { data, error } = await sb
     .from("bajaj_users")
@@ -14,8 +20,13 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, full_name } = await req.json();
-    if (!email) return NextResponse.json({ error: "email required" }, { status: 400 });
+    // Self-registration only: a logged-in user can create their own pending row.
+    // Identity comes from the session — never trust the body's email.
+    const sessionEmail = await getCurrentUserEmail();
+    if (!sessionEmail) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { full_name } = await req.json();
+    const email = sessionEmail;
 
     const sb = createAdminClient();
     const { data: existing } = await sb
