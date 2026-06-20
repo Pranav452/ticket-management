@@ -119,7 +119,7 @@ export function ChatSidebar({ selectedRoomId, onSelectRoom }: Props) {
 
           {/* Search */}
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 dark:text-white/40 pointer-events-none" />
             <input
               type="text"
               placeholder="Search…"
@@ -241,7 +241,7 @@ function ConversationRow({
             {lastTime && (
               <span className={cn(
                 "text-[10px] flex-shrink-0",
-                unread > 0 ? "text-amber-500 font-semibold" : "text-gray-400"
+                unread > 0 ? "text-amber-500 font-semibold" : "text-gray-400 dark:text-white/40"
               )}>
                 {lastTime}
               </span>

@@ -117,12 +117,12 @@ export function ChatRoom({ roomId }: Props) {
             <div ref={topSentinelRef} className="h-1" />
             {isFetchingNextPage && (
               <div className="flex justify-center py-2">
-                <Loader2 className="h-4 w-4 animate-spin text-gray-300" />
+                <Loader2 className="h-4 w-4 animate-spin text-gray-300 dark:text-white/30" />
               </div>
             )}
             {isLoading ? (
               <div className="flex-1 flex items-center justify-center">
-                <Loader2 className="h-5 w-5 animate-spin text-gray-300" />
+                <Loader2 className="h-5 w-5 animate-spin text-gray-300 dark:text-white/30" />
               </div>
             ) : allMessages.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center gap-3 py-12">

@@ -134,7 +134,7 @@ export default function SettingsPage() {
                   "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors mb-0.5",
                   active
                     ? "bg-gray-100 text-gray-900 dark:bg-white/8 dark:text-white"
-                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-700 dark:text-white/50 dark:hover:bg-white/5"
+                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-700 dark:text-white/50 dark:hover:bg-white/5 dark:hover:text-white/70"
                 )}
               >
                 <Icon className="size-4 flex-shrink-0" />
@@ -277,7 +277,7 @@ export default function SettingsPage() {
                 <button
                   onClick={handlePasswordReset}
                   disabled={resetLoading}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 text-[13px] font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors dark:border-white/10 dark:text-white/80 dark:hover:bg-white/5 disabled:opacity-50"
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 text-[13px] font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors dark:border-white/10 dark:text-white/80 dark:hover:bg-white/5 dark:hover:border-white/20 disabled:opacity-50"
                 >
                   {resetLoading ? "Sending…" : "Send password reset email"}
                   <ChevronRight className="size-4 text-gray-400 dark:text-white/30" />

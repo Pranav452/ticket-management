@@ -43,7 +43,7 @@ function remarkClass(remark: string): string {
 }
 
 const inputCls =
-  "w-full bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-[12px] text-gray-800 dark:text-white/90 placeholder:text-gray-300 focus:outline-none focus:border-amber-500 transition-colors";
+  "w-full bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-[12px] text-gray-800 dark:text-white/90 placeholder:text-gray-300 dark:placeholder:text-white/30 focus:outline-none focus:border-amber-500 transition-colors";
 
 export function BajajBookingsClient() {
   const [tab, setTab] = useState<Tab>("bookings");
@@ -183,7 +183,7 @@ export function BajajBookingsClient() {
       className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium border transition-colors",
         tab === t
           ? "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-500/30 text-amber-700 dark:text-amber-400"
-          : "bg-white dark:bg-[#1a1a1a] border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/50 hover:border-gray-300")}
+          : "bg-white dark:bg-[#1a1a1a] border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/50 hover:border-gray-300 dark:hover:border-white/20")}
     >
       <Icon className="size-3.5" /> {label}
     </button>
@@ -210,7 +210,7 @@ export function BajajBookingsClient() {
         )}
 
         {loading ? (
-          <div className="flex items-center justify-center py-20 text-gray-400"><RefreshCw className="size-5 animate-spin" /></div>
+          <div className="flex items-center justify-center py-20 text-gray-400 dark:text-white/40"><RefreshCw className="size-5 animate-spin" /></div>
         ) : tab === "bookings" ? (
           <>
             <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -220,7 +220,7 @@ export function BajajBookingsClient() {
               </div>
               <div className="flex items-center gap-2">
                 <div className="relative">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-gray-400 pointer-events-none" />
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-gray-400 dark:text-white/40 pointer-events-none" />
                   <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search bookings…"
                     className="h-8 w-56 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] pl-8 pr-3 text-[12px] text-gray-800 dark:text-white/90 focus:border-amber-500 focus:outline-none" />
                 </div>
@@ -242,7 +242,7 @@ export function BajajBookingsClient() {
                   </thead>
                   <tbody>
                     {filteredBookings.length === 0 ? (
-                      <tr><td colSpan={BOOKING_COLS.length + 1} className="px-4 py-8 text-center text-gray-400">No bookings.</td></tr>
+                      <tr><td colSpan={BOOKING_COLS.length + 1} className="px-4 py-8 text-center text-gray-400 dark:text-white/40">No bookings.</td></tr>
                     ) : filteredBookings.map((b, i) => (
                       <tr key={i} className="border-b border-gray-100 dark:border-white/[0.06] hover:bg-gray-50 dark:hover:bg-white/[0.03] group">
                         {BOOKING_COLS.map((c) => (
@@ -259,18 +259,18 @@ export function BajajBookingsClient() {
                                 ))}
                               </select>
                             ) : (
-                              b[c.key] || <span className="text-gray-300">—</span>
+                              b[c.key] || <span className="text-gray-300 dark:text-white/30">—</span>
                             )}
                           </td>
                         ))}
                         <td className="px-3 py-2 text-right whitespace-nowrap">
                           <div className="inline-flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button onClick={() => openEdit(b)} title="Edit booking"
-                              className="size-7 inline-flex items-center justify-center rounded-md text-gray-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-colors">
+                              className="size-7 inline-flex items-center justify-center rounded-md text-gray-400 dark:text-white/40 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-colors">
                               <Pencil className="size-3.5" />
                             </button>
                             <button onClick={() => deleteBooking(b)} title="Delete booking"
-                              className="size-7 inline-flex items-center justify-center rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors">
+                              className="size-7 inline-flex items-center justify-center rounded-md text-gray-400 dark:text-white/40 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors">
                               <Trash2 className="size-3.5" />
                             </button>
                           </div>
@@ -295,7 +295,7 @@ export function BajajBookingsClient() {
                 <>
                   <button onClick={addRatesRow} className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-gray-200 dark:border-white/10 text-[12px] text-gray-700 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"><Plus className="size-3.5" /> Row</button>
                   <button onClick={addRatesCol} className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-gray-200 dark:border-white/10 text-[12px] text-gray-700 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"><Plus className="size-3.5" /> Column</button>
-                  <button onClick={cancelRatesEdit} className="h-8 px-3 rounded-lg text-[12px] text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">Cancel</button>
+                  <button onClick={cancelRatesEdit} className="h-8 px-3 rounded-lg text-[12px] text-gray-500 dark:text-white/50 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">Cancel</button>
                   <button onClick={saveRates} disabled={savingRates}
                     className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-amber-500 text-white text-[12px] font-semibold hover:bg-amber-600 disabled:opacity-50 transition-colors shadow-sm">
                     {savingRates ? <Loader2 className="size-3.5 animate-spin" /> : null} Save
@@ -308,7 +308,7 @@ export function BajajBookingsClient() {
                 <table className="w-full text-[12px] border-collapse">
                   <tbody>
                     {(ratesEdit ? gridDraft : grid).length === 0 ? (
-                      <tr><td className="px-4 py-8 text-center text-gray-400">No rate card data.</td></tr>
+                      <tr><td className="px-4 py-8 text-center text-gray-400 dark:text-white/40">No rate card data.</td></tr>
                     ) : (ratesEdit ? gridDraft : grid).map((row, ri) => (
                       <tr key={ri} className={cn(!ratesEdit && ri === 0 && "bg-amber-50/50 dark:bg-amber-500/10 font-semibold")}>
                         {row.map((cell, ci) => (
@@ -323,7 +323,7 @@ export function BajajBookingsClient() {
                         ))}
                         {ratesEdit && (
                           <td className="border border-gray-100 dark:border-white/[0.06] px-1 text-center">
-                            <button onClick={() => deleteRatesRow(ri)} title="Delete row" className="size-6 inline-flex items-center justify-center rounded text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"><Trash2 className="size-3.5" /></button>
+                            <button onClick={() => deleteRatesRow(ri)} title="Delete row" className="size-6 inline-flex items-center justify-center rounded text-gray-400 dark:text-white/40 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"><Trash2 className="size-3.5" /></button>
                           </td>
                         )}
                       </tr>
@@ -331,7 +331,7 @@ export function BajajBookingsClient() {
                   </tbody>
                 </table>
               </div>
-              <div className="px-4 py-2 border-t border-gray-100 dark:border-white/10 text-[11px] text-gray-400">
+              <div className="px-4 py-2 border-t border-gray-100 dark:border-white/10 text-[11px] text-gray-400 dark:text-white/40">
                 June buy-rate card (Sheet10). {ratesEdit ? "Editing — add rows/columns, then Save." : "Click Edit rate card to update for a new month."}
               </div>
             </div>
@@ -346,14 +346,14 @@ export function BajajBookingsClient() {
             className="w-full max-w-2xl rounded-2xl bg-white dark:bg-[#111] border border-gray-200 dark:border-white/10 shadow-xl overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-white/10">
               <p className="text-sm font-semibold text-gray-900 dark:text-white">{editing.index < 0 ? "Add booking" : "Edit booking"}</p>
-              <button onClick={() => setEditing(null)} className="size-7 inline-flex items-center justify-center rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
+              <button onClick={() => setEditing(null)} className="size-7 inline-flex items-center justify-center rounded-md text-gray-400 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/70 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
                 <X className="size-4" />
               </button>
             </div>
             <div className="px-5 py-4 grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto">
               {BOOKING_COLS.map((c) => (
                 <div key={c.key} className="space-y-1">
-                  <label className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold">
+                  <label className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-white/40 font-semibold">
                     {c.label}{c.key === "wo_ref" && " (links to work order)"}
                   </label>
                   {c.key === "remark" ? (
@@ -377,7 +377,7 @@ export function BajajBookingsClient() {
               </datalist>
             </div>
             <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100 dark:border-white/10">
-              <button onClick={() => setEditing(null)} className="px-3 py-2 rounded-lg text-[13px] text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">Cancel</button>
+              <button onClick={() => setEditing(null)} className="px-3 py-2 rounded-lg text-[13px] text-gray-500 dark:text-white/50 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">Cancel</button>
               <button onClick={saveEditing} disabled={saving}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-500 text-[13px] font-medium text-white hover:bg-amber-600 disabled:opacity-50 transition-colors">
                 {saving ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}

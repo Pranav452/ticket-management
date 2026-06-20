@@ -241,7 +241,7 @@ function ReminderDialog({
             <BellPlus className="size-4 text-amber-500" />
             <p className="text-sm font-semibold text-gray-900 dark:text-white">Set Reminder</p>
           </div>
-          <button onClick={onClose} className="size-7 inline-flex items-center justify-center rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
+          <button onClick={onClose} className="size-7 inline-flex items-center justify-center rounded-md text-gray-400 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/80 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
             <X className="size-4" />
           </button>
         </div>
@@ -249,14 +249,14 @@ function ReminderDialog({
         <div className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
           {/* What for */}
           <div className="space-y-1.5">
-            <label className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold">What&apos;s this reminder for?</label>
+            <label className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-white/40 font-semibold">What&apos;s this reminder for?</label>
             <div className="flex flex-wrap gap-1.5">
               {REMINDER_REASONS.map((r) => (
                 <button key={r} type="button" onClick={() => setReason(r)}
                   className={cn("px-2.5 py-1 rounded-full text-[12px] border transition-colors",
                     reason === r
                       ? "bg-amber-500 text-white border-amber-500"
-                      : "bg-white dark:bg-[#1a1a1a] text-gray-600 dark:text-white/70 border-gray-200 dark:border-white/10 hover:border-gray-300")}>
+                      : "bg-white dark:bg-[#1a1a1a] text-gray-600 dark:text-white/70 border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20")}>
                   {r}
                 </button>
               ))}
@@ -266,7 +266,7 @@ function ReminderDialog({
 
           {/* When */}
           <div className="space-y-1.5">
-            <label className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold flex items-center gap-1.5">
+            <label className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-white/40 font-semibold flex items-center gap-1.5">
               <CalendarClock className="size-3.5" /> Remind me on
             </label>
             <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} className={DIALOG_INPUT} />
@@ -279,41 +279,41 @@ function ReminderDialog({
 
           {/* How */}
           <div className="space-y-1.5">
-            <label className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold">How do you want to be notified?</label>
+            <label className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-white/40 font-semibold">How do you want to be notified?</label>
             <div className="grid grid-cols-2 gap-2">
               <button type="button" onClick={() => setChannel("inapp")}
                 className={cn("flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-[13px] transition-colors",
                   channel === "inapp"
                     ? "border-amber-500 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                    : "border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:border-gray-300")}>
+                    : "border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:border-gray-300 dark:hover:border-white/20")}>
                 <Monitor className="size-4" /> In-app
               </button>
               <button type="button" onClick={() => setChannel("email")}
                 className={cn("flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-[13px] transition-colors",
                   channel === "email"
                     ? "border-amber-500 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                    : "border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:border-gray-300")}>
+                    : "border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:border-gray-300 dark:hover:border-white/20")}>
                 <Mail className="size-4" /> Email
               </button>
             </div>
             {channel === "email" ? (
               <input value={emails} onChange={(e) => setEmails(e.target.value)} placeholder="Recipient emails (comma separated)" className={DIALOG_INPUT} />
             ) : (
-              <p className="text-[11px] text-gray-400">Appears in the bell at the top when due — no email is sent.</p>
+              <p className="text-[11px] text-gray-400 dark:text-white/40">Appears in the bell at the top when due — no email is sent.</p>
             )}
           </div>
 
           {/* Message */}
           <div className="space-y-1.5">
-            <label className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold">Message (optional)</label>
+            <label className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-white/40 font-semibold">Message (optional)</label>
             <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3} placeholder="What should the reminder say?" className={cn(DIALOG_INPUT, "resize-none")} />
           </div>
 
-          {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">{error}</div>}
+          {error && <div className="rounded-lg border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 px-3 py-2 text-xs text-red-600 dark:text-red-400">{error}</div>}
         </div>
 
         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100 dark:border-white/10">
-          <button onClick={onClose} className="px-3 py-2 rounded-lg text-[13px] text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">Cancel</button>
+          <button onClick={onClose} className="px-3 py-2 rounded-lg text-[13px] text-gray-500 dark:text-white/50 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">Cancel</button>
           <button onClick={submit} disabled={createReminder.isPending || done}
             className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-500 text-[13px] font-medium text-white hover:bg-amber-600 disabled:opacity-50 transition-colors">
             {done ? <CheckCircle className="size-4" /> : createReminder.isPending ? <Loader2 className="size-4 animate-spin" /> : <BellPlus className="size-4" />}
@@ -376,25 +376,25 @@ function NotifyDialog({
             <Mail className="size-4 text-blue-500" />
             <p className="text-sm font-semibold text-gray-900 dark:text-white">Email Notify</p>
           </div>
-          <button onClick={onClose} className="size-7 inline-flex items-center justify-center rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
+          <button onClick={onClose} className="size-7 inline-flex items-center justify-center rounded-md text-gray-400 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/80 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
             <X className="size-4" />
           </button>
         </div>
 
         <div className="px-5 py-4 space-y-4">
           <div className="space-y-1.5">
-            <label className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold">Recipients</label>
+            <label className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-white/40 font-semibold">Recipients</label>
             <input value={emails} onChange={(e) => setEmails(e.target.value)} placeholder="Recipient emails (comma separated)" className={DIALOG_INPUT} />
           </div>
           <div className="space-y-1.5">
-            <label className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold">Message</label>
+            <label className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-white/40 font-semibold">Message</label>
             <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={4} placeholder={`Update on ${summary}…`} className={cn(DIALOG_INPUT, "resize-none")} />
           </div>
-          {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">{error}</div>}
+          {error && <div className="rounded-lg border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 px-3 py-2 text-xs text-red-600 dark:text-red-400">{error}</div>}
         </div>
 
         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100 dark:border-white/10">
-          <button onClick={onClose} className="px-3 py-2 rounded-lg text-[13px] text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">Cancel</button>
+          <button onClick={onClose} className="px-3 py-2 rounded-lg text-[13px] text-gray-500 dark:text-white/50 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">Cancel</button>
           <button onClick={send} disabled={sending || done}
             className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-500 text-[13px] font-medium text-white hover:bg-amber-600 disabled:opacity-50 transition-colors">
             {done ? <CheckCircle className="size-4" /> : sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
@@ -639,7 +639,7 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
 
               {bajajUser && (
                 <div className="flex items-start gap-3">
-                  <div className="size-7 rounded-full bg-amber-100 flex items-center justify-center text-[10px] font-bold text-amber-700 flex-shrink-0">
+                  <div className="size-7 rounded-full bg-amber-100 dark:bg-amber-500/20 flex items-center justify-center text-[10px] font-bold text-amber-700 dark:text-amber-300 flex-shrink-0">
                     {(bajajUser.full_name ?? bajajUser.email)[0].toUpperCase()}
                   </div>
                   <div className="flex-1">

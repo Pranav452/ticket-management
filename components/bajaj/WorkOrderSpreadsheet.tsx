@@ -317,7 +317,7 @@ export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate
               onChange={(e) => setBulkVal(e.target.value)}
               placeholder="value…"
               disabled={!bulkCol}
-              className="h-7 w-44 rounded-md border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] px-2 text-[12px] text-gray-800 dark:text-white/90 placeholder:text-gray-300 focus:border-amber-500 focus:outline-none disabled:opacity-50"
+              className="h-7 w-44 rounded-md border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] px-2 text-[12px] text-gray-800 dark:text-white/90 placeholder:text-gray-300 dark:placeholder:text-white/30 focus:border-amber-500 focus:outline-none disabled:opacity-50"
             />
           )}
           <button

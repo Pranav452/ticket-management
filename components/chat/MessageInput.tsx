@@ -229,7 +229,7 @@ export function MessageInput({ roomId, members, currentUserId }: Props) {
       </div>
 
       {sendMessage.isError && (
-        <p className="text-[10px] text-red-500 mt-1 px-0.5">
+        <p className="text-[10px] text-red-500 dark:text-red-400 mt-1 px-0.5">
           Failed to send — {sendMessage.error?.message}
         </p>
       )}

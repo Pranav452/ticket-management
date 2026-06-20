@@ -249,7 +249,7 @@ export function WorkOrderBoard({ statuses, workOrders, cardFaceFields, isLoading
         />
       ))}
       {statuses.length === 0 && (
-        <div className="flex flex-1 items-center justify-center text-sm text-gray-400">
+        <div className="flex flex-1 items-center justify-center text-sm text-gray-400 dark:text-white/40">
           No status columns defined. Import an Excel file to configure the board.
         </div>
       )}

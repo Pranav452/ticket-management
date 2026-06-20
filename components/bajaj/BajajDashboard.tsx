@@ -369,7 +369,7 @@ export function BajajDashboard() {
                       return (
                         <div key={v.vesselName} className={cn(
                           "flex items-center justify-between px-3 py-2 rounded-xl text-[12px] transition-colors",
-                          isOver ? "bg-red-50 text-red-600" : "bg-gray-50 dark:bg-white/5 text-gray-700 dark:text-white/80 hover:bg-gray-100 dark:hover:bg-white/8"
+                          isOver ? "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400" : "bg-gray-50 dark:bg-white/5 text-gray-700 dark:text-white/80 hover:bg-gray-100 dark:hover:bg-white/8"
                         )}>
                           <div className="flex items-center gap-2 min-w-0">
                             {isOver && <AlertTriangle className="size-3 flex-shrink-0 text-red-500" />}

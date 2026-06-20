@@ -193,8 +193,8 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
 
         {/* Breadcrumb + View toggle */}
         <div className="flex items-center gap-1.5 text-[13px] min-w-0">
-          <span className="text-gray-400 font-medium">{meta.flag} {meta.name}</span>
-          <span className="text-gray-300 select-none">/</span>
+          <span className="text-gray-400 dark:text-white/40 font-medium">{meta.flag} {meta.name}</span>
+          <span className="text-gray-300 dark:text-white/30 select-none">/</span>
           {/* View toggle */}
           <div className="flex items-center gap-0.5 bg-gray-100 dark:bg-white/10 rounded-lg p-0.5">
             <button
@@ -222,7 +222,7 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
               Spreadsheet
             </button>
           </div>
-          <button className="ml-0.5 text-gray-300 hover:text-amber-400 transition-colors">
+          <button className="ml-0.5 text-gray-300 dark:text-white/30 hover:text-amber-400 transition-colors">
             <Star className="size-3.5" />
           </button>
         </div>
@@ -277,7 +277,7 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
 
       {/* ── Filter bar ───────────────────────────────────────────────── */}
       {showFilters && (
-        <div className="flex items-center flex-wrap gap-2.5 px-5 py-2 border-b border-gray-100 dark:border-white/6 bg-gray-50 dark:bg-[#111] flex-shrink-0">
+        <div className="flex items-center flex-wrap gap-2.5 px-5 py-2 border-b border-gray-100 dark:border-white/[0.06] bg-gray-50 dark:bg-[#111] flex-shrink-0">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-gray-400 dark:text-white/40 pointer-events-none" />
             <input
@@ -314,17 +314,17 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
               className="rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] px-2 py-1.5 text-[12px] text-gray-700 dark:text-white/80 focus:border-amber-500 focus:outline-none" />
           </div>
           {hasActiveFilter && (
-            <button onClick={() => { setSearchInput(""); setFilters({}); setFCountry(""); setFAgent(""); setFVessel(""); setFHaz(""); }} className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-amber-600 transition-colors">
+            <button onClick={() => { setSearchInput(""); setFilters({}); setFCountry(""); setFAgent(""); setFVessel(""); setFHaz(""); }} className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-white/40 hover:text-amber-600 transition-colors">
               <X className="size-3" /> Clear
             </button>
           )}
-          <span className="ml-auto text-[11px] text-gray-400 tabular-nums">{filteredOrders.length} WO{filteredOrders.length !== 1 ? "s" : ""}</span>
+          <span className="ml-auto text-[11px] text-gray-400 dark:text-white/40 tabular-nums">{filteredOrders.length} WO{filteredOrders.length !== 1 ? "s" : ""}</span>
         </div>
       )}
 
       {/* ── Field picker ─────────────────────────────────────────────── */}
       {showViewPanel && (
-        <div className="px-5 py-3 border-b border-gray-100 dark:border-white/6 bg-gray-50 dark:bg-[#111] flex-shrink-0">
+        <div className="px-5 py-3 border-b border-gray-100 dark:border-white/[0.06] bg-gray-50 dark:bg-[#111] flex-shrink-0">
           <div className="flex items-start gap-4 max-w-2xl">
             <div className="flex-1">
               <div className="flex items-center justify-between mb-2">
@@ -354,11 +354,11 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
 
       {/* ── Main content ─────────────────────────────────────────────── */}
       {!statusLoading && statuses.length === 0 && workOrders.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center flex-col gap-5 text-gray-400">
-          <Upload className="size-10 text-gray-300" />
+        <div className="flex flex-1 items-center justify-center flex-col gap-5 text-gray-400 dark:text-white/40">
+          <Upload className="size-10 text-gray-300 dark:text-white/30" />
           <div className="text-center">
-            <p className="text-sm font-medium text-gray-600">No work orders yet for {meta.name}</p>
-            <p className="text-[13px] text-gray-400 mt-1">Import a dispatch plan or paste rows from the Bajaj email</p>
+            <p className="text-sm font-medium text-gray-600 dark:text-white/70">No work orders yet for {meta.name}</p>
+            <p className="text-[13px] text-gray-400 dark:text-white/40 mt-1">Import a dispatch plan or paste rows from the Bajaj email</p>
           </div>
           <Link href={`/bajaj/import?module=${slug}`}
             className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-amber-500 text-sm font-semibold text-white hover:bg-amber-600 transition-colors">

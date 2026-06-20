@@ -91,12 +91,12 @@ function RoleDescription({ role }: { role?: string }) {
       description: "Can import and manage work orders across all boards.",
     },
     viewer: {
-      icon: <Eye className="w-4 h-4 text-gray-400" />,
+      icon: <Eye className="w-4 h-4 text-gray-400 dark:text-white/40" />,
       description: "Read-only access to all boards and work orders.",
     },
   };
   const info = roleInfo[role ?? ""] ?? {
-    icon: <Eye className="w-4 h-4 text-gray-400" />,
+    icon: <Eye className="w-4 h-4 text-gray-400 dark:text-white/40" />,
     description: "Access to assigned boards and work orders.",
   };
   return (
