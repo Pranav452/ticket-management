@@ -116,7 +116,7 @@ function ResizeHandle({ onResize }: { onResize: (dx: number) => void }) {
 }
 
 function EditCell({
-  col, value, isFocused, onFocus, onChange, onNavigate,
+  col, value, isFocused, onFocus, onChange, onNavigate, disabled = false,
 }: {
   col: ColDef;
   value: unknown;
@@ -124,6 +124,7 @@ function EditCell({
   onFocus: () => void;
   onChange?: (val: string | boolean | number) => void;
   onNavigate?: (dir: "up" | "down" | "tab") => void;
+  disabled?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft]     = useState("");
@@ -137,15 +138,16 @@ function EditCell({
     const on = value === true || value === 1 || value === "true";
     return (
       <button
-        onClick={() => { onFocus(); onChange?.(!on); }}
-        className="w-full h-full flex items-center justify-center text-[12px] font-semibold transition-colors"
+        onClick={disabled ? undefined : () => { onFocus(); onChange?.(!on); }}
+        disabled={disabled}
+        className={cn("w-full h-full flex items-center justify-center text-[12px] font-semibold transition-colors", disabled && "cursor-default")}
       >
         <span className={on ? "text-amber-500" : "text-gray-300 dark:text-white/20"}>{on ? "✓" : "—"}</span>
       </button>
     );
   }
 
-  if (col.readOnly) {
+  if (col.readOnly || disabled) {
     return (
       <div className="w-full h-full flex items-center px-2.5 text-[12px] text-gray-600 dark:text-white/60 truncate">
         {value != null && value !== "" ? String(value) : <span className="text-gray-300 dark:text-white/20">—</span>}
@@ -199,11 +201,12 @@ interface WorkOrderSpreadsheetProps {
   statuses: BajajStatus[];
   isLoading: boolean;
   onUpdate: (id: string, data: Record<string, unknown>) => void;
+  canEdit?: boolean;
 }
 
 const ROW_NUM_WIDTH = 40;
 
-export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate }: WorkOrderSpreadsheetProps) {
+export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate, canEdit = true }: WorkOrderSpreadsheetProps) {
   const [sortKey,  setSortKey]  = useState<string>("wo");
   const [sortDir,  setSortDir]  = useState<SortDir>("asc");
   const [focusCell,setFocusCell]= useState<[number, number] | null>(null);
@@ -290,7 +293,7 @@ export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Bulk edit bar — appears when one or more rows are selected */}
-      {selected.size > 0 && (
+      {canEdit && selected.size > 0 && (
         <div className="flex items-center gap-2 flex-wrap px-3 py-2 border-b border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 flex-shrink-0">
           <span className="text-[12px] font-semibold text-amber-700 dark:text-amber-300">{selected.size} selected</span>
           <span className="text-[12px] text-gray-500 dark:text-white/50">Set</span>
@@ -351,19 +354,21 @@ export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate
               className={cn("sticky left-0 top-0 z-40", headerBg, "border-r border-gray-200 dark:border-white/[0.06]")}
               style={{ width: ROW_NUM_WIDTH }}
             >
-              <button
-                type="button"
-                onClick={toggleSelectAll}
-                title={selected.size === sorted.length ? "Clear selection" : "Select all"}
-                className={cn(
-                  "mx-auto flex items-center justify-center size-4 rounded border transition-colors",
-                  selected.size > 0 && selected.size === sorted.length
-                    ? "bg-amber-500 border-amber-500 text-white"
-                    : "border-gray-300 dark:border-white/30 text-transparent hover:border-amber-400",
-                )}
-              >
-                <Check className="size-3" />
-              </button>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={toggleSelectAll}
+                  title={selected.size === sorted.length ? "Clear selection" : "Select all"}
+                  className={cn(
+                    "mx-auto flex items-center justify-center size-4 rounded border transition-colors",
+                    selected.size > 0 && selected.size === sorted.length
+                      ? "bg-amber-500 border-amber-500 text-white"
+                      : "border-gray-300 dark:border-white/30 text-transparent hover:border-amber-400",
+                  )}
+                >
+                  <Check className="size-3" />
+                </button>
+              )}
             </th>
 
             {COLUMNS.map((col, colIdx) => {
@@ -434,16 +439,17 @@ export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate
                 onMouseLeave={() => setHovRow(null)}
               >
                 <td
-                  onClick={() => toggleSelect(wo.id)}
-                  title="Select row for bulk edit"
+                  onClick={canEdit ? () => toggleSelect(wo.id) : undefined}
+                  title={canEdit ? "Select row for bulk edit" : undefined}
                   className={cn(
-                    "sticky left-0 z-10 border-r border-gray-100 dark:border-white/[0.04] text-center select-none transition-colors cursor-pointer",
+                    "sticky left-0 z-10 border-r border-gray-100 dark:border-white/[0.04] text-center select-none transition-colors",
+                    canEdit && "cursor-pointer",
                     stickyBgClass,
                     isSelected ? "text-amber-600 dark:text-amber-300" : "text-gray-300 dark:text-white/20",
                   )}
                   style={{ fontSize: 10, userSelect: "none", fontVariantNumeric: "tabular-nums" }}
                 >
-                  {isSelected ? <Check className="size-3.5 mx-auto" /> : rowIdx + 1}
+                  {canEdit && isSelected ? <Check className="size-3.5 mx-auto" /> : rowIdx + 1}
                 </td>
 
                 {COLUMNS.map((col, colIdx) => {
@@ -494,6 +500,7 @@ export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate
                           col={col}
                           value={rawVal}
                           isFocused={isFocused}
+                          disabled={!canEdit}
                           onFocus={() => setFocusCell([rowIdx, colIdx])}
                           onChange={(val) => handleCellChange(wo.id, col.key, val)}
                           onNavigate={(dir) => handleNavigate(rowIdx, colIdx, dir)}

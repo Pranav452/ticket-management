@@ -12,7 +12,7 @@ import {
   useWorkOrder, useUpdateWorkOrder, useBajajComments,
   useAddBajajComment, useBajajStatuses,
   useBajajAuditLogs, useColumnRequiredFields,
-  useCreateBajajReminder,
+  useCreateBajajReminder, useMyColumnPerms,
 } from "@/lib/queries/bajaj";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { cn } from "@/lib/utils";
@@ -53,9 +53,9 @@ const SECTIONS = [
 
 
 // ─── Inline editable field ────────────────────────────────────────────────────
-function EditField({ fieldKey, label, value, onSave, boolean: isBool = false }: {
+function EditField({ fieldKey, label, value, onSave, boolean: isBool = false, canEdit = true }: {
   fieldKey: string; label: string; value: unknown;
-  onSave: (key: string, val: string | boolean) => void; boolean?: boolean;
+  onSave: (key: string, val: string | boolean) => void; boolean?: boolean; canEdit?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [val, setVal]         = useState(value != null ? String(value) : "");
@@ -67,8 +67,10 @@ function EditField({ fieldKey, label, value, onSave, boolean: isBool = false }: 
       <div className="flex flex-col gap-0.5">
         <span className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-white/40 font-semibold">{label}</span>
         <button
-          onClick={() => onSave(fieldKey, !isTrueish)}
+          onClick={canEdit ? () => onSave(fieldKey, !isTrueish) : undefined}
+          disabled={!canEdit}
           className={cn("inline-flex items-center gap-1.5 text-[12px] font-medium px-2 py-1 rounded-md border w-fit transition-colors",
+            !canEdit && "cursor-default",
             isTrueish ? "bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-500/30" : "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100 dark:bg-white/5 dark:text-white/50 dark:border-white/10 dark:hover:bg-white/8")}
         >
           {isTrueish ? <AlertTriangle className="size-3" /> : <div className="size-3 rounded-full border border-gray-400 dark:border-white/30" />}
@@ -81,7 +83,9 @@ function EditField({ fieldKey, label, value, onSave, boolean: isBool = false }: 
   return (
     <div className="flex flex-col gap-0.5 group">
       <span className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-white/40 font-semibold">{label}</span>
-      {editing ? (
+      {!canEdit ? (
+        <span className={cn("text-[13px]", displayVal ? "text-gray-800 dark:text-white/90" : "text-gray-300 dark:text-white/25 italic")}>{displayVal ?? "—"}</span>
+      ) : editing ? (
         <input
           autoFocus value={val}
           onChange={(e) => setVal(e.target.value)}
@@ -422,6 +426,7 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
     : undefined;
   const { data: allStatuses = [] }          = useBajajStatuses(moduleSlug);
   const { data: columnRequiredFields = [] } = useColumnRequiredFields(moduleSlug ?? "");
+  const { data: myPerms = new Map() }       = useMyColumnPerms(moduleSlug ?? "");
 
   const [showStatusPicker, setShowStatusPicker] = useState(false);
   const [commentText,      setCommentText]      = useState("");
@@ -510,6 +515,12 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
   // allStatuses lookup is fallback for after a status change (optimistic update)
   const currentStatus = workOrder.status ?? allStatuses.find((s) => s.id === workOrder.status_id) ?? null;
 
+  // Edit / move permission for this work order's column (admins always allowed).
+  const isAdmin = bajajUser?.role === "admin" || bajajUser?.role === "superadmin";
+  const myPerm  = myPerms.get(currentStatus?.name ?? "") ?? myPerms.get(null) ?? null;
+  const canEdit = isAdmin || !!myPerm?.can_edit;
+  const canMove = isAdmin || !!myPerm?.can_move;
+
   return (
     <div className="flex h-full overflow-hidden" style={{ background: "var(--main-bg, #F5F5F5)" }}>
 
@@ -554,12 +565,13 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
             <div className="flex items-center gap-3 mb-8">
               <div className="relative">
                 <button
-                  onClick={() => setShowStatusPicker((v) => !v)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] hover:border-gray-300 dark:hover:border-white/20 transition-colors shadow-sm"
+                  onClick={canMove ? () => setShowStatusPicker((v) => !v) : undefined}
+                  disabled={!canMove}
+                  className={cn("flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] transition-colors shadow-sm", canMove ? "hover:border-gray-300 dark:hover:border-white/20" : "cursor-default")}
                 >
                   <span className="size-2 rounded-full flex-shrink-0" style={{ backgroundColor: currentStatus ? `#${currentStatus.color_hex}` : "#D1D5DB" }} />
                   <span className="text-[13px] font-medium text-gray-700 dark:text-white/80">{currentStatus?.name ?? "No Status"}</span>
-                  <ChevronDown className="size-3 text-gray-400 dark:text-white/40" />
+                  {canMove && <ChevronDown className="size-3 text-gray-400 dark:text-white/40" />}
                 </button>
                 {showStatusPicker && (
                   <div className="absolute top-full mt-1 left-0 z-50 bg-white dark:bg-[#111] border border-gray-200 dark:border-white/10 rounded-xl shadow-xl ring-1 ring-black/5 dark:ring-white/5 py-1.5 min-w-[180px]">
@@ -594,7 +606,7 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
                       const isBool = ["haz", "vgm_submitted", "si_submitted"].includes(f);
                       return (
                         <div key={f} className="relative">
-                          <EditField fieldKey={f} label={FIELD_LABELS[f] ?? f} value={d[f]} onSave={handleFieldSave} boolean={isBool} />
+                          <EditField fieldKey={f} label={FIELD_LABELS[f] ?? f} value={d[f]} onSave={handleFieldSave} boolean={isBool} canEdit={canEdit} />
                           {savingField === f && <Loader2 className="size-3 text-amber-500 animate-spin absolute right-0 top-0" />}
                         </div>
                       );
@@ -687,8 +699,8 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
           {/* Status */}
           <div className="mb-4">
             <p className="text-[10px] text-gray-400 dark:text-white/40 uppercase tracking-wider mb-1.5">Status</p>
-            <button onClick={() => setShowStatusPicker((v) => !v)}
-              className="flex items-center gap-2 w-full px-2.5 py-2 rounded-lg border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#1a1a1a] hover:border-gray-300 dark:hover:border-white/20 transition-colors">
+            <button onClick={canMove ? () => setShowStatusPicker((v) => !v) : undefined} disabled={!canMove}
+              className={cn("flex items-center gap-2 w-full px-2.5 py-2 rounded-lg border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#1a1a1a] transition-colors", canMove ? "hover:border-gray-300 dark:hover:border-white/20" : "cursor-default")}>
               <span className="size-2 rounded-full flex-shrink-0" style={{ backgroundColor: currentStatus ? `#${currentStatus.color_hex}` : "#D1D5DB" }} />
               <span className="text-[13px] text-gray-700 dark:text-white/80 truncate flex-1 text-left">{currentStatus?.name ?? "No Status"}</span>
             </button>

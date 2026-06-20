@@ -7,7 +7,7 @@ import { Upload, Eye, Search, X, SlidersHorizontal, RefreshCw, Star, LayoutGrid,
 
 import { WorkOrderBoard } from "@/components/bajaj/WorkOrderBoard";
 import { WorkOrderSpreadsheet } from "@/components/bajaj/WorkOrderSpreadsheet";
-import { useBajajStatuses, useBajajBoardConfig, useWorkOrders, useUpdateWorkOrder, useMyColumnPerms } from "@/lib/queries/bajaj";
+import { useBajajStatuses, useBajajBoardConfig, useWorkOrders, useUpdateWorkOrder, useMyColumnPerms, useColumnRequiredFields } from "@/lib/queries/bajaj";
 import type { WorkOrderFilters } from "@/lib/types/bajaj";
 import { ReminderBell } from "@/components/bajaj/ReminderBell";
 import { cn } from "@/lib/utils";
@@ -74,8 +74,12 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
   });
   const { data: boardConfig }  = useBajajBoardConfig(slug);
   const { data: myPerms = new Map() } = useMyColumnPerms(slug);
+  const { data: columnRequiredFields = [] } = useColumnRequiredFields(slug);
   const { data: workOrders = [], isLoading: woLoading, refetch } = useWorkOrders(slug, filters);
   const updateWorkOrder = useUpdateWorkOrder();
+
+  // The user may edit the grid if they are admin or hold any edit assignment.
+  const gridCanEdit = _isAdmin || Array.from(myPerms.values()).some((p) => p.can_edit);
 
   const meta           = MODULE_META[slug] ?? { name: slug, flag: "🌐", port: "" };
   const cardFaceFields = customFields.length ? customFields : (boardConfig?.card_face_fields ?? ["wo", "brand", "variant", "port", "qty"]);
@@ -383,9 +387,33 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
             workOrders={filteredOrders}
             statuses={statuses}
             isLoading={statusLoading || woLoading}
+            canEdit={gridCanEdit}
             onUpdate={(id, data) => {
               const wo = filteredOrders.find((w) => w.id === id);
-              updateWorkOrder.mutate({ id, updates: { data }, baseUpdatedAt: wo?.updated_at });
+              updateWorkOrder.mutate(
+                { id, updates: { data }, baseUpdatedAt: wo?.updated_at },
+                {
+                  onSuccess: () => {
+                    // Required-fields → auto-advance to the next stage (same rule
+                    // as the detail page, so the grid behaves consistently).
+                    if (!wo) return;
+                    const curIdx = statuses.findIndex((s) => s.id === wo.status_id);
+                    if (curIdx < 0) return;
+                    const reqEntry = columnRequiredFields.find((r) => r.status_name === statuses[curIdx].name);
+                    const required = reqEntry?.field_keys ?? [];
+                    if (required.length === 0) return;
+                    const merged = { ...(wo.data ?? {}), ...data };
+                    const allFilled = required.every((f) => {
+                      const v = merged[f];
+                      return v != null && v !== "" && v !== false;
+                    });
+                    const next = statuses[curIdx + 1];
+                    if (allFilled && next && !String(next.id).startsWith("__placeholder")) {
+                      updateWorkOrder.mutate({ id, updates: { status_id: next.id } });
+                    }
+                  },
+                },
+              );
             }}
           />
         </div>
