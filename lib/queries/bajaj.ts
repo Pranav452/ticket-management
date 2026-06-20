@@ -115,18 +115,32 @@ export function useWorkOrders(moduleSlug: string, filters?: WorkOrderFilters) {
   return useQuery<BajajWorkOrder[]>({
     queryKey: ["bajaj", "work-orders", moduleSlug, filters],
     queryFn:  async () => {
-      const result: { data: BajajWorkOrder[] } = await apiFetch(
-        `/api/bajaj/work-orders${buildQS({
-          module:     moduleSlug,
-          statusId:   filters?.statusId,
-          assignedTo: filters?.assignedTo,
-          search:     filters?.search,
-          dateFrom:   filters?.dateFrom,
-          dateTo:     filters?.dateTo,
-          pageSize:   200, // load up to 200 per board view
-        })}`
-      );
-      return result.data;
+      // Page through ALL work orders so a board with >200 rows never silently
+      // drops cards. One request when the module has ≤200 WOs (the common case);
+      // additional pages only when it actually exceeds the page size.
+      const pageSize = 200;
+      const all: BajajWorkOrder[] = [];
+      let page = 1;
+      // Hard ceiling guards against an unexpected loop (50 pages = 10k WOs).
+      for (let i = 0; i < 50; i++) {
+        const result: { data: BajajWorkOrder[]; total?: number } = await apiFetch(
+          `/api/bajaj/work-orders${buildQS({
+            module:     moduleSlug,
+            statusId:   filters?.statusId,
+            assignedTo: filters?.assignedTo,
+            search:     filters?.search,
+            dateFrom:   filters?.dateFrom,
+            dateTo:     filters?.dateTo,
+            page,
+            pageSize,
+          })}`
+        );
+        all.push(...result.data);
+        const total = result.total ?? all.length;
+        if (result.data.length < pageSize || all.length >= total) break;
+        page++;
+      }
+      return all;
     },
     staleTime: 30_000,
   });

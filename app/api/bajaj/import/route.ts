@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getCurrentUserEmail } from "@/lib/bajaj/permissions";
+import { requireApprovedUser } from "@/lib/bajaj/guards";
 import { validateWorkOrderRules } from "@/lib/bajaj/validation";
 import {
   SHEET_MODULE_MAP, normHeader, buildColMap, buildRecord, deriveStatusName,
@@ -32,6 +32,9 @@ function rowKey(d: Record<string, unknown>): string {
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = await requireApprovedUser();
+    if (auth instanceof NextResponse) return auth;
+
     const formData   = await req.formData();
     const file       = formData.get("file") as File | null;
     const moduleSlug = (formData.get("moduleSlug") as string | null) ?? "";
@@ -40,7 +43,7 @@ export async function POST(req: NextRequest) {
     if (!file) return NextResponse.json({ error: "file is required" }, { status: 400 });
 
     const sb         = createAdminClient();
-    const actorEmail = await getCurrentUserEmail();
+    const actorEmail = auth.email;
 
     // Resolve module
     const { data: mod } = await sb

@@ -7,12 +7,12 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getCurrentUserEmail } from "@/lib/bajaj/permissions";
+import { requireApprovedUser } from "@/lib/bajaj/guards";
 
 export async function GET(req: NextRequest) {
   try {
-    const email = await getCurrentUserEmail();
-    if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const auth = await requireApprovedUser();
+    if (auth instanceof NextResponse) return auth;
 
     const moduleSlug = req.nextUrl.searchParams.get("module");
     const sb = createAdminClient();

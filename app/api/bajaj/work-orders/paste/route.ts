@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getCurrentUserEmail } from "@/lib/bajaj/permissions";
+import { requireApprovedUser } from "@/lib/bajaj/guards";
 
 const MODULE_DEFAULT_COUNTRY: Record<string, string> = {
   srilanka:   "Sri Lanka",
@@ -33,6 +33,9 @@ interface PasteRow {
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = await requireApprovedUser();
+    if (auth instanceof NextResponse) return auth;
+
     const body       = await req.json() as { rows: PasteRow[]; moduleSlug?: string };
     const rows       = Array.isArray(body.rows) ? body.rows : [];
     const moduleSlug = String(body.moduleSlug ?? "").toLowerCase();
@@ -40,7 +43,7 @@ export async function POST(req: NextRequest) {
     if (rows.length === 0) return NextResponse.json({ added: 0, skipped: 0, errors: [] });
 
     const sb         = createAdminClient();
-    const actorEmail = await getCurrentUserEmail();
+    const actorEmail = auth.email;
 
     const { data: mod } = await sb
       .from("bajaj_modules")
