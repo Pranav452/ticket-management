@@ -55,6 +55,11 @@ export function BajajBookingsClient() {
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<{ row: Booking; index: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Rate-card editing
+  const [ratesUpdatedAt, setRatesUpdatedAt] = useState<string | null>(null);
+  const [ratesEdit, setRatesEdit] = useState(false);
+  const [gridDraft, setGridDraft] = useState<string[][]>([]);
+  const [savingRates, setSavingRates] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -66,8 +71,40 @@ export function BajajBookingsClient() {
       setBookings(Array.isArray(b.rows) ? b.rows : []);
       setUpdatedAt(b.updated_at ?? null);
       setGrid(Array.isArray(r.grid) ? r.grid : []);
+      setRatesUpdatedAt(r.updated_at ?? null);
     } finally {
       setLoading(false);
+    }
+  }
+
+  function startRatesEdit() { setGridDraft(grid.map((row) => [...row])); setRatesEdit(true); setError(null); }
+  function cancelRatesEdit() { setRatesEdit(false); setGridDraft([]); }
+  function setCell(ri: number, ci: number, v: string) {
+    setGridDraft((g) => g.map((row, r) => (r === ri ? row.map((c, cI) => (cI === ci ? v : c)) : row)));
+  }
+  function addRatesRow() { setGridDraft((g) => [...g, Array(g[0]?.length ?? 1).fill("")]); }
+  function addRatesCol() { setGridDraft((g) => g.map((row) => [...row, ""])); }
+  function deleteRatesRow(ri: number) { setGridDraft((g) => g.filter((_, r) => r !== ri)); }
+
+  async function saveRates() {
+    setSavingRates(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/bajaj/reference", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "rates", grid: gridDraft, baseUpdatedAt: ratesUpdatedAt }),
+      });
+      if (res.status === 409) { setError("The rate card was changed by someone else. Reloading…"); await load(); setRatesEdit(false); return; }
+      if (!res.ok) throw new Error("Save failed");
+      const payload = await res.json();
+      setGrid(Array.isArray(payload.grid) ? payload.grid : gridDraft);
+      setRatesUpdatedAt(payload.updated_at ?? null);
+      setRatesEdit(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSavingRates(false);
     }
   }
 
@@ -245,24 +282,59 @@ export function BajajBookingsClient() {
             </div>
           </>
         ) : (
-          <div className="rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#0d0d0d] overflow-hidden">
-            <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
-              <table className="w-full text-[12px] border-collapse">
-                <tbody>
-                  {grid.length === 0 ? (
-                    <tr><td className="px-4 py-8 text-center text-gray-400">No rate card data.</td></tr>
-                  ) : grid.map((row, ri) => (
-                    <tr key={ri} className={cn(ri === 0 && "bg-amber-50/50 dark:bg-amber-500/10 font-semibold")}>
-                      {row.map((cell, ci) => (
-                        <td key={ci} className="px-3 py-1.5 border border-gray-100 dark:border-white/[0.06] text-gray-700 dark:text-white/70 whitespace-nowrap">{cell}</td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <>
+            <div className="flex items-center justify-end gap-2">
+              {savingRates && <span className="flex items-center gap-1 text-[12px] text-amber-600"><Loader2 className="size-3 animate-spin" /> Saving…</span>}
+              {!ratesEdit ? (
+                <button onClick={startRatesEdit}
+                  className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-gray-200 dark:border-white/10 text-[12px] text-gray-700 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                  <Pencil className="size-3.5" /> Edit rate card
+                </button>
+              ) : (
+                <>
+                  <button onClick={addRatesRow} className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-gray-200 dark:border-white/10 text-[12px] text-gray-700 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"><Plus className="size-3.5" /> Row</button>
+                  <button onClick={addRatesCol} className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-gray-200 dark:border-white/10 text-[12px] text-gray-700 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"><Plus className="size-3.5" /> Column</button>
+                  <button onClick={cancelRatesEdit} className="h-8 px-3 rounded-lg text-[12px] text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">Cancel</button>
+                  <button onClick={saveRates} disabled={savingRates}
+                    className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-amber-500 text-white text-[12px] font-semibold hover:bg-amber-600 disabled:opacity-50 transition-colors shadow-sm">
+                    {savingRates ? <Loader2 className="size-3.5 animate-spin" /> : null} Save
+                  </button>
+                </>
+              )}
             </div>
-            <div className="px-4 py-2 border-t border-gray-100 dark:border-white/10 text-[11px] text-gray-400">Rate card shown as-is from the dispatch sheet (Sheet10).</div>
-          </div>
+            <div className="rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#0d0d0d] overflow-hidden">
+              <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
+                <table className="w-full text-[12px] border-collapse">
+                  <tbody>
+                    {(ratesEdit ? gridDraft : grid).length === 0 ? (
+                      <tr><td className="px-4 py-8 text-center text-gray-400">No rate card data.</td></tr>
+                    ) : (ratesEdit ? gridDraft : grid).map((row, ri) => (
+                      <tr key={ri} className={cn(!ratesEdit && ri === 0 && "bg-amber-50/50 dark:bg-amber-500/10 font-semibold")}>
+                        {row.map((cell, ci) => (
+                          <td key={ci} className="border border-gray-100 dark:border-white/[0.06] text-gray-700 dark:text-white/70 whitespace-nowrap p-0">
+                            {ratesEdit ? (
+                              <input value={cell} onChange={(e) => setCell(ri, ci, e.target.value)}
+                                className="w-full min-w-[90px] bg-transparent px-2 py-1.5 text-[12px] text-gray-800 dark:text-white/90 focus:outline-none focus:bg-amber-50 dark:focus:bg-amber-500/10" />
+                            ) : (
+                              <span className="block px-3 py-1.5">{cell}</span>
+                            )}
+                          </td>
+                        ))}
+                        {ratesEdit && (
+                          <td className="border border-gray-100 dark:border-white/[0.06] px-1 text-center">
+                            <button onClick={() => deleteRatesRow(ri)} title="Delete row" className="size-6 inline-flex items-center justify-center rounded text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"><Trash2 className="size-3.5" /></button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="px-4 py-2 border-t border-gray-100 dark:border-white/10 text-[11px] text-gray-400">
+                June buy-rate card (Sheet10). {ratesEdit ? "Editing — add rows/columns, then Save." : "Click Edit rate card to update for a new month."}
+              </div>
+            </div>
+          </>
         )}
       </div>
 
