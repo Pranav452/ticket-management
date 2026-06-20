@@ -259,12 +259,18 @@ function MyShipments({
 
             {hasMore && (
               <button
-                onClick={() =>
-                  email &&
-                  router.push(
-                    `/bajaj/boards/vipar?assignedTo=${encodeURIComponent(email)}`
-                  )
-                }
+                onClick={() => {
+                  if (!email) return;
+                  // Route to the board where most of the user's shipments live,
+                  // instead of always defaulting to vipar.
+                  const counts = new Map<string, number>();
+                  for (const w of wos) {
+                    if (w.module_slug) counts.set(w.module_slug, (counts.get(w.module_slug) ?? 0) + 1);
+                  }
+                  let slug = "vipar", best = -1;
+                  counts.forEach((n, s) => { if (n > best) { best = n; slug = s; } });
+                  router.push(`/bajaj/boards/${slug}?assignedTo=${encodeURIComponent(email)}`);
+                }}
                 className="flex w-full items-center justify-center gap-1.5 px-4 py-3 text-xs font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-50/60 dark:hover:bg-amber-500/6 transition-colors"
               >
                 Show all {wos.length} shipments

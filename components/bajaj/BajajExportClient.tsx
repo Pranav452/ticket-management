@@ -10,7 +10,7 @@ import React, { useMemo, useState, useCallback } from "react";
 import { Download, Filter, X, Eye, EyeOff, RefreshCw, FileSpreadsheet, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface Row { id: string; module_slug: string; status: string | null; data: Record<string, unknown>; }
+interface Row { id: string; module_slug: string; status: string | null; status_color?: string | null; data: Record<string, unknown>; }
 
 const MODULES = [
   { slug: "all",        name: "All boards" },
@@ -211,7 +211,21 @@ export function BajajExportClient() {
         width: Math.min(40, Math.max(c.label.length + 2, ...exportRows.map((r) => cellValue(c.key, r).length + 2))),
       }));
       ws.getRow(1).font = { bold: true };
-      exportRows.forEach((r) => ws.addRow(Object.fromEntries(activeColumns.map((c) => [c.key, cellValue(c.key, r)]))));
+      const stageIdx = activeColumns.findIndex((c) => c.key === "status");
+      exportRows.forEach((r) => {
+        const row = ws.addRow(Object.fromEntries(activeColumns.map((c) => [c.key, cellValue(c.key, r)])));
+        // Mirror the spreadsheet's colour coding: fill each row by its workflow
+        // status colour so recipients keep the glanceable status in Excel.
+        const hex = String(r.status_color ?? "").replace(/^#/, "");
+        if (/^[0-9a-fA-F]{6}$/.test(hex)) {
+          const argb = `FF${hex.toUpperCase()}`;
+          row.eachCell((cell) => {
+            cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb } };
+          });
+          // Keep the Stage cell legible and emphasised.
+          if (stageIdx >= 0) row.getCell(stageIdx + 1).font = { bold: true };
+        }
+      });
       const buf = await wb.xlsx.writeBuffer();
       download(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `Bajaj_${moduleSlug}_${dateStr()}.xlsx`);
     } finally { setBusy(false); }

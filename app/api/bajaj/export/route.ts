@@ -17,12 +17,12 @@ export async function GET(req: NextRequest) {
     const moduleSlug = req.nextUrl.searchParams.get("module");
     const sb = createAdminClient();
 
-    const rows: { id: string; module_slug: string; status: string | null; data: Record<string, unknown> }[] = [];
+    const rows: { id: string; module_slug: string; status: string | null; status_color: string | null; data: Record<string, unknown> }[] = [];
     const PAGE = 1000;
     for (let from = 0; ; from += PAGE) {
       let q = sb
         .from("bajaj_work_orders")
-        .select("id, module_slug, data, bajaj_statuses ( name )")
+        .select("id, module_slug, data, bajaj_statuses ( name, color_hex )")
         .order("module_slug", { ascending: true })
         .order("column_order", { ascending: true })
         .range(from, from + PAGE - 1);
@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
           id: r.id,
           module_slug: r.module_slug,
           status: st?.name ?? null,
+          status_color: st?.color_hex ?? null,
           data: (r.data as Record<string, unknown>) ?? {},
         });
       }
