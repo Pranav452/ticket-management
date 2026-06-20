@@ -21,12 +21,12 @@ import type { BajajUser, BajajAuditLog, BajajColumnAssignment, BajajColumnReques
 // ─── Status badge ─────────────────────────────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    pending: "bg-yellow-950/60 text-yellow-400 border-yellow-800",
-    approved: "bg-emerald-950/60 text-emerald-400 border-emerald-800",
-    rejected: "bg-red-950/60 text-red-400 border-red-800",
+    pending: "bg-yellow-50 dark:bg-yellow-950/60 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800",
+    approved: "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800",
+    rejected: "bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800",
   };
   return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${styles[status] ?? "bg-neutral-800 text-neutral-400 border-neutral-700"}`}>
+    <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${styles[status] ?? "bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-neutral-400 border-gray-300 dark:border-neutral-700"}`}>
       {status}
     </span>
   );
@@ -38,13 +38,13 @@ function UserRow({ user, adminId }: { user: BajajUser; adminId: string }) {
   const reject = useRejectBajajUser();
 
   return (
-    <tr className="border-b border-neutral-800 hover:bg-neutral-900/50">
-      <td className="px-4 py-3 text-sm text-neutral-200">{user.full_name ?? "—"}</td>
-      <td className="px-4 py-3 text-sm text-neutral-400">{user.email}</td>
+    <tr className="border-b border-gray-200 dark:border-neutral-800 hover:bg-white dark:hover:bg-neutral-900/50">
+      <td className="px-4 py-3 text-sm text-gray-800 dark:text-neutral-200">{user.full_name ?? "—"}</td>
+      <td className="px-4 py-3 text-sm text-gray-600 dark:text-neutral-400">{user.email}</td>
       <td className="px-4 py-3">
         <StatusBadge status={user.status} />
       </td>
-      <td className="px-4 py-3 text-xs text-neutral-600">
+      <td className="px-4 py-3 text-xs text-gray-400 dark:text-neutral-600">
         {new Date(user.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
       </td>
       <td className="px-4 py-3">
@@ -61,7 +61,7 @@ function UserRow({ user, adminId }: { user: BajajUser; adminId: string }) {
             <button
               onClick={() => reject.mutate({ bajajUserId: user.id })}
               disabled={reject.isPending}
-              className="flex items-center gap-1 px-3 py-1 rounded-md bg-red-900/60 text-xs text-red-300 hover:bg-red-800 disabled:opacity-50 transition-colors border border-red-800"
+              className="flex items-center gap-1 px-3 py-1 rounded-md bg-red-100 dark:bg-red-900/60 text-xs text-red-700 dark:text-red-300 hover:bg-red-800 disabled:opacity-50 transition-colors border border-red-200 dark:border-red-800"
             >
               {reject.isPending ? <Loader2 className="size-3 animate-spin" /> : <XCircle className="size-3" />}
               Reject
@@ -69,7 +69,7 @@ function UserRow({ user, adminId }: { user: BajajUser; adminId: string }) {
           </div>
         )}
         {user.status !== "pending" && (
-          <span className="text-xs text-neutral-700">—</span>
+          <span className="text-xs text-gray-300 dark:text-neutral-700">—</span>
         )}
       </td>
     </tr>
@@ -79,31 +79,31 @@ function UserRow({ user, adminId }: { user: BajajUser; adminId: string }) {
 // ─── Audit log row ────────────────────────────────────────────────────────────
 function AuditRow({ log }: { log: BajajAuditLog }) {
   const actionColors: Record<string, string> = {
-    moved_card: "text-blue-400",
+    moved_card: "text-blue-700 dark:text-blue-400",
     assigned: "text-amber-400",
-    commented: "text-neutral-400",
-    imported: "text-emerald-400",
-    edited_field: "text-violet-400",
-    approved_user: "text-emerald-400",
-    rejected_user: "text-red-400",
-    requested_access: "text-yellow-400",
+    commented: "text-gray-600 dark:text-neutral-400",
+    imported: "text-emerald-700 dark:text-emerald-400",
+    edited_field: "text-violet-700 dark:text-violet-400",
+    approved_user: "text-emerald-700 dark:text-emerald-400",
+    rejected_user: "text-red-700 dark:text-red-400",
+    requested_access: "text-yellow-700 dark:text-yellow-400",
   };
 
   return (
-    <tr className="border-b border-neutral-800 hover:bg-neutral-900/50">
-      <td className="px-4 py-3 text-xs text-neutral-600 whitespace-nowrap">
+    <tr className="border-b border-gray-200 dark:border-neutral-800 hover:bg-white dark:hover:bg-neutral-900/50">
+      <td className="px-4 py-3 text-xs text-gray-400 dark:text-neutral-600 whitespace-nowrap">
         {new Date(log.created_at).toLocaleString("en-GB", {
           day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
         })}
       </td>
-      <td className="px-4 py-3 text-sm text-neutral-300">{log.actor_email}</td>
-      <td className={`px-4 py-3 text-sm font-medium ${actionColors[log.action] ?? "text-neutral-400"}`}>
+      <td className="px-4 py-3 text-sm text-gray-700 dark:text-neutral-300">{log.actor_email}</td>
+      <td className={`px-4 py-3 text-sm font-medium ${actionColors[log.action] ?? "text-gray-600 dark:text-neutral-400"}`}>
         {log.action.replace(/_/g, " ")}
       </td>
-      <td className="px-4 py-3 text-xs text-neutral-600">
+      <td className="px-4 py-3 text-xs text-gray-400 dark:text-neutral-600">
         {log.target_type ?? "—"}
       </td>
-      <td className="px-4 py-3 text-xs text-neutral-600 max-w-[200px] truncate">
+      <td className="px-4 py-3 text-xs text-gray-400 dark:text-neutral-600 max-w-[200px] truncate">
         {log.new_value ? JSON.stringify(log.new_value) : "—"}
       </td>
     </tr>
@@ -164,11 +164,11 @@ function ColumnAssignmentsTab() {
 
       {/* Module selector */}
       <div className="flex items-center gap-3">
-        <label className="text-sm text-neutral-400 font-medium">Module</label>
+        <label className="text-sm text-gray-600 dark:text-neutral-400 font-medium">Module</label>
         <select
           value={selectedModule || moduleSlug}
           onChange={(e) => setSelectedModule(e.target.value)}
-          className="px-3 py-1.5 bg-neutral-900 border border-neutral-700 rounded-lg text-sm text-neutral-200 focus:outline-none focus:border-amber-600"
+          className="px-3 py-1.5 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg text-sm text-gray-800 dark:text-neutral-200 focus:outline-none focus:border-amber-600"
         >
           {moduleChoices.map((m) => (
             <option key={m.slug} value={m.slug}>{m.name || m.slug}</option>
@@ -183,14 +183,14 @@ function ColumnAssignmentsTab() {
             Column Access Requests
             <span className="px-1.5 py-0.5 rounded-full bg-amber-600 text-[10px] text-white">{pendingRequests.length}</span>
           </h2>
-          <div className="overflow-x-auto rounded-xl border border-neutral-800">
+          <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-neutral-800">
             <table className="w-full">
-              <thead className="bg-neutral-900/80 border-b border-neutral-800">
+              <thead className="bg-white dark:bg-neutral-900/80 border-b border-gray-200 dark:border-neutral-800">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">User</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Column</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Reason</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Actions</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-neutral-500 uppercase tracking-wide">User</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-neutral-500 uppercase tracking-wide">Column</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-neutral-500 uppercase tracking-wide">Reason</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-neutral-500 uppercase tracking-wide">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -199,10 +199,10 @@ function ColumnAssignmentsTab() {
                     ? (statuses.find((s) => s.id === r.status_id)?.name ?? r.status_id)
                     : "All columns";
                   return (
-                    <tr key={r.id} className="border-b border-neutral-800 hover:bg-neutral-900/50">
-                      <td className="px-4 py-3 text-sm text-neutral-200">{r.user_email}</td>
-                      <td className="px-4 py-3 text-sm text-neutral-400">{statusName}</td>
-                      <td className="px-4 py-3 text-xs text-neutral-500 max-w-[200px] truncate">{r.reason ?? "—"}</td>
+                    <tr key={r.id} className="border-b border-gray-200 dark:border-neutral-800 hover:bg-white dark:hover:bg-neutral-900/50">
+                      <td className="px-4 py-3 text-sm text-gray-800 dark:text-neutral-200">{r.user_email}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-neutral-400">{statusName}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500 dark:text-neutral-500 max-w-[200px] truncate">{r.reason ?? "—"}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <button
@@ -215,7 +215,7 @@ function ColumnAssignmentsTab() {
                           <button
                             onClick={() => reviewRequest.mutate({ id: r.id, status: "rejected" })}
                             disabled={reviewRequest.isPending}
-                            className="flex items-center gap-1 px-3 py-1 rounded-md bg-red-900/60 text-xs text-red-300 hover:bg-red-800 disabled:opacity-50 transition-colors border border-red-800"
+                            className="flex items-center gap-1 px-3 py-1 rounded-md bg-red-100 dark:bg-red-900/60 text-xs text-red-700 dark:text-red-300 hover:bg-red-800 disabled:opacity-50 transition-colors border border-red-200 dark:border-red-800"
                           >
                             <ShieldOff className="size-3" /> Reject
                           </button>
@@ -232,19 +232,19 @@ function ColumnAssignmentsTab() {
 
       {/* Current assignments */}
       <div>
-        <h2 className="text-sm font-semibold text-neutral-300 mb-3">Current Assignments</h2>
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-neutral-300 mb-3">Current Assignments</h2>
 
         {/* Add form */}
-        <div className="flex flex-wrap items-end gap-3 mb-4 p-4 bg-neutral-900/50 rounded-xl border border-neutral-800">
+        <div className="flex flex-wrap items-end gap-3 mb-4 p-4 bg-white dark:bg-neutral-900/50 rounded-xl border border-gray-200 dark:border-neutral-800">
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-neutral-500">User email</label>
+            <label className="text-xs text-gray-500 dark:text-neutral-500">User email</label>
             <input
               type="email"
               list="approved-emails"
               value={newEmail}
               onChange={(e) => setNewEmail(e.target.value)}
               placeholder="user@example.com"
-              className="px-3 py-1.5 bg-neutral-900 border border-neutral-700 rounded-lg text-sm text-neutral-200 placeholder:text-neutral-600 focus:outline-none focus:border-amber-600 w-52"
+              className="px-3 py-1.5 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg text-sm text-gray-800 dark:text-neutral-200 placeholder:text-gray-400 dark:placeholder:text-neutral-600 focus:outline-none focus:border-amber-600 w-52"
             />
             <datalist id="approved-emails">
               {allUsers.map((u) => <option key={u.id} value={u.email} />)}
@@ -252,11 +252,11 @@ function ColumnAssignmentsTab() {
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-neutral-500">Column</label>
+            <label className="text-xs text-gray-500 dark:text-neutral-500">Column</label>
             <select
               value={newStatusId}
               onChange={(e) => setNewStatusId(e.target.value)}
-              className="px-3 py-1.5 bg-neutral-900 border border-neutral-700 rounded-lg text-sm text-neutral-200 focus:outline-none focus:border-amber-600"
+              className="px-3 py-1.5 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg text-sm text-gray-800 dark:text-neutral-200 focus:outline-none focus:border-amber-600"
             >
               <option value="__all__">All columns</option>
               {statuses.map((s) => (
@@ -266,7 +266,7 @@ function ColumnAssignmentsTab() {
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-xs text-neutral-500">Permissions</label>
+            <label className="text-xs text-gray-500 dark:text-neutral-500">Permissions</label>
             <div className="flex items-center gap-3">
               {(["can_edit", "can_move", "can_assign"] as const).map((flag) => {
                 const checked = flag === "can_edit" ? newCanEdit : flag === "can_move" ? newCanMove : newCanAssign;
@@ -279,7 +279,7 @@ function ColumnAssignmentsTab() {
                       onChange={(e) => setter(e.target.checked)}
                       className="accent-amber-500"
                     />
-                    <span className="text-xs text-neutral-400">{flag.replace("can_", "")}</span>
+                    <span className="text-xs text-gray-600 dark:text-neutral-400">{flag.replace("can_", "")}</span>
                   </label>
                 );
               })}
@@ -296,23 +296,23 @@ function ColumnAssignmentsTab() {
           </button>
         </div>
         {assignError && (
-          <p className="text-sm text-red-400 mb-3">Error: {assignError}</p>
+          <p className="text-sm text-red-700 dark:text-red-400 mb-3">Error: {assignError}</p>
         )}
 
         {loadingAssign ? (
-          <div className="flex items-center gap-2 py-6 text-neutral-500 text-sm">
+          <div className="flex items-center gap-2 py-6 text-gray-500 dark:text-neutral-500 text-sm">
             <Loader2 className="size-4 animate-spin" /> Loading…
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-neutral-800">
+          <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-neutral-800">
             <table className="w-full">
-              <thead className="bg-neutral-900/80 border-b border-neutral-800">
+              <thead className="bg-white dark:bg-neutral-900/80 border-b border-gray-200 dark:border-neutral-800">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">User</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Column</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-neutral-500 uppercase tracking-wide">Edit</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-neutral-500 uppercase tracking-wide">Move</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-neutral-500 uppercase tracking-wide">Assign</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-neutral-500 uppercase tracking-wide">User</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-neutral-500 uppercase tracking-wide">Column</th>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-neutral-500 uppercase tracking-wide">Edit</th>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-neutral-500 uppercase tracking-wide">Move</th>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-neutral-500 uppercase tracking-wide">Assign</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
@@ -320,16 +320,16 @@ function ColumnAssignmentsTab() {
                 {assignments.map((a) => {
                   const statusName = a.status_id
                     ? (statuses.find((s) => s.id === a.status_id)?.name ?? a.status_id)
-                    : <span className="text-neutral-500 italic">All columns</span>;
+                    : <span className="text-gray-500 dark:text-neutral-500 italic">All columns</span>;
                   const Tick = ({ v }: { v: boolean }) => (
-                    <span className={v ? "text-emerald-400" : "text-neutral-700"}>
+                    <span className={v ? "text-emerald-700 dark:text-emerald-400" : "text-gray-300 dark:text-neutral-700"}>
                       {v ? <CheckCircle className="size-4 mx-auto" /> : <XCircle className="size-4 mx-auto" />}
                     </span>
                   );
                   return (
-                    <tr key={a.id} className="border-b border-neutral-800 hover:bg-neutral-900/50">
-                      <td className="px-4 py-3 text-sm text-neutral-200">{a.user_email}</td>
-                      <td className="px-4 py-3 text-sm text-neutral-400">{statusName}</td>
+                    <tr key={a.id} className="border-b border-gray-200 dark:border-neutral-800 hover:bg-white dark:hover:bg-neutral-900/50">
+                      <td className="px-4 py-3 text-sm text-gray-800 dark:text-neutral-200">{a.user_email}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-neutral-400">{statusName}</td>
                       <td className="px-4 py-3 text-center"><Tick v={a.can_edit} /></td>
                       <td className="px-4 py-3 text-center"><Tick v={a.can_move} /></td>
                       <td className="px-4 py-3 text-center"><Tick v={a.can_assign} /></td>
@@ -337,7 +337,7 @@ function ColumnAssignmentsTab() {
                         <button
                           onClick={() => deleteAssign.mutate({ id: a.id, moduleSlug })}
                           disabled={deleteAssign.isPending}
-                          className="p-1 rounded hover:bg-red-900/40 text-neutral-600 hover:text-red-400 transition-colors"
+                          className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/40 text-gray-400 dark:text-neutral-600 hover:text-red-700 dark:hover:text-red-400 transition-colors"
                         >
                           <Trash2 className="size-3.5" />
                         </button>
@@ -347,7 +347,7 @@ function ColumnAssignmentsTab() {
                 })}
                 {assignments.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-neutral-600">
+                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400 dark:text-neutral-600">
                       No assignments yet. Add one above.
                     </td>
                   </tr>
@@ -467,9 +467,9 @@ function CardDisplayTab() {
 
   return (
     <div className="max-w-3xl">
-      <p className="text-sm text-neutral-400 mb-4">
+      <p className="text-sm text-gray-600 dark:text-neutral-400 mb-4">
         Choose which fields appear as chips on the board cards for each module. Applies to all users
-        (individual users can still override locally via the board&apos;s <span className="text-neutral-300">View</span> panel).
+        (individual users can still override locally via the board&apos;s <span className="text-gray-700 dark:text-neutral-300">View</span> panel).
       </p>
 
       <div className="flex items-center gap-2 mb-5">
@@ -480,7 +480,7 @@ function CardDisplayTab() {
             className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
               slug === s
                 ? "bg-amber-500/15 border-amber-500/40 text-amber-300"
-                : "bg-neutral-900 border-neutral-700 text-neutral-400 hover:border-neutral-600"
+                : "bg-white dark:bg-neutral-900 border-gray-300 dark:border-neutral-700 text-gray-600 dark:text-neutral-400 hover:border-gray-400 dark:hover:border-neutral-600"
             }`}
           >
             {s}
@@ -488,8 +488,8 @@ function CardDisplayTab() {
         ))}
       </div>
 
-      <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-4 mb-4">
-        <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">Card chips ({fields.length})</p>
+      <div className="rounded-xl border border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/50 p-4 mb-4">
+        <p className="text-xs font-semibold text-gray-600 dark:text-neutral-400 uppercase tracking-wider mb-3">Card chips ({fields.length})</p>
         <div className="flex flex-wrap gap-1.5">
           {CARD_FIELD_OPTIONS.map(({ key, label }) => {
             const on = fields.includes(key);
@@ -500,7 +500,7 @@ function CardDisplayTab() {
                 className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
                   on
                     ? "bg-amber-500 border-amber-500 text-white"
-                    : "bg-neutral-900 border-neutral-700 text-neutral-400 hover:border-amber-600/60"
+                    : "bg-white dark:bg-neutral-900 border-gray-300 dark:border-neutral-700 text-gray-600 dark:text-neutral-400 hover:border-amber-600/60"
                 }`}
               >
                 {label}
@@ -510,18 +510,18 @@ function CardDisplayTab() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-4 mb-5">
-        <label className="block text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-2">Unique key field</label>
+      <div className="rounded-xl border border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/50 p-4 mb-5">
+        <label className="block text-xs font-semibold text-gray-600 dark:text-neutral-400 uppercase tracking-wider mb-2">Unique key field</label>
         <select
           value={uniqueKey}
           onChange={(e) => { setUniqueKey(e.target.value); setSaved(false); }}
-          className="px-3 py-1.5 bg-neutral-900 border border-neutral-700 rounded-lg text-sm text-neutral-200 focus:outline-none focus:border-amber-600"
+          className="px-3 py-1.5 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg text-sm text-gray-800 dark:text-neutral-200 focus:outline-none focus:border-amber-600"
         >
           {[{ key: "wo", label: "WO Number" }, ...CARD_FIELD_OPTIONS].map(({ key, label }) => (
             <option key={key} value={key}>{label}</option>
           ))}
         </select>
-        <p className="text-[11px] text-neutral-600 mt-1.5">Used for dedup on import and as the card&apos;s primary identifier.</p>
+        <p className="text-[11px] text-gray-400 dark:text-neutral-600 mt-1.5">Used for dedup on import and as the card&apos;s primary identifier.</p>
       </div>
 
       <div className="flex items-center gap-3">
@@ -533,8 +533,8 @@ function CardDisplayTab() {
           {update.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
           Save for {slug}
         </button>
-        {saved && <span className="flex items-center gap-1 text-sm text-emerald-400"><CheckCircle2 className="size-4" /> Saved</span>}
-        {update.isError && <span className="text-sm text-red-400">Failed — admin only.</span>}
+        {saved && <span className="flex items-center gap-1 text-sm text-emerald-700 dark:text-emerald-400"><CheckCircle2 className="size-4" /> Saved</span>}
+        {update.isError && <span className="text-sm text-red-700 dark:text-red-400">Failed — admin only.</span>}
       </div>
     </div>
   );
@@ -598,15 +598,15 @@ function ColumnRulesTab() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-[15px] font-semibold text-neutral-100">Column Rules</h2>
-          <p className="text-[12px] text-neutral-500 mt-0.5">
+          <h2 className="text-[15px] font-semibold text-gray-900 dark:text-neutral-100">Column Rules</h2>
+          <p className="text-[12px] text-gray-500 dark:text-neutral-500 mt-0.5">
             Check the fields that must be filled before a card auto-advances to the next column.
           </p>
         </div>
         <select
           value={selectedModule}
           onChange={(e) => setSelectedModule(e.target.value)}
-          className="px-3 py-1.5 bg-neutral-900 border border-neutral-700 rounded-lg text-sm text-neutral-300 focus:outline-none focus:border-amber-600"
+          className="px-3 py-1.5 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg text-sm text-gray-700 dark:text-neutral-300 focus:outline-none focus:border-amber-600"
         >
           {MODULE_SLUGS.map((s) => (
             <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
@@ -615,7 +615,7 @@ function ColumnRulesTab() {
       </div>
 
       {isLoading ? (
-        <div className="flex items-center gap-2 text-neutral-500 py-8">
+        <div className="flex items-center gap-2 text-gray-500 dark:text-neutral-500 py-8">
           <Loader2 className="size-4 animate-spin" /> Loading…
         </div>
       ) : (
@@ -626,26 +626,26 @@ function ColumnRulesTab() {
             const isOpen = openStage === stageName;
 
             return (
-              <div key={stageName} className="rounded-xl border border-neutral-800 overflow-hidden">
+              <div key={stageName} className="rounded-xl border border-gray-200 dark:border-neutral-800 overflow-hidden">
                 {/* Accordion header */}
                 <button
                   onClick={() => setOpenStage(isOpen ? null : stageName)}
-                  className="flex items-center justify-between w-full px-4 py-3 bg-neutral-900 hover:bg-neutral-900/80 transition-colors text-left"
+                  className="flex items-center justify-between w-full px-4 py-3 bg-white dark:bg-neutral-900 hover:bg-white dark:hover:bg-neutral-900/80 transition-colors text-left"
                 >
                   <div className="flex items-center gap-3">
-                    <span className="text-[13px] font-medium text-neutral-200">{stageName}</span>
+                    <span className="text-[13px] font-medium text-gray-800 dark:text-neutral-200">{stageName}</span>
                     {count > 0 && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-600/20 text-amber-400 border border-amber-600/30 font-medium">
                         {count} required
                       </span>
                     )}
                   </div>
-                  <span className="text-neutral-600 text-xs">{isOpen ? "▲" : "▼"}</span>
+                  <span className="text-gray-400 dark:text-neutral-600 text-xs">{isOpen ? "▲" : "▼"}</span>
                 </button>
 
                 {/* Accordion body */}
                 {isOpen && (
-                  <div className="px-4 py-4 bg-neutral-950 grid grid-cols-2 gap-x-6 gap-y-2.5">
+                  <div className="px-4 py-4 bg-gray-50 dark:bg-neutral-950 grid grid-cols-2 gap-x-6 gap-y-2.5">
                     {ALL_FIELD_KEYS.map(({ key, label }) => {
                       const checked = isRequired(stageName, key);
                       const busy = upsert.isPending || remove.isPending;
@@ -660,12 +660,12 @@ function ColumnRulesTab() {
                             className={`size-4 rounded flex items-center justify-center flex-shrink-0 border transition-colors ${
                               checked
                                 ? "bg-amber-500 border-amber-500 text-white"
-                                : "bg-neutral-900 border-neutral-700 group-hover:border-amber-600/60"
+                                : "bg-white dark:bg-neutral-900 border-gray-300 dark:border-neutral-700 group-hover:border-amber-600/60"
                             }`}
                           >
                             {checked && <Check className="size-2.5" />}
                           </button>
-                          <span className={`text-[12px] transition-colors ${checked ? "text-neutral-200 font-medium" : "text-neutral-500 group-hover:text-neutral-400"}`}>
+                          <span className={`text-[12px] transition-colors ${checked ? "text-gray-800 dark:text-neutral-200 font-medium" : "text-gray-500 dark:text-neutral-500 group-hover:text-gray-600 dark:group-hover:text-neutral-400"}`}>
                             {label}
                           </span>
                         </label>
@@ -680,10 +680,10 @@ function ColumnRulesTab() {
       )}
 
       {/* ── Apply rules to cards ──────────────────────────────────────── */}
-      <div className="rounded-xl border border-neutral-700 bg-neutral-900/50 p-4 space-y-3 mt-6">
+      <div className="rounded-xl border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900/50 p-4 space-y-3 mt-6">
         <div>
-          <p className="text-sm font-semibold text-neutral-200">Apply rules to existing cards</p>
-          <p className="text-xs text-neutral-500 mt-0.5">
+          <p className="text-sm font-semibold text-gray-800 dark:text-neutral-200">Apply rules to existing cards</p>
+          <p className="text-xs text-gray-500 dark:text-neutral-500 mt-0.5">
             Each card is placed in the highest column whose cumulative required fields are all filled.
             Rules are progressive — column N requires all fields from columns 1 through N.
             If a field is missing, the card lands in the column before it.
@@ -701,26 +701,26 @@ function ColumnRulesTab() {
           <button
             onClick={() => runApply(true)}
             disabled={applyingModule || applyingAll}
-            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-neutral-700 hover:bg-neutral-600 disabled:opacity-50 text-white text-sm font-medium transition-colors border border-neutral-600"
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-gray-200 dark:bg-neutral-700 hover:bg-gray-300 dark:hover:bg-neutral-600 disabled:opacity-50 text-white text-sm font-medium transition-colors border border-gray-400 dark:border-neutral-600"
           >
             {applyingAll ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
             {applyingAll ? "Applying all…" : "Apply to All Countries"}
           </button>
         </div>
-        {applyError && <p className="text-sm text-red-400">Error: {applyError}</p>}
+        {applyError && <p className="text-sm text-red-700 dark:text-red-400">Error: {applyError}</p>}
         {applyResult && (
           <div className="space-y-2">
-            <p className="text-sm text-emerald-400">
+            <p className="text-sm text-emerald-700 dark:text-emerald-400">
               ✓ Moved {applyResult.moved} card{applyResult.moved !== 1 ? "s" : ""}
               {applyResult.moved === 0 && " — all cards already in correct column"}
             </p>
             {applyResult.details.length > 0 && (
-              <div className="max-h-56 overflow-y-auto rounded-lg border border-neutral-800 divide-y divide-neutral-800">
+              <div className="max-h-56 overflow-y-auto rounded-lg border border-gray-200 dark:border-neutral-800 divide-y divide-gray-200 dark:divide-neutral-800">
                 {applyResult.details.map((d, i) => (
                   <div key={i} className="px-3 py-2 text-xs flex items-center gap-2">
-                    <span className="text-neutral-200 font-medium">{d.wo_number}</span>
-                    <span className="text-neutral-600">{d.from}</span>
-                    <span className="text-neutral-500">→</span>
+                    <span className="text-gray-800 dark:text-neutral-200 font-medium">{d.wo_number}</span>
+                    <span className="text-gray-400 dark:text-neutral-600">{d.from}</span>
+                    <span className="text-gray-500 dark:text-neutral-500">→</span>
                     <span className="text-amber-400">{d.to}</span>
                   </div>
                 ))}
@@ -745,38 +745,38 @@ interface AuditResult {
 function VesselViolationRow({ v }: { v: VesselViolation }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="rounded-lg border border-orange-900/40 overflow-hidden">
+    <div className="rounded-lg border border-orange-200 dark:border-orange-900/40 overflow-hidden">
       {/* summary row */}
       <button
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-2 bg-orange-950/30 hover:bg-orange-950/50 px-3 py-2 text-xs transition-colors"
+        className="w-full flex items-center gap-2 bg-orange-50 dark:bg-orange-950/30 hover:bg-orange-50 dark:hover:bg-orange-950/50 px-3 py-2 text-xs transition-colors"
       >
-        <AlertTriangle className="size-3.5 text-orange-400 flex-shrink-0" />
-        <span className="font-medium text-orange-300 text-left flex-1">{v.vesselName}</span>
-        <span className="tabular-nums font-semibold text-orange-400">{v.containerCount}</span>
+        <AlertTriangle className="size-3.5 text-orange-700 dark:text-orange-400 flex-shrink-0" />
+        <span className="font-medium text-orange-700 dark:text-orange-300 text-left flex-1">{v.vesselName}</span>
+        <span className="tabular-nums font-semibold text-orange-700 dark:text-orange-400">{v.containerCount}</span>
         <span className="text-orange-600 mr-1">/ 25</span>
         <ChevronDown className={`size-3.5 text-orange-500 transition-transform flex-shrink-0 ${open ? "rotate-180" : ""}`} />
       </button>
 
       {/* expanded WO list */}
       {open && (
-        <div className="bg-neutral-950/60 border-t border-orange-900/30 divide-y divide-neutral-800/50">
+        <div className="bg-gray-50 dark:bg-neutral-950/60 border-t border-orange-200 dark:border-orange-900/30 divide-y divide-gray-200 dark:divide-neutral-800/50">
           {v.workOrders.map(wo => (
             <a
               key={wo.id}
               href={`/bajaj/work-orders/${wo.id}`}
-              className="flex items-center gap-3 px-3 py-2 hover:bg-orange-950/20 transition-colors group"
+              className="flex items-center gap-3 px-3 py-2 hover:bg-orange-50 dark:hover:bg-orange-950/20 transition-colors group"
             >
-              <span className="text-[11px] font-mono text-neutral-400 group-hover:text-orange-300 transition-colors">
+              <span className="text-[11px] font-mono text-gray-600 dark:text-neutral-400 group-hover:text-orange-700 dark:group-hover:text-orange-300 transition-colors">
                 WO {wo.wo}
               </span>
-              <span className="text-[11px] text-neutral-600 flex-1 truncate">
+              <span className="text-[11px] text-gray-400 dark:text-neutral-600 flex-1 truncate">
                 {wo.containers.length} container{wo.containers.length !== 1 ? "s" : ""}
                 {wo.containers.length > 0 && (
-                  <span className="text-neutral-700 ml-1">· {wo.containers.slice(0, 3).join(", ")}{wo.containers.length > 3 ? "…" : ""}</span>
+                  <span className="text-gray-300 dark:text-neutral-700 ml-1">· {wo.containers.slice(0, 3).join(", ")}{wo.containers.length > 3 ? "…" : ""}</span>
                 )}
               </span>
-              <ExternalLink className="size-3 text-neutral-700 group-hover:text-orange-400 transition-colors flex-shrink-0" />
+              <ExternalLink className="size-3 text-gray-300 dark:text-neutral-700 group-hover:text-orange-700 dark:group-hover:text-orange-400 transition-colors flex-shrink-0" />
             </a>
           ))}
         </div>
@@ -804,23 +804,23 @@ function ViolationsAuditPanel() {
   const total = (result?.containerConflicts.length ?? 0) + (result?.vesselViolations.length ?? 0);
 
   return (
-    <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-5 space-y-4">
+    <div className="rounded-xl border border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/60 p-5 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-semibold text-neutral-100">Existing Violations Audit</p>
-          <p className="text-xs text-neutral-500 mt-0.5">Sri Lanka · LINKS only — container conflicts &amp; vessel over-limit</p>
+          <p className="text-sm font-semibold text-gray-900 dark:text-neutral-100">Existing Violations Audit</p>
+          <p className="text-xs text-gray-500 dark:text-neutral-500 mt-0.5">Sri Lanka · LINKS only — container conflicts &amp; vessel over-limit</p>
         </div>
         <button onClick={run} disabled={loading}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-xs font-medium text-neutral-300 disabled:opacity-50 transition-all">
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-neutral-800 hover:bg-gray-200 dark:hover:bg-neutral-700 text-xs font-medium text-gray-700 dark:text-neutral-300 disabled:opacity-50 transition-all">
           {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
           Run Audit
         </button>
       </div>
 
-      {err && <p className="text-xs text-red-400 bg-red-950/40 border border-red-900/50 px-3 py-2 rounded-lg">{err}</p>}
+      {err && <p className="text-xs text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 px-3 py-2 rounded-lg">{err}</p>}
 
       {result && total === 0 && (
-        <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-950/40 border border-emerald-900/50 px-3 py-2 rounded-lg">
+        <div className="flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 px-3 py-2 rounded-lg">
           <CheckCircle2 className="size-3.5" /> No violations — all LINKS Sri Lanka data is clean.
         </div>
       )}
@@ -828,22 +828,22 @@ function ViolationsAuditPanel() {
       {/* Container conflicts */}
       {(result?.containerConflicts.length ?? 0) > 0 && (
         <div>
-          <p className="text-[11px] font-semibold text-neutral-500 uppercase tracking-widest mb-2">
+          <p className="text-[11px] font-semibold text-gray-500 dark:text-neutral-500 uppercase tracking-widest mb-2">
             Spare/Frame Container Conflicts ({result!.containerConflicts.length})
           </p>
           <div className="space-y-1.5 max-h-56 overflow-y-auto">
             {result!.containerConflicts.map((c, i) => (
-              <div key={i} className="rounded-lg border border-red-900/40 bg-red-950/30 px-3 py-2 text-xs">
+              <div key={i} className="rounded-lg border border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-950/30 px-3 py-2 text-xs">
                 <div className="flex items-start gap-2">
-                  <AlertTriangle className="size-3.5 text-red-400 flex-shrink-0 mt-0.5" />
+                  <AlertTriangle className="size-3.5 text-red-700 dark:text-red-400 flex-shrink-0 mt-0.5" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1 flex-wrap">
                       <a href={`/bajaj/work-orders/${c.woId}`}
-                        className="font-medium text-red-300 hover:text-red-200 hover:underline transition-colors">
+                        className="font-medium text-red-700 dark:text-red-300 hover:text-red-700 dark:hover:text-red-200 hover:underline transition-colors">
                         WO {c.woA}
                       </a>
                       <span className="text-red-600">↔</span>
-                      <span className="font-medium text-red-300">WO {c.woB}</span>
+                      <span className="font-medium text-red-700 dark:text-red-300">WO {c.woB}</span>
                     </div>
                     <p className="text-red-500 mt-0.5 truncate">
                       Container: {c.containers.join(", ")} · {c.assyA} vs {c.assyB}
@@ -859,7 +859,7 @@ function ViolationsAuditPanel() {
       {/* Vessel violations — expandable */}
       {(result?.vesselViolations.length ?? 0) > 0 && (
         <div>
-          <p className="text-[11px] font-semibold text-neutral-500 uppercase tracking-widest mb-2">
+          <p className="text-[11px] font-semibold text-gray-500 dark:text-neutral-500 uppercase tracking-widest mb-2">
             Vessels Over 25 Containers ({result!.vesselViolations.length}) · click to expand
           </p>
           <div className="space-y-1.5">
@@ -910,34 +910,34 @@ function RepairModulesPanel() {
   }
 
   return (
-    <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-5 space-y-4">
+    <div className="rounded-xl border border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/60 p-5 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-semibold text-neutral-100">Country Repair</p>
-          <p className="text-xs text-neutral-500 mt-0.5">Fix NULL / misspelled country values per module</p>
+          <p className="text-sm font-semibold text-gray-900 dark:text-neutral-100">Country Repair</p>
+          <p className="text-xs text-gray-500 dark:text-neutral-500 mt-0.5">Fix NULL / misspelled country values per module</p>
         </div>
         <button onClick={() => setDryRun(d => !d)}
-          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${dryRun ? "bg-neutral-700" : "bg-amber-500"}`}>
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${dryRun ? "bg-gray-200 dark:bg-neutral-700" : "bg-amber-500"}`}>
           <span className={`inline-block size-4 rounded-full bg-white shadow transition-transform ${dryRun ? "translate-x-1" : "translate-x-6"}`} />
         </button>
       </div>
-      <p className="text-xs text-neutral-500">{dryRun ? "Dry run mode — no writes" : "⚠ Live mode — will write to DB"}</p>
+      <p className="text-xs text-gray-500 dark:text-neutral-500">{dryRun ? "Dry run mode — no writes" : "⚠ Live mode — will write to DB"}</p>
       <div className="grid grid-cols-2 gap-3">
         {REPAIR_MODULES.map(m => {
           const st = states[m.slug];
           return (
-            <div key={m.slug} className="rounded-lg border border-neutral-800 bg-neutral-900 p-3 space-y-2">
+            <div key={m.slug} className="rounded-lg border border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-3 space-y-2">
               <div>
-                <p className="text-xs font-semibold text-neutral-200">{m.label}</p>
-                <p className="text-[10px] text-neutral-600">&quot;{m.country}&quot;</p>
+                <p className="text-xs font-semibold text-gray-800 dark:text-neutral-200">{m.label}</p>
+                <p className="text-[10px] text-gray-400 dark:text-neutral-600">&quot;{m.country}&quot;</p>
               </div>
               {st.result && (
-                <p className={`text-[10px] rounded px-2 py-1 ${st.status === "error" ? "bg-red-950/40 text-red-400" : "bg-emerald-950/40 text-emerald-400"}`}>
+                <p className={`text-[10px] rounded px-2 py-1 ${st.status === "error" ? "bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400" : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400"}`}>
                   {st.result}
                 </p>
               )}
               <button onClick={() => runRepair(m.slug)} disabled={st.status === "running"}
-                className={`w-full flex items-center justify-center gap-1.5 py-1.5 rounded text-[11px] font-medium transition-all disabled:opacity-50 ${dryRun ? "bg-neutral-800 hover:bg-neutral-700 text-neutral-300" : "bg-amber-600 hover:bg-amber-500 text-white"}`}>
+                className={`w-full flex items-center justify-center gap-1.5 py-1.5 rounded text-[11px] font-medium transition-all disabled:opacity-50 ${dryRun ? "bg-gray-100 dark:bg-neutral-800 hover:bg-gray-200 dark:hover:bg-neutral-700 text-gray-700 dark:text-neutral-300" : "bg-amber-600 hover:bg-amber-500 text-white"}`}>
                 {st.status === "running" ? <><Loader2 className="size-3 animate-spin" />Running…</> : dryRun ? <><RefreshCw className="size-3" />Dry Run</> : <><Wrench className="size-3" />Run Repair</>}
               </button>
             </div>
@@ -1008,8 +1008,8 @@ function AutoProgressionTab() {
   return (
     <div className="max-w-2xl space-y-6">
       <div>
-        <h2 className="text-[15px] font-semibold text-neutral-100">Auto-Progression Rules</h2>
-        <p className="text-[12px] text-neutral-500 mt-1">
+        <h2 className="text-[15px] font-semibold text-gray-900 dark:text-neutral-100">Auto-Progression Rules</h2>
+        <p className="text-[12px] text-gray-500 dark:text-neutral-500 mt-1">
           When a field goes from empty → filled on save, the work order automatically
           advances to the target stage — but only if it hasn&apos;t already passed it.
         </p>
@@ -1017,43 +1017,43 @@ function AutoProgressionTab() {
 
       {/* Module selector */}
       <div className="flex items-center gap-3">
-        <label className="text-xs text-neutral-500 font-medium">Module</label>
+        <label className="text-xs text-gray-500 dark:text-neutral-500 font-medium">Module</label>
         <select value={selectedModule} onChange={e => setSelectedModule(e.target.value)}
-          className="px-3 py-1.5 bg-neutral-900 border border-neutral-700 rounded-lg text-sm text-neutral-200 focus:outline-none focus:border-amber-600">
+          className="px-3 py-1.5 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg text-sm text-gray-800 dark:text-neutral-200 focus:outline-none focus:border-amber-600">
           {MODULE_SLUGS_LABELS.map(m => <option key={m.slug} value={m.slug}>{m.label}</option>)}
         </select>
       </div>
 
       {/* Add rule form */}
-      <div className="p-4 rounded-xl border border-neutral-800 bg-neutral-900/50 space-y-4">
-        <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Add Rule</p>
+      <div className="p-4 rounded-xl border border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/50 space-y-4">
+        <p className="text-xs font-semibold text-gray-600 dark:text-neutral-400 uppercase tracking-wider">Add Rule</p>
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-neutral-500">Trigger field (data key)</label>
+            <label className="text-xs text-gray-500 dark:text-neutral-500">Trigger field (data key)</label>
             <input
               type="text"
               value={triggerField}
               onChange={e => setTriggerField(e.target.value)}
               placeholder="e.g. booking_no, sbno, blno"
-              className="px-3 py-1.5 bg-neutral-900 border border-neutral-700 rounded-lg text-sm text-neutral-200 placeholder:text-neutral-600 focus:outline-none focus:border-amber-600"
+              className="px-3 py-1.5 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg text-sm text-gray-800 dark:text-neutral-200 placeholder:text-gray-400 dark:placeholder:text-neutral-600 focus:outline-none focus:border-amber-600"
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-neutral-500">Move to stage</label>
+            <label className="text-xs text-gray-500 dark:text-neutral-500">Move to stage</label>
             <select value={targetStage} onChange={e => setTargetStage(e.target.value)}
-              className="px-3 py-1.5 bg-neutral-900 border border-neutral-700 rounded-lg text-sm text-neutral-200 focus:outline-none focus:border-amber-600">
+              className="px-3 py-1.5 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg text-sm text-gray-800 dark:text-neutral-200 focus:outline-none focus:border-amber-600">
               {LIFECYCLE_TARGETS.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-neutral-500">Description (optional)</label>
+          <label className="text-xs text-gray-500 dark:text-neutral-500">Description (optional)</label>
           <input
             type="text"
             value={description}
             onChange={e => setDescription(e.target.value)}
             placeholder="e.g. Booking number received → advance to Booking stage"
-            className="px-3 py-1.5 bg-neutral-900 border border-neutral-700 rounded-lg text-sm text-neutral-200 placeholder:text-neutral-600 focus:outline-none focus:border-amber-600 w-full"
+            className="px-3 py-1.5 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg text-sm text-gray-800 dark:text-neutral-200 placeholder:text-gray-400 dark:placeholder:text-neutral-600 focus:outline-none focus:border-amber-600 w-full"
           />
         </div>
         <button onClick={handleAdd} disabled={!triggerField.trim() || upsert.isPending}
@@ -1065,34 +1065,34 @@ function AutoProgressionTab() {
 
       {/* Rules list */}
       {isLoading ? (
-        <div className="flex items-center gap-2 text-neutral-500 text-sm py-4">
+        <div className="flex items-center gap-2 text-gray-500 dark:text-neutral-500 text-sm py-4">
           <Loader2 className="size-4 animate-spin" /> Loading…
         </div>
       ) : rules.length === 0 ? (
-        <p className="text-sm text-neutral-600 py-4">No auto-progression rules for this module yet.</p>
+        <p className="text-sm text-gray-400 dark:text-neutral-600 py-4">No auto-progression rules for this module yet.</p>
       ) : (
-        <div className="rounded-xl border border-neutral-800 overflow-hidden">
+        <div className="rounded-xl border border-gray-200 dark:border-neutral-800 overflow-hidden">
           <table className="w-full">
-            <thead className="bg-neutral-900/80 border-b border-neutral-800">
+            <thead className="bg-white dark:bg-neutral-900/80 border-b border-gray-200 dark:border-neutral-800">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Trigger field</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">→ Stage</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Description</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-neutral-500 uppercase tracking-wide">Trigger field</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-neutral-500 uppercase tracking-wide">→ Stage</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-neutral-500 uppercase tracking-wide">Description</th>
                 <th className="px-4 py-3 w-8" />
               </tr>
             </thead>
             <tbody>
               {rules.map(r => (
-                <tr key={r.id} className="border-b border-neutral-800 hover:bg-neutral-900/50">
+                <tr key={r.id} className="border-b border-gray-200 dark:border-neutral-800 hover:bg-white dark:hover:bg-neutral-900/50">
                   <td className="px-4 py-3">
-                    <code className="text-xs bg-neutral-800 text-amber-300 px-1.5 py-0.5 rounded">{r.trigger_field}</code>
+                    <code className="text-xs bg-gray-100 dark:bg-neutral-800 text-amber-300 px-1.5 py-0.5 rounded">{r.trigger_field}</code>
                   </td>
-                  <td className="px-4 py-3 text-sm text-neutral-300">{r.target_status_name}</td>
-                  <td className="px-4 py-3 text-xs text-neutral-500">{r.description ?? "—"}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700 dark:text-neutral-300">{r.target_status_name}</td>
+                  <td className="px-4 py-3 text-xs text-gray-500 dark:text-neutral-500">{r.description ?? "—"}</td>
                   <td className="px-4 py-3 text-right">
                     <button onClick={() => remove.mutate({ id: r.id, moduleSlug: selectedModule })}
                       disabled={remove.isPending}
-                      className="p-1 rounded hover:bg-red-900/40 text-neutral-600 hover:text-red-400 transition-colors">
+                      className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/40 text-gray-400 dark:text-neutral-600 hover:text-red-700 dark:hover:text-red-400 transition-colors">
                       <Trash2 className="size-3.5" />
                     </button>
                   </td>
@@ -1104,10 +1104,10 @@ function AutoProgressionTab() {
       )}
 
       {/* Apply to existing cards */}
-      <div className="rounded-xl border border-neutral-700 bg-neutral-900/50 p-4 space-y-3">
+      <div className="rounded-xl border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900/50 p-4 space-y-3">
         <div>
-          <p className="text-sm font-semibold text-neutral-200">Apply rules to existing cards</p>
-          <p className="text-xs text-neutral-500 mt-0.5">
+          <p className="text-sm font-semibold text-gray-800 dark:text-neutral-200">Apply rules to existing cards</p>
+          <p className="text-xs text-gray-500 dark:text-neutral-500 mt-0.5">
             Scans all cards in <span className="text-amber-400">{selectedModule}</span> and moves forward any whose trigger fields are already filled. Never moves backwards.
           </p>
         </div>
@@ -1119,19 +1119,19 @@ function AutoProgressionTab() {
           {applying ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
           {applying ? "Applying…" : "Apply to Existing Cards"}
         </button>
-        {applyError && <p className="text-sm text-red-400">Error: {applyError}</p>}
+        {applyError && <p className="text-sm text-red-700 dark:text-red-400">Error: {applyError}</p>}
         {applyResult && (
           <div className="space-y-2">
-            <p className="text-sm text-emerald-400">
+            <p className="text-sm text-emerald-700 dark:text-emerald-400">
               ✓ Moved {applyResult.moved} card{applyResult.moved !== 1 ? "s" : ""}
             </p>
             {applyResult.details.length > 0 && (
-              <div className="max-h-48 overflow-y-auto rounded-lg border border-neutral-800 divide-y divide-neutral-800">
+              <div className="max-h-48 overflow-y-auto rounded-lg border border-gray-200 dark:border-neutral-800 divide-y divide-gray-200 dark:divide-neutral-800">
                 {applyResult.details.map((d, i) => (
-                  <div key={i} className="px-3 py-2 text-xs text-neutral-400 flex items-center gap-2">
-                    <span className="text-neutral-200 font-medium">{d.wo_number}</span>
-                    <span className="text-neutral-600">{d.from}</span>
-                    <span className="text-neutral-500">→</span>
+                  <div key={i} className="px-3 py-2 text-xs text-gray-600 dark:text-neutral-400 flex items-center gap-2">
+                    <span className="text-gray-800 dark:text-neutral-200 font-medium">{d.wo_number}</span>
+                    <span className="text-gray-400 dark:text-neutral-600">{d.from}</span>
+                    <span className="text-gray-500 dark:text-neutral-500">→</span>
                     <span className="text-amber-400">{d.to}</span>
                   </div>
                 ))}
@@ -1141,8 +1141,8 @@ function AutoProgressionTab() {
         )}
       </div>
 
-      <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 px-4 py-3 text-xs text-neutral-500 space-y-1">
-        <p className="font-semibold text-neutral-400">⚠ Notes</p>
+      <div className="rounded-xl border border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/40 px-4 py-3 text-xs text-gray-500 dark:text-neutral-500 space-y-1">
+        <p className="font-semibold text-gray-600 dark:text-neutral-400">⚠ Notes</p>
         <p>• LINKS invoice_no → Completed is hard-coded and always active (not listed here).</p>
         <p>• A WO never moves backwards — if it&apos;s already at or past the target stage, the rule is skipped.</p>
         <p>• If multiple rules fire on the same save, the WO moves to the highest-order stage triggered.</p>
@@ -1166,20 +1166,20 @@ const BIZ_RULES: RuleSection[] = [
   {
     icon: <Lock className="size-4" />,
     title: "Hard Blocks — Cannot be overridden",
-    color: "text-red-400",
-    borderColor: "border-red-900/50",
+    color: "text-red-700 dark:text-red-400",
+    borderColor: "border-red-200 dark:border-red-900/50",
     rules: [
       {
         label: "Billing prerequisites",
         detail: "A work order cannot enter the Billing stage until BL Number, SB Number, and E-Document are all filled in. No override possible.",
         tag: "All modules",
-        tagColor: "bg-neutral-800 text-neutral-400",
+        tagColor: "bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-neutral-400",
       },
       {
         label: "HAZ container isolation",
         detail: "A work order marked as HAZ (hazardous cargo) cannot share a container number with any non-HAZ work order, and vice versa. Applies to all modules. No override possible.",
         tag: "All modules",
-        tagColor: "bg-neutral-800 text-neutral-400",
+        tagColor: "bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-neutral-400",
       },
     ],
   },
@@ -1193,13 +1193,13 @@ const BIZ_RULES: RuleSection[] = [
         label: "Spare parts + frames in same container",
         detail: "Spare parts (assy_config contains 'spare') and frame/SKD units (assy_config contains 'frame', 'skd', or 'f.k.d') cannot share the same container. User sees a warning and must confirm to override.",
         tag: "Sri Lanka · LINKS only",
-        tagColor: "bg-blue-950 text-blue-400",
+        tagColor: "bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-400",
       },
       {
         label: "More than 25 containers per vessel",
         detail: "A single vessel cannot carry more than 25 containers worth of LINKS Sri Lanka work orders. If adding a container would push the vessel over 25, the user is warned and must confirm to override.",
         tag: "Sri Lanka · LINKS only",
-        tagColor: "bg-blue-950 text-blue-400",
+        tagColor: "bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-400",
       },
       {
         label: "Required fields gate (admin-configurable)",
@@ -1212,14 +1212,14 @@ const BIZ_RULES: RuleSection[] = [
   {
     icon: <Zap className="size-4" />,
     title: "Auto-Progressions — System moves the card automatically",
-    color: "text-emerald-400",
-    borderColor: "border-emerald-900/50",
+    color: "text-emerald-700 dark:text-emerald-400",
+    borderColor: "border-emerald-200 dark:border-emerald-900/50",
     rules: [
       {
         label: "LINKS invoice → Completed",
         detail: "When a work order with agent = LINKS has its Invoice Number field filled for the first time (was empty, now set), the system automatically moves it to the Completed stage.",
         tag: "Sri Lanka · LINKS only",
-        tagColor: "bg-blue-950 text-blue-400",
+        tagColor: "bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-400",
       },
       {
         label: "Admin-configurable field → stage",
@@ -1232,52 +1232,52 @@ const BIZ_RULES: RuleSection[] = [
   {
     icon: <Bell className="size-4" />,
     title: "Automated Alerts — Sent by email to assignees + superadmins",
-    color: "text-violet-400",
-    borderColor: "border-violet-900/50",
+    color: "text-violet-700 dark:text-violet-400",
+    borderColor: "border-violet-200 dark:border-violet-900/50",
     rules: [
       {
         label: "BL Release 48-hour overdue alert",
         detail: "If a work order has a Sailing Date set but no BL Number, and the sailing date was between 0–48 hours ago, an alert email is sent to the BL Release column assignees and all superadmins. Fires on every field save AND via hourly cron (Vercel Cron, 0 * * * *).",
         tag: "All modules",
-        tagColor: "bg-neutral-800 text-neutral-400",
+        tagColor: "bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-neutral-400",
       },
       {
         label: "SI Cutoff missed alert",
         detail: "If the SI Cutoff date has passed and the SI has not been filed (si_filed / sifiling / sifile fields all empty), an alert email is sent to the SI Filing column assignees and all superadmins. Deduped — fires at most once per work order per day. Fires on field save AND via daily cron (0 6 * * *, 6am UTC).",
         tag: "All modules",
-        tagColor: "bg-neutral-800 text-neutral-400",
+        tagColor: "bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-neutral-400",
       },
       {
         label: "Reminder system",
         detail: "Admins and operators can create manual reminders with a future due date, a message, and a recipient list. The reminder cron (30 3 * * *, 3:30am UTC) fires emails for all pending reminders whose due_at has passed. Reminders with a past due date are rejected at creation time.",
         tag: "All modules",
-        tagColor: "bg-neutral-800 text-neutral-400",
+        tagColor: "bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-neutral-400",
       },
     ],
   },
   {
     icon: <Users className="size-4" />,
     title: "Access & Roles",
-    color: "text-sky-400",
-    borderColor: "border-sky-900/50",
+    color: "text-sky-700 dark:text-sky-400",
+    borderColor: "border-sky-200 dark:border-sky-900/50",
     rules: [
       {
         label: "New user default role",
         detail: "When an admin approves a new user access request, the user is always granted the 'viewer' role by default — regardless of any previous DB value. Role can be upgraded manually after approval.",
         tag: "Security",
-        tagColor: "bg-red-950 text-red-400",
+        tagColor: "bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-400",
       },
       {
         label: "Admin page access guard",
         detail: "The Admin Panel is only accessible to users with role = 'admin' or 'superadmin' AND status = 'approved'. All other users are silently redirected to /bajaj/home. The nav link is also hidden for non-admins.",
         tag: "Security",
-        tagColor: "bg-red-950 text-red-400",
+        tagColor: "bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-400",
       },
       {
         label: "Superadmin-only role grants",
         detail: "Only a superadmin can grant the superadmin role to another user. Admins can only assign admin-or-below. This prevents privilege escalation.",
         tag: "Security",
-        tagColor: "bg-red-950 text-red-400",
+        tagColor: "bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-400",
       },
       {
         label: "Column auto-assignment",
@@ -1290,32 +1290,32 @@ const BIZ_RULES: RuleSection[] = [
   {
     icon: <Eye className="size-4" />,
     title: "Validations & Data Integrity",
-    color: "text-neutral-300",
-    borderColor: "border-neutral-700",
+    color: "text-gray-700 dark:text-neutral-300",
+    borderColor: "border-gray-300 dark:border-neutral-700",
     rules: [
       {
         label: "Reminder due date must be in the future",
         detail: "Creating a reminder with a due date in the past or equal to now is rejected with a 400 error at the API level.",
         tag: "All modules",
-        tagColor: "bg-neutral-800 text-neutral-400",
+        tagColor: "bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-neutral-400",
       },
       {
         label: "BL Release before Billing in lifecycle",
         detail: "The workflow lifecycle order is: Planning → Booking Request → Booking → Container Allocation → SI Filing → Custom Clearance → Gate Open → BL Release → Billing → Completed. BL Release (7) always comes before Billing (8).",
         tag: "All modules",
-        tagColor: "bg-neutral-800 text-neutral-400",
+        tagColor: "bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-neutral-400",
       },
       {
         label: "Violations audit (admin tool)",
         detail: "The Data tab provides a manual audit tool that scans all Sri Lanka LINKS work orders for: (1) spare/frame container conflicts, and (2) vessels with more than 25 containers. Results show expandable vessel rows with deep-links to each work order.",
         tag: "Sri Lanka · LINKS only",
-        tagColor: "bg-blue-950 text-blue-400",
+        tagColor: "bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-400",
       },
       {
         label: "Country field repair tool",
         detail: "The Data tab includes a repair utility that finds work orders with null or misspelled country values per module and normalises them to the canonical country name. Supports dry-run mode before writing.",
         tag: "Admin tool",
-        tagColor: "bg-neutral-800 text-neutral-400",
+        tagColor: "bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-neutral-400",
       },
     ],
   },
@@ -1325,11 +1325,11 @@ function BusinessRulesTab() {
   return (
     <div className="max-w-3xl space-y-6 pb-8">
       <div>
-        <h2 className="text-[15px] font-semibold text-neutral-100 flex items-center gap-2">
+        <h2 className="text-[15px] font-semibold text-gray-900 dark:text-neutral-100 flex items-center gap-2">
           <BookOpen className="size-4 text-amber-400" />
           Custom Business Rules — Reference
         </h2>
-        <p className="text-[12px] text-neutral-500 mt-1">
+        <p className="text-[12px] text-gray-500 dark:text-neutral-500 mt-1">
           Every rule enforced by the system. Read-only — for engineering changes, update <code className="text-amber-400/80">lib/bajaj/workflow.ts</code>.
         </p>
       </div>
@@ -1337,31 +1337,31 @@ function BusinessRulesTab() {
       {BIZ_RULES.map(section => (
         <div key={section.title} className={`rounded-xl border ${section.borderColor} overflow-hidden`}>
           {/* Section header */}
-          <div className="flex items-center gap-2.5 px-4 py-3 bg-neutral-900/80 border-b border-neutral-800">
+          <div className="flex items-center gap-2.5 px-4 py-3 bg-white dark:bg-neutral-900/80 border-b border-gray-200 dark:border-neutral-800">
             <span className={section.color}>{section.icon}</span>
             <span className={`text-[13px] font-semibold ${section.color}`}>{section.title}</span>
           </div>
 
           {/* Rules */}
-          <div className="divide-y divide-neutral-800/60">
+          <div className="divide-y divide-gray-200 dark:divide-neutral-800/60">
             {section.rules.map((rule, i) => (
-              <div key={i} className="px-4 py-3.5 bg-neutral-950/40 hover:bg-neutral-900/30 transition-colors">
+              <div key={i} className="px-4 py-3.5 bg-gray-50 dark:bg-neutral-950/40 hover:bg-white dark:hover:bg-neutral-900/30 transition-colors">
                 <div className="flex items-start justify-between gap-3">
-                  <p className="text-[13px] font-medium text-neutral-200">{rule.label}</p>
+                  <p className="text-[13px] font-medium text-gray-800 dark:text-neutral-200">{rule.label}</p>
                   {rule.tag && (
                     <span className={`flex-shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full ${rule.tagColor}`}>
                       {rule.tag}
                     </span>
                   )}
                 </div>
-                <p className="text-[12px] text-neutral-500 mt-1 leading-relaxed">{rule.detail}</p>
+                <p className="text-[12px] text-gray-500 dark:text-neutral-500 mt-1 leading-relaxed">{rule.detail}</p>
               </div>
             ))}
           </div>
         </div>
       ))}
 
-      <div className="text-[11px] text-neutral-700 pt-2">
+      <div className="text-[11px] text-gray-300 dark:text-neutral-700 pt-2">
         Last updated: auto-generated from workflow engine · {new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
       </div>
     </div>
@@ -1406,14 +1406,14 @@ export function AdminPanel() {
   ];
 
   return (
-    <div className="min-h-full bg-neutral-950 px-8 py-8 overflow-y-auto">
+    <div className="min-h-full bg-gray-50 dark:bg-neutral-950 px-8 py-8 overflow-y-auto">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-neutral-100">Admin Panel</h1>
-        <p className="text-sm text-neutral-500 mt-1">Manage access requests, column permissions, and the audit log.</p>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-neutral-100">Admin Panel</h1>
+        <p className="text-sm text-gray-500 dark:text-neutral-500 mt-1">Manage access requests, column permissions, and the audit log.</p>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 border-b border-neutral-800">
+      <div className="flex gap-1 mb-6 border-b border-gray-200 dark:border-neutral-800">
         {tabs.map((t) => (
           <button
             key={t.key}
@@ -1421,9 +1421,9 @@ export function AdminPanel() {
             className={`px-4 py-2 text-sm font-medium transition-colors ${
               tab === t.key
                 ? t.danger
-                  ? "text-red-400 border-b-2 border-red-500"
+                  ? "text-red-700 dark:text-red-400 border-b-2 border-red-500"
                   : "text-amber-400 border-b-2 border-amber-500"
-                : "text-neutral-500 hover:text-neutral-300"
+                : "text-gray-500 dark:text-neutral-500 hover:text-gray-700 dark:hover:text-neutral-300"
             }`}
           >
             {t.label}
@@ -1441,26 +1441,26 @@ export function AdminPanel() {
         <div>
           <div className="flex items-center gap-2 mb-4">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-neutral-600" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400 dark:text-neutral-600" />
               <input
                 type="text"
                 placeholder="Filter by email…"
                 value={searchEmail}
                 onChange={(e) => setSearchEmail(e.target.value)}
-                className="pl-9 pr-4 py-2 bg-neutral-900 border border-neutral-700 rounded-lg text-sm text-neutral-200 placeholder:text-neutral-600 focus:outline-none focus:border-amber-600"
+                className="pl-9 pr-4 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg text-sm text-gray-800 dark:text-neutral-200 placeholder:text-gray-400 dark:placeholder:text-neutral-600 focus:outline-none focus:border-amber-600"
               />
             </div>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-neutral-800">
+          <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-neutral-800">
             <table className="w-full">
-              <thead className="bg-neutral-900/80 border-b border-neutral-800">
+              <thead className="bg-white dark:bg-neutral-900/80 border-b border-gray-200 dark:border-neutral-800">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Name</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Email</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Requested</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Actions</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-neutral-500 uppercase tracking-wide">Name</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-neutral-500 uppercase tracking-wide">Email</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-neutral-500 uppercase tracking-wide">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-neutral-500 uppercase tracking-wide">Requested</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-neutral-500 uppercase tracking-wide">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -1469,7 +1469,7 @@ export function AdminPanel() {
                 ))}
                 {allUsersFiltered.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-sm text-neutral-600">
+                    <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400 dark:text-neutral-600">
                       No access requests yet.
                     </td>
                   </tr>
@@ -1491,17 +1491,17 @@ export function AdminPanel() {
           <ViolationsAuditPanel />
           <RepairModulesPanel />
           <div className="max-w-lg">
-          <div className="rounded-xl border border-red-900/50 bg-red-950/20 p-6">
+          <div className="rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/20 p-6">
             <div className="flex items-center gap-3 mb-3">
-              <Trash2 className="size-5 text-red-400" />
-              <h2 className="text-base font-semibold text-red-300">Clear All Work Orders</h2>
+              <Trash2 className="size-5 text-red-700 dark:text-red-400" />
+              <h2 className="text-base font-semibold text-red-700 dark:text-red-300">Clear All Work Orders</h2>
             </div>
-            <p className="text-sm text-neutral-400 mb-5">
-              Permanently deletes every row in <code className="text-red-300">bajaj_work_orders</code> and <code className="text-red-300">bajaj_wo_meta</code>.
+            <p className="text-sm text-gray-600 dark:text-neutral-400 mb-5">
+              Permanently deletes every row in <code className="text-red-700 dark:text-red-300">bajaj_work_orders</code> and <code className="text-red-700 dark:text-red-300">bajaj_wo_meta</code>.
               This cannot be undone. Use before re-importing fresh data.
             </p>
             {clearMsg && (
-              <p className={`text-sm mb-4 ${clearMsg.startsWith("✓") ? "text-emerald-400" : "text-red-400"}`}>
+              <p className={`text-sm mb-4 ${clearMsg.startsWith("✓") ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
                 {clearMsg}
               </p>
             )}
@@ -1545,21 +1545,21 @@ export function AdminPanel() {
         <div>
           <div className="flex items-center gap-2 mb-4">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-neutral-600" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400 dark:text-neutral-600" />
               <input
                 type="text"
                 placeholder="Filter by email…"
                 value={searchEmail}
                 onChange={(e) => setSearchEmail(e.target.value)}
-                className="pl-9 pr-4 py-2 bg-neutral-900 border border-neutral-700 rounded-lg text-sm text-neutral-200 placeholder:text-neutral-600 focus:outline-none focus:border-amber-600"
+                className="pl-9 pr-4 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg text-sm text-gray-800 dark:text-neutral-200 placeholder:text-gray-400 dark:placeholder:text-neutral-600 focus:outline-none focus:border-amber-600"
               />
             </div>
             <div className="relative">
-              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-neutral-600" />
+              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400 dark:text-neutral-600" />
               <select
                 value={actionFilter}
                 onChange={(e) => setActionFilter(e.target.value)}
-                className="pl-9 pr-8 py-2 bg-neutral-900 border border-neutral-700 rounded-lg text-sm text-neutral-300 focus:outline-none focus:border-amber-600 appearance-none"
+                className="pl-9 pr-8 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg text-sm text-gray-700 dark:text-neutral-300 focus:outline-none focus:border-amber-600 appearance-none"
               >
                 <option value="">All actions</option>
                 {ACTIONS.map((a) => (
@@ -1569,15 +1569,15 @@ export function AdminPanel() {
             </div>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-neutral-800">
+          <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-neutral-800">
             <table className="w-full">
-              <thead className="bg-neutral-900/80 border-b border-neutral-800">
+              <thead className="bg-white dark:bg-neutral-900/80 border-b border-gray-200 dark:border-neutral-800">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Time</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Actor</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Action</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Target</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Details</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-neutral-500 uppercase tracking-wide">Time</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-neutral-500 uppercase tracking-wide">Actor</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-neutral-500 uppercase tracking-wide">Action</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-neutral-500 uppercase tracking-wide">Target</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-neutral-500 uppercase tracking-wide">Details</th>
                 </tr>
               </thead>
               <tbody>
@@ -1586,7 +1586,7 @@ export function AdminPanel() {
                 ))}
                 {auditLogs.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-sm text-neutral-600">
+                    <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400 dark:text-neutral-600">
                       No audit logs yet.
                     </td>
                   </tr>
