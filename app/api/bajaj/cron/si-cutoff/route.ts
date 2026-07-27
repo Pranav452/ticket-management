@@ -45,9 +45,10 @@ export async function GET(req: NextRequest) {
       if (!sicutoff) continue; // no cutoff date — skip
 
       const siFiled = !!(
-        String(d["si_filed"]  ?? "").trim() ||
-        String(d["sifiling"]  ?? "").trim() ||
-        String(d["sifile"]    ?? "").trim()
+        String(d["si_submitted"] ?? "").trim() || // sheet-sync key ("SI Submitted")
+        String(d["si_filed"]     ?? "").trim() ||
+        String(d["sifiling"]     ?? "").trim() ||
+        String(d["sifile"]       ?? "").trim()
       );
       if (siFiled) continue; // already filed — skip
 

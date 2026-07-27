@@ -85,10 +85,11 @@ async function applyToModule(
     cumulative.push([...running]);
   }
 
-  // Load all work orders
+  // Load all work orders (WO number lives in data->>'wo' — the table has no
+  // wo_number column)
   const { data: workOrders } = await sb
     .from("bajaj_work_orders")
-    .select("id, wo_number, status_id, data")
+    .select("id, status_id, data")
     .eq("module_id", mod.id);
   if (!workOrders?.length) return [];
 
@@ -123,7 +124,7 @@ async function applyToModule(
     if (error) continue;
 
     moved.push({
-      wo_number: wo.wo_number ?? wo.id,
+      wo_number: String(woData["wo"] ?? wo.id),
       from: currentStatus?.name ?? "Unknown",
       to: targetName,
     });

@@ -13,6 +13,7 @@
  */
 
 import { SupabaseClient } from "@supabase/supabase-js";
+import { escapeHtml, sendNotifyEmail } from "@/lib/email/notify";
 
 /* ─── Status name constants ─────────────────────────────────────────────────── */
 export const STATUS_BILLING   = "billing";
@@ -79,7 +80,7 @@ export async function getColumnAssigneeEmails(
   return (data ?? []).map(a => a.user_email).filter(Boolean);
 }
 
-/* ─── Send notification via /api/bajaj/notify ───────────────────────────────── */
+/* ─── Send notification emails (shared Resend sender) ───────────────────────── */
 export async function sendAlert(opts: {
   to: string[];
   subject: string;
@@ -88,21 +89,19 @@ export async function sendAlert(opts: {
   workOrderSummary: string;
   senderName?: string;
 }) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://ticket-management-sooty.vercel.app";
+  // Send directly via the shared Resend sender — NOT by HTTP-fetching
+  // /api/bajaj/notify: that route requires a session cookie, which server-side
+  // workflow/cron callers never have (the fetch always 401'd silently).
   for (const email of opts.to) {
     try {
-      await fetch(`${baseUrl}/api/bajaj/notify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to:               email,
-          subject:          opts.subject,
-          message:          opts.message,
-          workOrderId:      opts.workOrderId,
-          workOrderSummary: opts.workOrderSummary,
-          senderName:       opts.senderName ?? "System",
-        }),
+      const result = await sendNotifyEmail({
+        to:               email,
+        subject:          opts.subject,
+        senderName:       opts.senderName ?? "System",
+        workOrderSummary: opts.workOrderSummary,
+        messageHtml:      opts.message,
       });
+      if (!result.success) console.warn(`[sendAlert] Failed to notify ${email}: ${result.error}`);
     } catch {
       // non-fatal — log and continue
       console.warn(`[sendAlert] Failed to notify ${email}`);
@@ -210,6 +209,19 @@ export async function checkBL48hrAlert(
   // Alert if sailing was between 0 and 48 hours ago AND BL still missing
   if (diff < 0 || diff > hrs48) return;
 
+  // Dedup: max one BL alert per WO per day (the daily cron and the inline
+  // PATCH trigger can both fire for the same WO).
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const { data: alreadySent } = await sb
+    .from("bajaj_audit_logs")
+    .select("id")
+    .eq("target_type", "work_order")
+    .eq("target_id", workOrderId)
+    .eq("action", "bl_48hr_alert")
+    .gte("created_at", `${today}T00:00:00Z`)
+    .limit(1);
+  if (alreadySent?.length) return;
+
   // Resolve BL Release column to get assignees
   const { data: statuses } = await sb
     .from("bajaj_statuses")
@@ -230,10 +242,19 @@ export async function checkBL48hrAlert(
   await sendAlert({
     to:               recipients,
     subject:          `⚠️ BL Release Overdue — WO ${woNo}`,
-    message:          `Work order <strong>${woNo}</strong> sailed ${hoursAgo} hour${hoursAgo !== 1 ? "s" : ""} ago but the BL number has not been released yet.<br><br>Sailing date: <strong>${sailingdt}</strong><br>BL Number: <em>Not yet added</em><br><br>Please release the BL immediately to avoid delays.`,
+    message:          `Work order <strong>${escapeHtml(woNo)}</strong> sailed ${hoursAgo} hour${hoursAgo !== 1 ? "s" : ""} ago but the BL number has not been released yet.<br><br>Sailing date: <strong>${escapeHtml(sailingdt)}</strong><br>BL Number: <em>Not yet added</em><br><br>Please release the BL immediately to avoid delays.`,
     workOrderId,
     workOrderSummary: `WO ${woNo}`,
     senderName:       "Bajaj Workflow Engine",
+  });
+
+  // Log so we don't re-alert today
+  await sb.from("bajaj_audit_logs").insert({
+    actor_email: "system@workflow",
+    action:      "bl_48hr_alert",
+    target_type: "work_order",
+    target_id:   workOrderId,
+    new_value:   { wo: woNo, sailingdt, hoursAgo },
   });
 }
 
@@ -251,7 +272,13 @@ export async function checkSICutoffAlert(
   woData: Record<string, unknown>
 ): Promise<void> {
   const woNo      = String(woData["wo"] ?? workOrderId);
-  const siFiled   = present(woData["si_filed"]) || present(woData["sifiling"]) || present(woData["sifile"]);
+  // "si_submitted" is what the Google Sheet sync writes ("SI Submitted" column);
+  // the other keys cover legacy manual-entry data.
+  const siFiled   =
+    present(woData["si_submitted"]) ||
+    present(woData["si_filed"]) ||
+    present(woData["sifiling"]) ||
+    present(woData["sifile"]);
   const sicutoff  = String(woData["sicutoff"] ?? woData["si_cutoff"] ?? "").trim();
 
   // Skip if SI already filed or no cutoff date configured
@@ -260,8 +287,12 @@ export async function checkSICutoffAlert(
   const cutoff = parseDateString(sicutoff);
   if (!cutoff) return;
 
-  // Only alert if cutoff has PASSED (strict past)
-  if (Date.now() <= cutoff.getTime()) return;
+  // Only alert once the cutoff has PASSED. Sheet dates are date-only
+  // ("YYYY-MM-DD" parses to midnight UTC) — treat those as end-of-day so the
+  // alert fires the day AFTER the cutoff, not on the cutoff morning itself.
+  const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(sicutoff);
+  const cutoffEnd  = cutoff.getTime() + (isDateOnly ? 86_400_000 - 1 : 0);
+  if (Date.now() <= cutoffEnd) return;
 
   // Dedup: skip if we already fired this alert for this WO today
   const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
@@ -297,11 +328,11 @@ export async function checkSICutoffAlert(
   const recipients = Array.from(new Set([...assigneeEmails, ...superAdminEmails]));
 
   if (recipients.length) {
-    const daysOverdue = Math.floor((Date.now() - cutoff.getTime()) / (24 * 60 * 60 * 1000));
+    const daysOverdue = Math.max(1, Math.floor((Date.now() - cutoff.getTime()) / (24 * 60 * 60 * 1000)));
     await sendAlert({
       to:               recipients,
       subject:          `🚨 SI Cutoff Missed — WO ${woNo}`,
-      message:          `Work order <strong>${woNo}</strong> has passed its SI cutoff date and SI has <strong>not</strong> been filed yet.<br><br>SI Cutoff: <strong>${sicutoff}</strong><br>Overdue by: <strong>${daysOverdue} day${daysOverdue !== 1 ? "s" : ""}</strong><br><br>Please file the Shipping Instruction immediately to avoid vessel booking cancellation.`,
+      message:          `Work order <strong>${escapeHtml(woNo)}</strong> has passed its SI cutoff date and SI has <strong>not</strong> been filed yet.<br><br>SI Cutoff: <strong>${escapeHtml(sicutoff)}</strong><br>Overdue by: <strong>${daysOverdue} day${daysOverdue !== 1 ? "s" : ""}</strong><br><br>Please file the Shipping Instruction immediately to avoid vessel booking cancellation.`,
       workOrderId,
       workOrderSummary: `WO ${woNo}`,
       senderName:       "Bajaj Workflow Engine",

@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { transporter } from "@/lib/email/mailer";
+import { transporter, mailerConfigured } from "@/lib/email/mailer";
 import { verifyCronSecret } from "@/lib/bajaj/cron-auth";
 import { requireAdmin } from "@/lib/bajaj/guards";
 
@@ -35,6 +35,15 @@ function buildReminderHtml(recipients: string[], summary: string, message: strin
 }
 
 async function runCron(): Promise<NextResponse> {
+  // Fail loud (and leave rows pending for the next run) when SMTP is not
+  // configured, instead of attempting sends that all error cryptically.
+  if (!mailerConfigured()) {
+    return NextResponse.json(
+      { sent: false, error: "Email not configured — set GMAIL_USER and GMAIL_APP_PASSWORD" },
+      { status: 503 },
+    );
+  }
+
   const sb  = createAdminClient();
   const now = new Date().toISOString();
 

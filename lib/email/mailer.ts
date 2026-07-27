@@ -1,5 +1,10 @@
 import nodemailer from "nodemailer";
 
+/** True when the Gmail SMTP env is fully configured — check before sendMail. */
+export function mailerConfigured(): boolean {
+  return !!(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD);
+}
+
 /**
  * Shared Gmail SMTP transporter.
  * Env vars required:

@@ -11,6 +11,10 @@
     {
       "path": "/api/bajaj/cron/si-cutoff",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/bajaj/sheet-sync",
+      "schedule": "0 1 * * *"
     }
   ]
 }

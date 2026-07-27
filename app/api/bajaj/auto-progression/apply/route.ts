@@ -55,10 +55,11 @@ export async function POST(req: NextRequest) {
   if (!rules?.length)
     return NextResponse.json({ moved: 0, details: [] });
 
-  // 4. Load all work orders for module
+  // 4. Load all work orders for module (WO number lives in data->>'wo' — the
+  //    table has no wo_number column)
   const { data: workOrders, error: woErr } = await sb
     .from("bajaj_work_orders")
-    .select("id, wo_number, status_id, data")
+    .select("id, status_id, data")
     .eq("module_id", mod.id);
   if (woErr) return NextResponse.json({ error: woErr.message }, { status: 500 });
   if (!workOrders?.length)
@@ -104,7 +105,7 @@ export async function POST(req: NextRequest) {
     if (updateErr) continue; // skip failed, don't abort whole batch
 
     details.push({
-      wo_number: wo.wo_number ?? wo.id,
+      wo_number: String(woData["wo"] ?? wo.id),
       from: currentStatus?.name ?? "Unknown",
       to: bestTargetName,
     });
