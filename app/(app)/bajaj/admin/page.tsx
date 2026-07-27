@@ -1,7 +1,9 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { AdminPanel } from "@/components/bajaj/AdminPanel";
+import { sheetSyncEnabled, missingSheetSyncEnv } from "@/lib/bajaj/google-sheets";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Admin — Bajaj Logistics" };
@@ -47,7 +49,9 @@ export default async function BajajAdminPage() {
         </div>
       </div>
       <div className="flex-1 overflow-y-auto">
-        <AdminPanel />
+        <Suspense>
+          <AdminPanel sheetSync={{ enabled: sheetSyncEnabled(), missingEnv: missingSheetSyncEnv() }} />
+        </Suspense>
       </div>
     </div>
   );

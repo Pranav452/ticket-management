@@ -6,10 +6,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import {
-  LayoutGrid, BarChart2, Upload, ShieldCheck,
-  Search, ChevronDown, ChevronRight as ChevronRightIcon,
+  BarChart2, ShieldCheck,
+  Search,
   PanelLeft, Settings, Globe,
-  Inbox, MessageSquare, Home, Loader2, X,
+  MessageSquare, Home, Loader2, X,
   Download, BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -85,39 +85,16 @@ function Divider() {
   return <div className="mx-2 my-1" style={{ borderTop: `1px solid ${SB_BORDER}` }} />;
 }
 
-function ModuleGroup({ module, isActiveBoard }: { module: typeof MODULES[0]; isActiveBoard: boolean }) {
-  const [open, setOpen] = useState(isActiveBoard);
+function ModuleLink({ module }: { module: typeof MODULES[0] }) {
   const pathname = usePathname();
-  const isBoardActive = pathname === `/bajaj/boards/${module.slug}`;
-
+  const active = pathname === `/bajaj/boards/${module.slug}`;
   return (
-    <div>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="group flex items-center gap-2 rounded-md px-2 py-[5px] w-full transition-colors select-none"
-        style={{
-          background: isActiveBoard && !open ? SB_ACTIVE : "transparent",
-          color: SB_TEXT,
-        }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = SB_HOVER; }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = isActiveBoard && !open ? SB_ACTIVE : "transparent"; }}
-      >
-        <span className="text-[14px] leading-none w-4 text-center flex-shrink-0">{module.flag}</span>
-        <span className="flex-1 text-left text-[13px] font-medium truncate">{module.name}</span>
-        {open
-          ? <ChevronDown className="size-3.5 flex-shrink-0" style={{ color: SB_MUTED }} />
-          : <ChevronRightIcon className="size-3.5 flex-shrink-0" style={{ color: SB_MUTED }} />
-        }
-      </button>
-
-      {open && (
-        <div>
-          <NavItem href={`/bajaj/boards/${module.slug}`} label="Board" icon={LayoutGrid} depth={1} active={isBoardActive} />
-          <NavItem href={`/bajaj/import?module=${module.slug}`} label="Import" icon={Upload} depth={1}
-            active={pathname.startsWith("/bajaj/import") && (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("module") === module.slug : false)} />
-        </div>
-      )}
-    </div>
+    <NavItem
+      href={`/bajaj/boards/${module.slug}`}
+      label={module.name}
+      emoji={module.flag}
+      active={active}
+    />
   );
 }
 
@@ -354,7 +331,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           {/* Top-level */}
           <div className="pt-1">
             <NavItem href="/bajaj/home"      label="Home"         icon={Home}          active={pathname === "/bajaj/home" || pathname === "/bajaj"} />
-            <NavItem href="/bajaj/import"    label="Import"       icon={Inbox}         active={pathname.startsWith("/bajaj/import")} />
             <NavItem href="/bajaj/chat"      label="Chat"         icon={MessageSquare} active={pathname.startsWith("/bajaj/chat")} />
             <NavItem href="/bajaj/dashboard" label="Analytics"    icon={BarChart2}     active={pathname.startsWith("/bajaj/dashboard")} />
             <NavItem href="/bajaj/bookings"  label="Bookings"     icon={BookOpen}      active={pathname.startsWith("/bajaj/bookings")} />
@@ -367,11 +343,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <SectionHeader label="Modules" />
 
           {MODULES.map((m) => (
-            <ModuleGroup
-              key={m.slug}
-              module={m}
-              isActiveBoard={activeModule === m.slug}
-            />
+            <ModuleLink key={m.slug} module={m} />
           ))}
 
           <Divider />

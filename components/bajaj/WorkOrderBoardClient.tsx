@@ -3,7 +3,7 @@
 import React, { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Upload, Eye, Search, X, SlidersHorizontal, RefreshCw, Star, LayoutGrid, Table2, ChevronDown } from "lucide-react";
+import { Eye, Search, X, SlidersHorizontal, RefreshCw, Star, LayoutGrid, Table2, ChevronDown } from "lucide-react";
 
 import { WorkOrderBoard } from "@/components/bajaj/WorkOrderBoard";
 import { WorkOrderSpreadsheet } from "@/components/bajaj/WorkOrderSpreadsheet";
@@ -268,14 +268,6 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
           >
             <RefreshCw className={cn("size-3.5", woLoading && "animate-spin")} />
           </button>
-
-          <Link
-            href={`/bajaj/import?module=${slug}`}
-            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-amber-500 text-white hover:bg-amber-600 transition-colors shadow-sm"
-          >
-            <Upload className="size-3.5" />
-            <span className="hidden sm:inline">Import</span>
-          </Link>
         </div>
       </div>
 
@@ -359,15 +351,17 @@ export function WorkOrderBoardClient({ slug, isAdmin: _isAdmin }: WorkOrderBoard
       {/* ── Main content ─────────────────────────────────────────────── */}
       {!statusLoading && statuses.length === 0 && workOrders.length === 0 ? (
         <div className="flex flex-1 items-center justify-center flex-col gap-5 text-gray-400 dark:text-white/40">
-          <Upload className="size-10 text-gray-300 dark:text-white/30" />
+          <RefreshCw className="size-10 text-gray-300 dark:text-white/30" />
           <div className="text-center">
             <p className="text-sm font-medium text-gray-600 dark:text-white/70">No work orders yet for {meta.name}</p>
-            <p className="text-[13px] text-gray-400 dark:text-white/40 mt-1">Import a dispatch plan or paste rows from the Bajaj email</p>
+            <p className="text-[13px] text-gray-400 dark:text-white/40 mt-1">Data syncs from the Google Sheet</p>
           </div>
-          <Link href={`/bajaj/import?module=${slug}`}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-amber-500 text-sm font-semibold text-white hover:bg-amber-600 transition-colors">
-            <Upload className="size-4" /> Import Dispatch Plan
-          </Link>
+          {_isAdmin && (
+            <Link href="/bajaj/admin?tab=sync"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-amber-500 text-sm font-semibold text-white hover:bg-amber-600 transition-colors">
+              <RefreshCw className="size-4" /> Open Data Sync
+            </Link>
+          )}
         </div>
       ) : viewMode === "board" ? (
         <div className="flex flex-1 overflow-hidden">

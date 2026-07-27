@@ -8,7 +8,7 @@ import { useAuthStore } from "@/lib/stores/auth-store";
 import { useBajajModules } from "@/lib/queries/bajaj";
 import { cn } from "@/lib/utils";
 import {
-  Upload,
+  RefreshCw,
   BarChart2,
   Users,
   Settings,
@@ -318,7 +318,7 @@ export default function BajajHomePage() {
 
   const firstName = bajajUser?.full_name?.split(" ")[0] ?? "there";
   const greeting = getGreeting();
-  const isAdmin = bajajUser?.role === "admin";
+  const isAdmin = ["admin", "superadmin"].includes(bajajUser?.role ?? "");
 
   const orderedModules = SLUG_ORDER.map((slug) => {
     const found = modules.find(
@@ -329,10 +329,10 @@ export default function BajajHomePage() {
 
   const quickActions = [
     {
-      label: "Import Data",
-      icon: <Upload className="w-4 h-4" />,
-      href: "/bajaj/import",
-      show: true,
+      label: "Sync Data",
+      icon: <RefreshCw className="w-4 h-4" />,
+      href: "/bajaj/admin?tab=sync",
+      show: isAdmin,
     },
     {
       label: "View Analytics",

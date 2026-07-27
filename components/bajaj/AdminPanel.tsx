@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   CheckCircle, XCircle, Loader2, Search, Filter,
   Trash2, Plus, ShieldCheck, ShieldOff, Check,
@@ -16,6 +17,7 @@ import {
 } from "@/lib/queries/bajaj";
 import { useBajajModules, useBajajStatuses, useBajajBoardConfig, useUpdateBajajBoardConfig } from "@/lib/queries/bajaj";
 import { useAuthStore } from "@/lib/stores/auth-store";
+import { SheetSyncPanel } from "@/components/bajaj/SheetSyncPanel";
 import type { BajajUser, BajajAuditLog, BajajColumnAssignment, BajajColumnRequest } from "@/lib/types/bajaj";
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
@@ -1369,8 +1371,15 @@ function BusinessRulesTab() {
 }
 
 // ─── Admin Panel ──────────────────────────────────────────────────────────────
-export function AdminPanel() {
-  const [tab, setTab] = useState<"requests" | "columns" | "rules" | "autoprogress" | "bizrules" | "audit" | "data" | "card-display">("requests");
+type AdminTab = "requests" | "columns" | "rules" | "autoprogress" | "bizrules" | "audit" | "sync" | "data" | "card-display";
+const ADMIN_TAB_KEYS: AdminTab[] = ["requests", "columns", "rules", "autoprogress", "bizrules", "audit", "sync", "data", "card-display"];
+
+export function AdminPanel({ sheetSync }: { sheetSync: { enabled: boolean; missingEnv: string[] } }) {
+  const searchParams = useSearchParams();
+  const urlTab = searchParams.get("tab");
+  const [tab, setTab] = useState<AdminTab>(
+    urlTab && (ADMIN_TAB_KEYS as string[]).includes(urlTab) ? (urlTab as AdminTab) : "requests"
+  );
   const [clearing, setClearing] = useState(false);
   const [clearMsg, setClearMsg] = useState<string | null>(null);
   const [searchEmail, setSearchEmail] = useState("");
@@ -1394,7 +1403,7 @@ export function AdminPanel() {
     "edited_field", "approved_user", "rejected_user", "requested_access",
   ];
 
-  const tabs: { key: "requests" | "columns" | "rules" | "autoprogress" | "bizrules" | "audit" | "data" | "card-display"; label: string; badge: number; danger?: boolean }[] = [
+  const tabs: { key: AdminTab; label: string; badge: number; danger?: boolean }[] = [
     { key: "requests",     label: "Access Requests",  badge: pendingUsers.length },
     { key: "columns",      label: "Column Access",    badge: 0 },
     { key: "card-display", label: "Card Display",     badge: 0 },
@@ -1402,6 +1411,7 @@ export function AdminPanel() {
     { key: "autoprogress", label: "Auto-Progression", badge: 0 },
     { key: "bizrules",     label: "Business Rules",   badge: 0 },
     { key: "audit",        label: "Audit Log",        badge: 0 },
+    { key: "sync",         label: "Data Sync",        badge: 0 },
     { key: "data",         label: "Data",             badge: 0, danger: true },
   ];
 
@@ -1539,6 +1549,13 @@ export function AdminPanel() {
 
       {/* ── Business Rules tab ───────────────────────────────────── */}
       {tab === "bizrules" && <BusinessRulesTab />}
+
+      {/* ── Data Sync tab ────────────────────────────────────────── */}
+      {tab === "sync" && (
+        <div className="max-w-3xl">
+          <SheetSyncPanel enabled={sheetSync.enabled} missingEnv={sheetSync.missingEnv} />
+        </div>
+      )}
 
       {/* ── Audit Log tab ─────────────────────────────────────────── */}
       {tab === "audit" && (
