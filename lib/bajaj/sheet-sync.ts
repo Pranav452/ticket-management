@@ -8,10 +8,15 @@
  * Mapping / status derivation is shared with lib/bajaj/import-map.mjs so sheet
  * rows produce exactly the same records the old import route produced.
  *
- * Semantics (deliberately conservative):
- *   - dedup key = `${wo}|${container_no}|${booking_no}` (same as old import)
- *   - existing row  → merge sheet data over stored data; update `data` ONLY
- *                     (status_id / column_order / assignments never touched)
+ * Semantics:
+ *   - dedup key = `${wo}|${container_no}|${booking_no}` (same as old import),
+ *     with progressive fallback matching (`wo|cont|""`, `wo|""|bkg`, `wo|""|""`)
+ *     so a card keeps its identity when ops later fills in the booking or
+ *     container number and the full key changes
+ *   - existing row  → merge sheet data over stored data; when the merged data
+ *                     derives a LATER stage than the card's current column the
+ *                     card auto-advances forward (never backward), with the
+ *                     same sole-editor auto-assignment as a manual move
  *   - new row       → inserted with derived status (fallback Planning) at the
  *                     end of the board; Sri-Lanka validation issues are
  *                     reported as warnings, never block the insert
@@ -111,6 +116,25 @@ function rowKey(d: Record<string, unknown>): string {
   return [d["wo"], d["container_no"], d["booking_no"]].map((v) => String(v ?? "").trim()).join("|");
 }
 
+/**
+ * Progressive match candidates for a sheet record, most → least specific.
+ * When ops fills in a booking/container number on an existing row the full key
+ * changes; the fallbacks let the sheet row re-adopt the card it came from
+ * instead of inserting a duplicate. Exact key always wins first, so legitimate
+ * multi-row WOs (same WO, different containers) stay separate.
+ */
+function candidateKeys(d: Record<string, unknown>): string[] {
+  const wo   = String(d["wo"] ?? "").trim();
+  const cont = String(d["container_no"] ?? "").trim();
+  const bkg  = String(d["booking_no"] ?? "").trim();
+  return [...new Set([
+    `${wo}|${cont}|${bkg}`,
+    `${wo}|${cont}|`,
+    `${wo}||${bkg}`,
+    `${wo}||`,
+  ])];
+}
+
 /** Order-insensitive deep equality for plain JSON data objects. */
 function stableStringify(v: unknown): string {
   if (v === null || typeof v !== "object") return JSON.stringify(v);
@@ -128,6 +152,8 @@ export interface TabSyncResult {
   rows: number;
   inserted: number;
   updated: number;
+  /** Cards moved (or that would move, in dryRun) forward to a later stage. */
+  moved: number;
   unchanged: number;
   violations: string[];
   /** WOs present in the DB for this module but absent from the sheet (never touched). */
@@ -136,6 +162,8 @@ export interface TabSyncResult {
   wouldInsert: string[];
   /** WO numbers that were (or would be, in dryRun) updated. */
   wouldUpdate: string[];
+  /** "WO: From → To" strings for cards moved (or that would move, in dryRun). */
+  wouldMove: string[];
 }
 
 export interface BookingsSyncResult {
@@ -158,26 +186,36 @@ export interface SheetSyncResult {
     rows: number;
     inserted: number;
     updated: number;
+    moved: number;
     unchanged: number;
     violations: number;
     missingFromSheet: number;
   };
 }
 
-interface ExistingRow { id: string; wo: string; data: Record<string, unknown> }
+interface ExistingRow { id: string; wo: string; status_id: string | null; data: Record<string, unknown> }
 
 interface ModCtx {
   id: string;
   slug: string;
   statusIdByName: Record<string, string>;
+  /** status name → display_order (board column position). */
+  statusOrderByName: Record<string, number>;
+  /** status id → status name. */
+  statusNameById: Record<string, string>;
+  /** status id → sole can_edit editor's email (only statuses with exactly one). */
+  soleEditorByStatusId: Record<string, string>;
   /** dedup key → existing DB row */
   existing: Map<string, ExistingRow>;
   /** dedup keys seen in the sheet (across all tabs mapping to this module) */
   seenKeys: Set<string>;
+  /** ids of existing DB rows matched (exactly or via fallback) this run. */
+  claimedIds: Set<string>;
   /** running max column_order for appended inserts (old route's approach) */
   order: number;
   inserted: number;
   updated: number;
+  moved: number;
   rowCount: number;
   /** first tab result for this module — carries missingFromSheet */
   firstTab: TabSyncResult | null;
@@ -192,26 +230,52 @@ async function getModCtx(
   const { data: mod } = await sb.from("bajaj_modules").select("id").eq("slug", slug).single();
   if (!mod) return null;
 
-  const { data: statusRows } = await sb.from("bajaj_statuses").select("id, name").eq("module_id", mod.id);
-  const statusIdByName: Record<string, string> = {};
-  for (const s of statusRows ?? []) statusIdByName[s.name] = s.id;
+  const { data: statusRows } = await sb
+    .from("bajaj_statuses").select("id, name, display_order").eq("module_id", mod.id);
+  const statusIdByName:    Record<string, string> = {};
+  const statusOrderByName: Record<string, number> = {};
+  const statusNameById:    Record<string, string> = {};
+  for (const s of statusRows ?? []) {
+    statusIdByName[s.name]    = s.id;
+    statusOrderByName[s.name] = Number(s.display_order) || 0;
+    statusNameById[s.id]      = s.name;
+  }
+
+  // Sole-editor lookup for auto-assignment on auto-moves (mirrors RULE 7 in
+  // lib/bajaj/workflow.ts, prefetched here so the sync loop stays batch-only).
+  const { data: assignRows } = await sb
+    .from("bajaj_column_assignments")
+    .select("status_id, user_email")
+    .eq("module_slug", slug)
+    .eq("can_edit", true);
+  const editorsByStatusId: Record<string, string[]> = {};
+  for (const a of assignRows ?? []) (editorsByStatusId[a.status_id] ??= []).push(a.user_email);
+  const soleEditorByStatusId: Record<string, string> = {};
+  for (const [sid, emails] of Object.entries(editorsByStatusId)) {
+    if (emails.length === 1) soleEditorByStatusId[sid] = emails[0];
+  }
 
   const { data: existingRows } = await sb
     .from("bajaj_work_orders")
-    .select("id, data, column_order")
+    .select("id, data, column_order, status_id")
     .eq("module_slug", slug);
 
   const existing = new Map<string, ExistingRow>();
   let order = 0;
   for (const r of existingRows ?? []) {
     const d = (r.data ?? {}) as Record<string, unknown>;
-    existing.set(rowKey(d), { id: r.id, wo: String(d["wo"] ?? "").trim(), data: d });
+    existing.set(rowKey(d), {
+      id: r.id, wo: String(d["wo"] ?? "").trim(),
+      status_id: (r.status_id as string | null) ?? null, data: d,
+    });
     order = Math.max(order, Number(r.column_order) || 0);
   }
 
   const ctx: ModCtx = {
-    id: mod.id, slug, statusIdByName, existing,
-    seenKeys: new Set(), order, inserted: 0, updated: 0, rowCount: 0, firstTab: null,
+    id: mod.id, slug, statusIdByName, statusOrderByName, statusNameById,
+    soleEditorByStatusId, existing,
+    seenKeys: new Set(), claimedIds: new Set(), order,
+    inserted: 0, updated: 0, moved: 0, rowCount: 0, firstTab: null,
   };
   cache.set(slug, ctx);
   return ctx;
@@ -225,7 +289,7 @@ export interface SheetSyncOptions { dryRun?: boolean }
  */
 export async function runSheetSync(actor: string, opts: SheetSyncOptions = {}): Promise<SheetSyncResult> {
   const dryRun = !!opts.dryRun;
-  const emptyTotals = { rows: 0, inserted: 0, updated: 0, unchanged: 0, violations: 0, missingFromSheet: 0 };
+  const emptyTotals = { rows: 0, inserted: 0, updated: 0, moved: 0, unchanged: 0, violations: 0, missingFromSheet: 0 };
 
   try {
     if (!sheetSyncEnabled()) {
@@ -255,8 +319,8 @@ export async function runSheetSync(actor: string, opts: SheetSyncOptions = {}): 
       if (!ctx) continue; // unknown module in DB — skip rather than fail the sync
 
       const result: TabSyncResult = {
-        tab, module: meta.slug, rows: 0, inserted: 0, updated: 0, unchanged: 0,
-        violations: [], missingFromSheet: [], wouldInsert: [], wouldUpdate: [],
+        tab, module: meta.slug, rows: 0, inserted: 0, updated: 0, moved: 0, unchanged: 0,
+        violations: [], missingFromSheet: [], wouldInsert: [], wouldUpdate: [], wouldMove: [],
       };
       tabResults.push(result);
       if (!ctx.firstTab) ctx.firstTab = result;
@@ -271,7 +335,10 @@ export async function runSheetSync(actor: string, opts: SheetSyncOptions = {}): 
 
       const defaultCountry = MODULE_DEFAULT_COUNTRY[meta.slug] ?? null;
       const toInsert: Record<string, unknown>[] = [];
-      const toUpdate: { id: string; data: Record<string, unknown> }[] = [];
+      const toUpdate: {
+        id: string; data: Record<string, unknown>; status_id?: string; column_order?: number;
+      }[] = [];
+      const moveAudits: Record<string, unknown>[] = [];
 
       for (let i = 1; i < gridRows.length; i++) {
         const oneBased: unknown[] = [null, ...gridRows[i]];
@@ -300,15 +367,76 @@ export async function runSheetSync(actor: string, opts: SheetSyncOptions = {}): 
         if (ctx.seenKeys.has(key)) { result.unchanged++; continue; } // duplicate sheet row
         ctx.seenKeys.add(key);
 
-        const existing = ctx.existing.get(key);
+        // Progressive matching: exact key first, then fallbacks with the
+        // booking/container parts blanked. Skip rows already claimed this run
+        // so two sheet rows can never adopt the same card.
+        let existing: ExistingRow | undefined;
+        for (const k of candidateKeys(data)) {
+          const row = ctx.existing.get(k);
+          if (row && !ctx.claimedIds.has(row.id)) { existing = row; break; }
+        }
+
         if (existing) {
-          // Merge sheet values over stored data; only `data` may change.
+          ctx.claimedIds.add(existing.id);
+
+          // Merge sheet values over stored data.
           const merged = { ...existing.data, ...data };
-          if (deepEquals(merged, existing.data)) { result.unchanged++; continue; }
-          result.updated++;
-          ctx.updated++;
-          result.wouldUpdate.push(wo);
-          if (!dryRun) toUpdate.push({ id: existing.id, data: merged });
+          const dataChanged = !deepEquals(merged, existing.data);
+
+          // Forward-only auto-move: when the merged data derives a strictly
+          // later stage than the card's current column, advance it. Never
+          // moves backward; unknown derived stages are ignored.
+          const derived      = deriveStatusName(merged) as string;
+          const curName      = ctx.statusNameById[existing.status_id ?? ""];
+          const curOrder     = curName !== undefined ? ctx.statusOrderByName[curName] ?? -Infinity : -Infinity;
+          const derivedOrder = ctx.statusOrderByName[derived];
+          const shouldMove   = derivedOrder !== undefined && derivedOrder > curOrder;
+
+          if (!dataChanged && !shouldMove) { result.unchanged++; continue; }
+
+          if (dataChanged) {
+            result.updated++;
+            ctx.updated++;
+            result.wouldUpdate.push(wo);
+          }
+
+          let newStatusId: string | undefined;
+          let autoAssigned: string | undefined;
+          if (shouldMove) {
+            result.moved++;
+            ctx.moved++;
+            result.wouldMove.push(`${wo}: ${curName ?? "?"} → ${derived}`);
+            newStatusId = ctx.statusIdByName[derived];
+
+            // Sole-editor auto-assignment (mirrors workflow.ts RULE 7), done
+            // inline on `merged` so the card needs only the one write below.
+            const sole = newStatusId ? ctx.soleEditorByStatusId[newStatusId] : undefined;
+            const assignKey = `assigned_to_${derived.toLowerCase().replace(/\s+/g, "_")}`;
+            if (sole && !merged[assignKey]) {
+              merged[assignKey] = sole;
+              autoAssigned = sole;
+            }
+          }
+
+          if (!dryRun) {
+            toUpdate.push({
+              id: existing.id,
+              data: merged,
+              ...(shouldMove && newStatusId
+                ? { status_id: newStatusId, column_order: ++ctx.order }
+                : {}),
+            });
+            if (shouldMove) {
+              moveAudits.push({
+                actor_email: "system@sheet-sync",
+                action:      "moved_card",
+                target_type: "work_order",
+                target_id:   existing.id,
+                old_value:   { status: curName ?? "?" },
+                new_value:   { status: derived, ...(autoAssigned ? { auto_assigned: autoAssigned } : {}) },
+              });
+            }
+          }
           continue;
         }
 
@@ -346,7 +474,13 @@ export async function runSheetSync(actor: string, opts: SheetSyncOptions = {}): 
         for (const upd of toUpdate) {
           const { error } = await sb
             .from("bajaj_work_orders")
-            .update({ data: upd.data, updated_at: new Date().toISOString() })
+            .update({
+              data: upd.data,
+              updated_at: new Date().toISOString(),
+              ...(upd.status_id !== undefined
+                ? { status_id: upd.status_id, column_order: upd.column_order }
+                : {}),
+            })
             .eq("id", upd.id);
           if (error) throw new Error(`Update failed (tab "${tab}"): ${error.message}`);
         }
@@ -354,15 +488,20 @@ export async function runSheetSync(actor: string, opts: SheetSyncOptions = {}): 
           const { error } = await sb.from("bajaj_work_orders").insert(toInsert);
           if (error) throw new Error(`Insert failed (tab "${tab}"): ${error.message}`);
         }
+        if (moveAudits.length > 0) {
+          const { error } = await sb.from("bajaj_audit_logs").insert(moveAudits);
+          if (error) throw new Error(`Move audit failed (tab "${tab}"): ${error.message}`);
+        }
       }
     }
 
-    // DB rows whose key never appeared in the sheet — report only, never touch.
+    // DB rows never claimed by any sheet row (exactly or via fallback) —
+    // report only, never touch.
     for (const ctx of ctxCache.values()) {
       if (!ctx.firstTab) continue;
       const missing: string[] = [];
       for (const [key, row] of ctx.existing) {
-        if (!ctx.seenKeys.has(key)) missing.push(row.wo || key);
+        if (!ctx.claimedIds.has(row.id)) missing.push(row.wo || key);
       }
       ctx.firstTab.missingFromSheet = missing;
     }
@@ -411,6 +550,7 @@ export async function runSheetSync(actor: string, opts: SheetSyncOptions = {}): 
         rows:             t.rows + r.rows,
         inserted:         t.inserted + r.inserted,
         updated:          t.updated + r.updated,
+        moved:            t.moved + r.moved,
         unchanged:        t.unchanged + r.unchanged,
         violations:       t.violations + r.violations.length,
         missingFromSheet: t.missingFromSheet + r.missingFromSheet.length,
@@ -421,7 +561,7 @@ export async function runSheetSync(actor: string, opts: SheetSyncOptions = {}): 
     if (!dryRun) {
       // One import-batch row per module that changed ("filename" marks the source).
       for (const ctx of ctxCache.values()) {
-        if (ctx.inserted === 0 && ctx.updated === 0) continue;
+        if (ctx.inserted === 0 && ctx.updated === 0 && ctx.moved === 0) continue;
         await sb.from("bajaj_import_batches").insert({
           module_id:     ctx.id,
           module_slug:   ctx.slug,

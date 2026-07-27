@@ -13,11 +13,13 @@ interface TabSyncResult {
   rows: number;
   inserted: number;
   updated: number;
+  moved: number;
   unchanged: number;
   violations: string[];
   missingFromSheet: string[];
   wouldInsert: string[];
   wouldUpdate: string[];
+  wouldMove: string[];
 }
 interface BookingsSyncResult {
   tab: string;
@@ -36,6 +38,7 @@ interface SheetSyncResult {
     rows: number;
     inserted: number;
     updated: number;
+    moved: number;
     unchanged: number;
     violations: number;
     missingFromSheet: number;
@@ -54,7 +57,7 @@ export function SheetSyncPanel({ enabled, missingEnv }: SheetSyncPanelProps) {
 
   async function run(dryRun: boolean) {
     if (!dryRun && !window.confirm(
-      "Sync the Google Sheet into the boards now?\n\nNew rows are inserted and existing card data is updated. Statuses, card positions and assignments are never changed, and nothing is ever deleted.\n\nThe bookings list is fully replaced from the sheet's \"Bookings Details\" tab."
+      "Sync the Google Sheet into the boards now?\n\nNew rows are inserted and existing card data is updated. When the sheet data reaches a later stage, cards auto-advance forward — they are never moved backward and nothing is ever deleted.\n\nThe bookings list is fully replaced from the sheet's \"Bookings Details\" tab."
     )) return;
 
     setRunning(dryRun ? "preview" : "sync");
@@ -125,8 +128,8 @@ export function SheetSyncPanel({ enabled, missingEnv }: SheetSyncPanelProps) {
               Manual entry has been retired — the ops Google Sheet is now the single source of
               data. Each recognized tab (VIPAR, Sri Lanka, Bangladesh, Nigeria, Triumph) maps to
               its board. Syncing inserts new work orders and refreshes card data on existing ones.
-              Statuses, card positions and assignments set on the boards are never overwritten,
-              and rows are never deleted.
+              When the sheet data reaches a later stage, cards auto-advance forward — they are
+              never moved backward, and rows are never deleted.
             </p>
             <div className="flex items-center gap-2 mt-4">
               <button
@@ -183,7 +186,8 @@ export function SheetSyncPanel({ enabled, missingEnv }: SheetSyncPanelProps) {
             </span>
             <span className="text-[11px] text-gray-400 dark:text-white/40 ml-auto">
               {result.totals.rows} sheet rows · {result.totals.inserted} {result.dryRun ? "to insert" : "inserted"} ·{" "}
-              {result.totals.updated} {result.dryRun ? "to update" : "updated"} · {result.totals.unchanged} unchanged
+              {result.totals.updated} {result.dryRun ? "to update" : "updated"} ·{" "}
+              {result.totals.moved} {result.dryRun ? "to move" : "moved"} · {result.totals.unchanged} unchanged
             </span>
           </div>
 
@@ -196,6 +200,7 @@ export function SheetSyncPanel({ enabled, missingEnv }: SheetSyncPanelProps) {
                   <th className="px-2 py-2 font-medium text-right">Rows</th>
                   <th className="px-2 py-2 font-medium text-right">{result.dryRun ? "Would insert" : "Inserted"}</th>
                   <th className="px-2 py-2 font-medium text-right">{result.dryRun ? "Would update" : "Updated"}</th>
+                  <th className="px-2 py-2 font-medium text-right">{result.dryRun ? "Would move" : "Moved"}</th>
                   <th className="px-2 py-2 font-medium text-right">Unchanged</th>
                   <th className="px-4 py-2 font-medium text-right">Violations</th>
                 </tr>
@@ -212,6 +217,9 @@ export function SheetSyncPanel({ enabled, missingEnv }: SheetSyncPanelProps) {
                     <td className={cn("px-2 py-2 text-right", t.updated > 0 ? "text-blue-600 dark:text-blue-400 font-medium" : "text-gray-400 dark:text-white/30")}>
                       {t.updated}
                     </td>
+                    <td className={cn("px-2 py-2 text-right", t.moved > 0 ? "text-violet-600 dark:text-violet-400 font-medium" : "text-gray-400 dark:text-white/30")}>
+                      {t.moved}
+                    </td>
                     <td className="px-2 py-2 text-right text-gray-400 dark:text-white/40">{t.unchanged}</td>
                     <td className={cn("px-4 py-2 text-right", t.violations.length > 0 ? "text-red-600 dark:text-red-400 font-medium" : "text-gray-400 dark:text-white/30")}>
                       {t.violations.length}
@@ -223,10 +231,10 @@ export function SheetSyncPanel({ enabled, missingEnv }: SheetSyncPanelProps) {
           </div>
 
           {/* WO detail lists */}
-          {result.tabs.some((t) => t.wouldInsert.length || t.wouldUpdate.length || t.violations.length || t.missingFromSheet.length) && (
+          {result.tabs.some((t) => t.wouldInsert.length || t.wouldUpdate.length || t.wouldMove.length || t.violations.length || t.missingFromSheet.length) && (
             <div className="px-4 py-3 border-t border-gray-100 dark:border-white/5 space-y-3">
               {result.tabs.map((t) => {
-                const hasDetail = t.wouldInsert.length || t.wouldUpdate.length || t.violations.length || t.missingFromSheet.length;
+                const hasDetail = t.wouldInsert.length || t.wouldUpdate.length || t.wouldMove.length || t.violations.length || t.missingFromSheet.length;
                 if (!hasDetail) return null;
                 return (
                   <div key={`detail-${t.tab}`} className="space-y-1.5">
@@ -248,6 +256,14 @@ export function SheetSyncPanel({ enabled, missingEnv }: SheetSyncPanelProps) {
                         </span>{" "}
                         WO {t.wouldUpdate.join(", ")}
                       </p>
+                    )}
+                    {t.wouldMove.length > 0 && (
+                      <div className="text-[11px] text-gray-600 dark:text-white/60 space-y-0.5">
+                        <span className="text-violet-600 dark:text-violet-400 font-medium">
+                          {result.dryRun ? "Would move" : "Moved"}:
+                        </span>
+                        {t.wouldMove.map((m, i) => <p key={i}>WO {m}</p>)}
+                      </div>
                     )}
                     {t.violations.length > 0 && (
                       <div className="text-[11px] text-red-600 dark:text-red-400 space-y-0.5">
