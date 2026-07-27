@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireApprovedUser } from "@/lib/bajaj/guards";
+import { MONTH_RE, oldestConfiguredMonth } from "@/lib/bajaj/sheet-sources";
 
 export async function GET(req: NextRequest) {
   try {
@@ -8,13 +9,26 @@ export async function GET(req: NextRequest) {
     if (auth instanceof NextResponse) return auth;
 
     const moduleSlug = req.nextUrl.searchParams.get("module") || null;
+    const month      = req.nextUrl.searchParams.get("month") || null;
     const sb = createAdminClient();
 
     let woQuery = sb
       .from("bajaj_work_orders")
-      .select("id, module_slug, status_id, data, created_at, bajaj_statuses(name, color_hex)");
+      .select("id, module_slug, status_id, data, created_at, bajaj_statuses(name, color_hex)")
+      // Archived cards are parked — excluded from all analytics.
+      .is("data->>archived_at", null);
 
     if (moduleSlug) woQuery = woQuery.eq("module_slug", moduleSlug);
+
+    // Month filter — NULL sheet_month rows belong to the oldest configured month.
+    if (month && MONTH_RE.test(month)) {
+      const oldest = await oldestConfiguredMonth(sb);
+      if (oldest && month === oldest) {
+        woQuery = woQuery.or(`data->>sheet_month.eq.${month},data->>sheet_month.is.null`);
+      } else {
+        woQuery = woQuery.eq("data->>sheet_month", month);
+      }
+    }
 
     const { data: wos, error } = await woQuery;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });

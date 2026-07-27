@@ -27,6 +27,9 @@ export async function GET() {
     return NextResponse.json({
       ...config,
       envFallback: config.sources.length === 0 ? envFallbackSource() : null,
+      // For the admin share hint — each workbook must be shared (Viewer) with
+      // this service account. The email is not a secret; the key never leaves env.
+      serviceAccountEmail: process.env.GOOGLE_SA_EMAIL?.trim() || null,
     });
   } catch (err) {
     console.error("[GET /api/bajaj/sheet-sources]", err);

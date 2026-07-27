@@ -14,6 +14,15 @@ interface WorkOrderCardProps {
   onSelect:       () => void;
   onDragStart:    (e: React.DragEvent) => void;
   statusColor:    string;
+  /** Show the card's workbook month (data.sheet_month) — "All months" view. */
+  showMonthBadge?: boolean;
+}
+
+/* "2026-07" → "Jul 2026" */
+function monthLabel(m: string): string {
+  const [y, mo] = m.split("-").map((n) => parseInt(n, 10));
+  if (!y || !mo) return m;
+  return new Date(y, mo - 1, 1).toLocaleDateString("en-GB", { month: "short", year: "numeric" });
 }
 
 /* Format a raw value nicely for display */
@@ -57,9 +66,10 @@ function fieldLabel(field: string): string {
 
 export function WorkOrderCard({
   workOrder, cardFaceFields, isSelected, canDrag,
-  onSelect, onDragStart, statusColor,
+  onSelect, onDragStart, statusColor, showMonthBadge,
 }: WorkOrderCardProps) {
   const d = workOrder.data as Record<string, unknown>;
+  const sheetMonth = fmt(d["sheet_month"]);
 
   /* Always-visible header fields */
   const woId    = fmt(d["wo"]      ?? d["WO"]      ?? workOrder.id.slice(0, 8));
@@ -106,6 +116,11 @@ export function WorkOrderCard({
           <div className="flex items-center gap-1.5">
             <span className="size-2 rounded-full flex-shrink-0" style={{ backgroundColor: hexColor }} />
             <span className="text-[11px] font-medium text-gray-400 dark:text-white/30 font-mono">{woId}</span>
+            {showMonthBadge && sheetMonth && (
+              <span className="text-[9px] px-1 py-px rounded border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.06] text-gray-400 dark:text-white/40 whitespace-nowrap">
+                {monthLabel(sheetMonth)}
+              </span>
+            )}
           </div>
           {canDrag && (
             <GripVertical className="size-3.5 text-gray-300 dark:text-white/20 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />

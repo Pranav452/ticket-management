@@ -8,8 +8,10 @@
  * clobber each other).
  */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { BookOpen, DollarSign, Search, RefreshCw, Plus, Pencil, Trash2, Loader2, AlertTriangle } from "lucide-react";
+import { useSelectedMonthParam } from "@/lib/stores/month";
+import { MonthSelector } from "@/components/bajaj/MonthSelector";
 import { cn } from "@/lib/utils";
 
 type Tab = "bookings" | "rates";
@@ -55,11 +57,18 @@ export function BajajBookingsClient() {
   const [gridDraft, setGridDraft] = useState<string[][]>([]);
   const [savingRates, setSavingRates] = useState(false);
 
-  async function load() {
+  // Global month filter — bookings live per workbook month
+  // (app_config "bajaj_bookings:<YYYY-MM>"); no month = legacy/current key.
+  const month = useSelectedMonthParam();
+
+  const load = useCallback(async () => {
     setLoading(true);
     try {
+      const bookingsUrl = month
+        ? `/api/bajaj/reference?type=bookings&month=${month}`
+        : "/api/bajaj/reference?type=bookings";
       const [b, r] = await Promise.all([
-        fetch("/api/bajaj/reference?type=bookings").then((x) => x.json()),
+        fetch(bookingsUrl).then((x) => x.json()),
         fetch("/api/bajaj/reference?type=rates").then((x) => x.json()),
       ]);
       setBookings(Array.isArray(b.rows) ? b.rows : []);
@@ -69,7 +78,7 @@ export function BajajBookingsClient() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [month]);
 
   function startRatesEdit() { setGridDraft(grid.map((row) => [...row])); setRatesEdit(true); setError(null); }
   function cancelRatesEdit() { setRatesEdit(false); setGridDraft([]); }
@@ -102,7 +111,7 @@ export function BajajBookingsClient() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const filteredBookings = useMemo(() => {
     if (!search.trim()) return bookings;
@@ -131,6 +140,7 @@ export function BajajBookingsClient() {
             <p className="text-[13px] text-gray-500 dark:text-white/50 mt-0.5">Bookings sync from the Google Sheet · rate card editable</p>
           </div>
           <div className="flex items-center gap-2">
+            <MonthSelector />
             {tabBtn("bookings", `Bookings (${bookings.length})`, BookOpen)}
             {tabBtn("rates", "Rate Card", DollarSign)}
           </div>

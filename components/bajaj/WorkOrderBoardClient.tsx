@@ -9,8 +9,10 @@ import { WorkOrderBoard } from "@/components/bajaj/WorkOrderBoard";
 import { WorkOrderSpreadsheet } from "@/components/bajaj/WorkOrderSpreadsheet";
 import { useBajajStatuses, useBajajBoardConfig, useWorkOrders, useUpdateWorkOrder } from "@/lib/queries/bajaj";
 import { useAuthStore } from "@/lib/stores/auth-store";
+import { useMonthStore, useSelectedMonthParam } from "@/lib/stores/month";
 import type { WorkOrderFilters } from "@/lib/types/bajaj";
 import { ReminderBell } from "@/components/bajaj/ReminderBell";
+import { MonthSelector } from "@/components/bajaj/MonthSelector";
 import { cn } from "@/lib/utils";
 
 type ViewMode = "board" | "spreadsheet";
@@ -77,7 +79,12 @@ export function WorkOrderBoardClient({ slug }: WorkOrderBoardClientProps) {
     };
   });
   const { data: boardConfig }  = useBajajBoardConfig(slug);
-  const { data: workOrders = [], isLoading: woLoading, refetch } = useWorkOrders(slug, filters);
+
+  // Global month filter — "all" shows every workbook month (cards get a badge).
+  const monthParam    = useSelectedMonthParam();
+  const showMonthBadge = useMonthStore((s) => s.selectedMonth) === "all";
+  const { data: workOrders = [], isLoading: woLoading, refetch } =
+    useWorkOrders(slug, { ...filters, month: monthParam });
   const updateWorkOrder = useUpdateWorkOrder();
 
   // Only admins may edit the grid — viewers get a read-only spreadsheet.
@@ -193,6 +200,8 @@ export function WorkOrderBoardClient({ slug }: WorkOrderBoardClientProps) {
 
         {/* Right actions */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
+
+          <MonthSelector />
 
           <ReminderBell />
 
@@ -330,6 +339,7 @@ export function WorkOrderBoardClient({ slug }: WorkOrderBoardClientProps) {
             cardFaceFields={cardFaceFields} isLight={true}
             isLoading={statusLoading || woLoading} selectedId={selectedId}
             isAdmin={isAdmin}
+            showMonthBadge={showMonthBadge}
             onSelectCard={(id) => { setSelectedId(id); router.push(`/bajaj/work-orders/${id}`); }}
             onDrop={handleDrop}
           />

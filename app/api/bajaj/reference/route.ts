@@ -1,6 +1,9 @@
 /**
- * GET /api/bajaj/reference?type=bookings|rates
+ * GET /api/bajaj/reference?type=bookings|rates&month=YYYY-MM
  *   Reads the booking list / rate card stored in app_config (JSON blobs).
+ *   Bookings are stored per month ("bajaj_bookings:<YYYY-MM>"); pass month to
+ *   read a specific workbook's list. Without month the legacy "bajaj_bookings"
+ *   key is used (mirror of the current/latest active month).
  * PUT /api/bajaj/reference
  *   Body: { type, rows?, grid?, baseUpdatedAt? } — saves the rate card. Uses an
  *   optimistic lock (baseUpdatedAt) so two desks editing at once don't silently
@@ -12,6 +15,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireApprovedUser } from "@/lib/bajaj/guards";
+import { MONTH_RE } from "@/lib/bajaj/sheet-sources";
 
 const KEY = { bookings: "bajaj_bookings", rates: "bajaj_rate_card" } as const;
 
@@ -20,8 +24,17 @@ export async function GET(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
 
   const type = (req.nextUrl.searchParams.get("type") ?? "bookings") as keyof typeof KEY;
-  const key = KEY[type];
+  let key: string | undefined = KEY[type];
   if (!key) return NextResponse.json({ error: "Unknown type" }, { status: 400 });
+
+  // Per-month bookings key ("bajaj_bookings:<YYYY-MM>"); legacy key otherwise.
+  const month = req.nextUrl.searchParams.get("month");
+  if (type === "bookings" && month) {
+    if (!MONTH_RE.test(month)) {
+      return NextResponse.json({ error: 'month must be "YYYY-MM"' }, { status: 400 });
+    }
+    key = `bajaj_bookings:${month}`;
+  }
 
   const sb = createAdminClient();
   const { data } = await sb.from("app_config").select("value").eq("key", key).maybeSingle();

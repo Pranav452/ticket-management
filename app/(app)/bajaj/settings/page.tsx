@@ -102,8 +102,6 @@ export default function SettingsPage() {
     }
   }
 
-  const inputCls = "w-52 rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] text-gray-800 placeholder-gray-400 focus:border-amber-400 focus:outline-none transition-colors dark:bg-[#111] dark:border-white/10 dark:text-white dark:placeholder-white/30";
-
   return (
     <div
       className="flex flex-1 flex-col overflow-hidden"
@@ -178,11 +176,11 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <Field label="Full name">
+                <Field label="Full name" description="Set when your access was approved — ask an admin to change it.">
                   <input
                     defaultValue={bajajUser?.full_name ?? ""}
-                    className={inputCls}
-                    placeholder="Your name"
+                    readOnly
+                    className="w-52 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-[13px] text-gray-500 cursor-not-allowed dark:bg-[#111] dark:border-white/10 dark:text-white/40"
                   />
                 </Field>
                 <Field label="Email address" description="This is your login email and cannot be changed here.">
@@ -197,12 +195,6 @@ export default function SettingsPage() {
                     {bajajUser?.role ?? "user"}
                   </span>
                 </Field>
-
-                <div className="mt-4">
-                  <button className="px-4 py-2 rounded-lg bg-amber-500 text-white text-[13px] font-semibold hover:bg-amber-600 transition-colors shadow-sm">
-                    Save changes
-                  </button>
-                </div>
               </Section>
             </div>
           )}

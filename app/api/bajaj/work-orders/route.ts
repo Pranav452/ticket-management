@@ -5,13 +5,21 @@
  *   ?search=<text>         searches WO, BL no, vessel name, port inside data jsonb
  *   ?dateFrom=<YYYY-MM-DD>
  *   ?dateTo=<YYYY-MM-DD>
+ *   ?month=<YYYY-MM>       filter by workbook month (data->>sheet_month);
+ *                          rows with NULL sheet_month count as the OLDEST
+ *                          configured month (legacy pre-backfill data)
+ *   ?includeArchived=1     include archived cards (default: excluded)
  *   ?page=<n>              1-based (default 1)
  *   ?pageSize=<n>          default 50, max 200
+ *
+ * Archived cards (data->>archived_at set) are ALWAYS excluded unless
+ * includeArchived is passed — boards/analytics/export never show them.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireApprovedUser } from "@/lib/bajaj/guards";
+import { MONTH_RE, oldestConfiguredMonth } from "@/lib/bajaj/sheet-sources";
 
 export async function GET(req: NextRequest) {
   try {
@@ -24,6 +32,8 @@ export async function GET(req: NextRequest) {
     const search     = sp.get("search");
     const dateFrom   = sp.get("dateFrom");
     const dateTo     = sp.get("dateTo");
+    const month      = sp.get("month");
+    const includeArchived = sp.get("includeArchived") === "1";
     const page       = Math.max(1, parseInt(sp.get("page") ?? "1", 10) || 1);
     const pageSize   = Math.min(200, Math.max(1, parseInt(sp.get("pageSize") ?? "50", 10) || 50));
 
@@ -45,6 +55,19 @@ export async function GET(req: NextRequest) {
     );
     if (dateFrom)            query = query.gte("data->>'wodt'", dateFrom);
     if (dateTo)              query = query.lte("data->>'wodt'", dateTo);
+
+    // Month filter — NULL sheet_month rows belong to the oldest configured month.
+    if (month && MONTH_RE.test(month)) {
+      const oldest = await oldestConfiguredMonth(sb);
+      if (oldest && month === oldest) {
+        query = query.or(`data->>sheet_month.eq.${month},data->>sheet_month.is.null`);
+      } else {
+        query = query.eq("data->>sheet_month", month);
+      }
+    }
+
+    // Archived cards are parked — never shown on boards unless explicitly asked.
+    if (!includeArchived)    query = query.is("data->>archived_at", null);
 
     // Pagination
     const from = (page - 1) * pageSize;

@@ -8,6 +8,8 @@
 
 import React, { useMemo, useState, useCallback } from "react";
 import { Download, Filter, X, Eye, EyeOff, RefreshCw, FileSpreadsheet, FileText } from "lucide-react";
+import { useSelectedMonthParam } from "@/lib/stores/month";
+import { MonthSelector } from "@/components/bajaj/MonthSelector";
 import { cn } from "@/lib/utils";
 
 interface Row { id: string; module_slug: string; status: string | null; status_color?: string | null; data: Record<string, unknown>; }
@@ -133,10 +135,14 @@ export function BajajExportClient() {
 
   const activeColumns = COLUMNS.filter((c) => visibleCols.has(c.key));
 
+  const month = useSelectedMonthParam();
+
   const fetchData = useCallback(async () => {
     setLoading(true); setError(null); setFetched(false);
     try {
-      const res = await fetch(`/api/bajaj/export?module=${moduleSlug}`);
+      const qs = new URLSearchParams({ module: moduleSlug });
+      if (month) qs.set("month", month);
+      const res = await fetch(`/api/bajaj/export?${qs}`);
       if (!res.ok) throw new Error((await res.json()).error ?? "Failed to fetch");
       const json = await res.json();
       const data: Row[] = json.rows ?? [];
@@ -148,7 +154,7 @@ export function BajajExportClient() {
     } finally {
       setLoading(false);
     }
-  }, [moduleSlug]);
+  }, [moduleSlug, month]);
 
   const opts = useMemo(() => ({
     countries: distinct(rows, (r) => String(r.data.country ?? "")),
@@ -251,6 +257,8 @@ export function BajajExportClient() {
             <h1 className="text-lg font-semibold text-gray-900 dark:text-white/90">Export Work Orders</h1>
             <p className="text-[13px] text-gray-500 dark:text-white/50 mt-0.5">Filter, preview, and download board data as Excel or CSV.</p>
           </div>
+          <div className="flex items-center gap-2">
+            <MonthSelector />
           {fetched && (
             <div className="flex items-center gap-2">
               <button onClick={() => setShowPreview((v) => !v)} className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-gray-200 dark:border-white/10 text-[12px] text-gray-600 dark:text-white/60 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
@@ -264,6 +272,7 @@ export function BajajExportClient() {
               </button>
             </div>
           )}
+          </div>
         </div>
 
         {/* Filters */}

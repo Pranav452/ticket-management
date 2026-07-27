@@ -116,6 +116,18 @@ export async function resolveSheetSources(
 }
 
 /**
+ * Oldest configured month ("YYYY-MM") — rows with NULL data.sheet_month
+ * (pre-backfill legacy data) are treated as belonging to this month, so
+ * month-filtered queries must OR in the null case when filtering by it.
+ * Null when nothing is configured (env fallback included).
+ */
+export async function oldestConfiguredMonth(sb: SupabaseClient): Promise<string | null> {
+  const { sources } = await resolveSheetSources(sb);
+  if (sources.length === 0) return null;
+  return sources.map((s) => s.month).sort()[0];
+}
+
+/**
  * Sheet sync is enabled when the Google service account is configured AND
  * there is at least one workbook to pull (an active configured source, or the
  * BAJAJ_SHEET_ID env fallback). DB lookup failures degrade to "disabled".

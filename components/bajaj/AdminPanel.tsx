@@ -13,6 +13,8 @@ import {
 import { useBajajModules, useBajajBoardConfig, useUpdateBajajBoardConfig } from "@/lib/queries/bajaj";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { SheetSyncPanel } from "@/components/bajaj/SheetSyncPanel";
+import { SheetSourcesTab } from "@/components/bajaj/SheetSourcesTab";
+import { VersionsTab } from "@/components/bajaj/VersionsTab";
 import type { BajajUser, BajajAuditLog } from "@/lib/types/bajaj";
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
@@ -460,10 +462,8 @@ function RepairModulesPanel() {
 }
 
 // ─── Admin Panel ──────────────────────────────────────────────────────────────
-// Next stage will add "sheet-sources" and "versions" tabs — extend the union +
-// ADMIN_TAB_KEYS + tabs list below when they land.
-type AdminTab = "requests" | "card-display" | "audit" | "sync" | "data";
-const ADMIN_TAB_KEYS: AdminTab[] = ["requests", "card-display", "audit", "sync", "data"];
+type AdminTab = "requests" | "card-display" | "audit" | "sync" | "sheet-sources" | "versions" | "data";
+const ADMIN_TAB_KEYS: AdminTab[] = ["requests", "card-display", "audit", "sync", "sheet-sources", "versions", "data"];
 
 export function AdminPanel({ sheetSync }: { sheetSync: { enabled: boolean; missingEnv: string[] } }) {
   const searchParams = useSearchParams();
@@ -495,18 +495,20 @@ export function AdminPanel({ sheetSync }: { sheetSync: { enabled: boolean; missi
   ];
 
   const tabs: { key: AdminTab; label: string; badge: number; danger?: boolean }[] = [
-    { key: "requests",     label: "Access Requests",  badge: pendingUsers.length },
-    { key: "card-display", label: "Card Display",     badge: 0 },
-    { key: "audit",        label: "Audit Log",        badge: 0 },
-    { key: "sync",         label: "Data Sync",        badge: 0 },
-    { key: "data",         label: "Data",             badge: 0, danger: true },
+    { key: "requests",      label: "Access Requests",  badge: pendingUsers.length },
+    { key: "card-display",  label: "Card Display",     badge: 0 },
+    { key: "audit",         label: "Audit Log",        badge: 0 },
+    { key: "sync",          label: "Data Sync",        badge: 0 },
+    { key: "sheet-sources", label: "Sheet Sources",    badge: 0 },
+    { key: "versions",      label: "Versions",         badge: 0 },
+    { key: "data",          label: "Data",             badge: 0, danger: true },
   ];
 
   return (
     <div className="min-h-full bg-gray-50 dark:bg-neutral-950 px-8 py-8 overflow-y-auto">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-neutral-100">Admin Panel</h1>
-        <p className="text-sm text-gray-500 dark:text-neutral-500 mt-1">Manage access requests, sheet sync, and the audit log.</p>
+        <p className="text-sm text-gray-500 dark:text-neutral-500 mt-1">Access requests · card display · audit log · sheet sync · monthly sources · version rollback.</p>
       </div>
 
       {/* Tabs */}
@@ -632,6 +634,12 @@ export function AdminPanel({ sheetSync }: { sheetSync: { enabled: boolean; missi
           <SheetSyncPanel enabled={sheetSync.enabled} missingEnv={sheetSync.missingEnv} />
         </div>
       )}
+
+      {/* ── Sheet Sources tab ────────────────────────────────────── */}
+      {tab === "sheet-sources" && <SheetSourcesTab />}
+
+      {/* ── Versions tab ─────────────────────────────────────────── */}
+      {tab === "versions" && <VersionsTab />}
 
       {/* ── Audit Log tab ─────────────────────────────────────────── */}
       {tab === "audit" && (

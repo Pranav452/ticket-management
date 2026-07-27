@@ -6,6 +6,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { useBajajModules } from "@/lib/queries/bajaj";
+import { useSelectedMonthParam } from "@/lib/stores/month";
+import { MonthSelector } from "@/components/bajaj/MonthSelector";
 import { cn } from "@/lib/utils";
 import {
   RefreshCw,
@@ -14,6 +16,9 @@ import {
   Settings,
   ArrowRight,
   Activity,
+  Archive,
+  BookOpen,
+  Download,
   ShieldCheck,
   Eye,
   Briefcase,
@@ -84,11 +89,11 @@ function RoleDescription({ role }: { role?: string }) {
     admin: {
       icon: <ShieldCheck className="w-4 h-4 text-amber-500" />,
       description:
-        "Full access — manage users, import data, view all boards and analytics.",
+        "Full access — manage users, sheet sources, sync data, and edit all boards.",
     },
     manager: {
       icon: <Briefcase className="w-4 h-4 text-violet-400" />,
-      description: "Can import and manage work orders across all boards.",
+      description: "Read access to all boards — data syncs from the Google Sheet.",
     },
     viewer: {
       icon: <Eye className="w-4 h-4 text-gray-400 dark:text-white/40" />,
@@ -154,10 +159,11 @@ function MyShipments({
           My Shipments
         </h2>
         {!isLoading && wos.length > 0 && (
-          <span className="ml-auto rounded-full bg-amber-500/12 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+          <span className="rounded-full bg-amber-500/12 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
             {wos.length}
           </span>
         )}
+        <div className="ml-auto"><MonthSelector /></div>
       </div>
 
       <div
@@ -298,16 +304,18 @@ export default function BajajHomePage() {
       } | null | undefined
   );
   const { data: modules = [] } = useBajajModules();
+  const month = useSelectedMonthParam();
 
   // My Work Orders
   const { data: myWOs = [], isLoading: myWOLoading } = useQuery({
-    queryKey: ["bajaj", "my-work-orders", bajajUser?.email],
+    queryKey: ["bajaj", "my-work-orders", bajajUser?.email, month],
     enabled: !!bajajUser?.email,
     queryFn: async () => {
       const sp = new URLSearchParams({
         assignedTo: bajajUser!.email!,
         pageSize: "100",
       });
+      if (month) sp.set("month", month);
       const res = await fetch(`/api/bajaj/work-orders?${sp}`);
       if (!res.ok) return [];
       const json = await res.json();
@@ -338,6 +346,24 @@ export default function BajajHomePage() {
       label: "View Analytics",
       icon: <BarChart2 className="w-4 h-4" />,
       href: "/bajaj/dashboard",
+      show: true,
+    },
+    {
+      label: "Bookings & Rates",
+      icon: <BookOpen className="w-4 h-4" />,
+      href: "/bajaj/bookings",
+      show: true,
+    },
+    {
+      label: "Export Data",
+      icon: <Download className="w-4 h-4" />,
+      href: "/bajaj/export",
+      show: true,
+    },
+    {
+      label: "Archive",
+      icon: <Archive className="w-4 h-4" />,
+      href: "/bajaj/archive",
       show: true,
     },
     {

@@ -13,6 +13,8 @@ import {
   Clock, AlertTriangle, Ship, Globe, ChevronRight,
 } from "lucide-react";
 import { useBajajAnalytics } from "@/lib/queries/bajaj";
+import { useSelectedMonthParam } from "@/lib/stores/month";
+import { MonthSelector } from "@/components/bajaj/MonthSelector";
 import { cn } from "@/lib/utils";
 
 /* ─── module filter ──────────────────────────────────────────── */
@@ -85,7 +87,8 @@ function PieTooltip({ active, payload }: { active?: boolean; payload?: { name: s
 /* ─── main component ─────────────────────────────────────────── */
 export function BajajDashboard() {
   const [mod, setMod] = useState("");
-  const { data, isLoading, isError, error, refetch } = useBajajAnalytics(mod || undefined);
+  const month = useSelectedMonthParam();
+  const { data, isLoading, isError, error, refetch } = useBajajAnalytics(mod || undefined, month);
 
   /* derived counts */
   const totalWOs   = data?.totalWorkOrders ?? 0;
@@ -120,6 +123,9 @@ export function BajajDashboard() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* month selector */}
+          <MonthSelector />
+
           {/* module selector */}
           <div className="relative">
             <select

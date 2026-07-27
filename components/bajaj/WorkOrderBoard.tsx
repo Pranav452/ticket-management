@@ -16,6 +16,8 @@ interface WorkOrderBoardProps {
   selectedId: string | null;
   /** Admin/superadmin only — everyone else sees a read-only board. */
   isAdmin: boolean;
+  /** Show each card's workbook month (used on the "All months" view). */
+  showMonthBadge?: boolean;
   onSelectCard: (id: string) => void;
   onDrop: (workOrderId: string, newStatusId: string, newOrder: number) => void;
 }
@@ -45,7 +47,7 @@ function StatusIcon({ colorHex, name }: { colorHex: string; name: string }) {
 }
 
 function Column({
-  status, workOrders, cardFaceFields, selectedId, canDropHere, getCardCanDrag, onSelectCard, onDrop,
+  status, workOrders, cardFaceFields, selectedId, canDropHere, getCardCanDrag, onSelectCard, onDrop, showMonthBadge,
 }: {
   status: BajajStatus;
   workOrders: BajajWorkOrder[];
@@ -55,6 +57,7 @@ function Column({
   getCardCanDrag: (wo: BajajWorkOrder) => boolean;
   onSelectCard: (id: string) => void;
   onDrop: (workOrderId: string, newStatusId: string, newOrder: number) => void;
+  showMonthBadge?: boolean;
 }) {
   const [active,        setActive]        = useState(false);
   const [searchOpen,    setSearchOpen]    = useState(false);
@@ -187,6 +190,7 @@ function Column({
               onSelect={() => onSelectCard(wo.id)}
               onDragStart={(e) => handleDragStart(e, wo)}
               statusColor={status.color_hex}
+              showMonthBadge={showMonthBadge}
             />
           </React.Fragment>
         ))}
@@ -205,7 +209,7 @@ function Column({
   );
 }
 
-export function WorkOrderBoard({ statuses, workOrders, cardFaceFields, isLoading, selectedId, isAdmin, onSelectCard, onDrop }: WorkOrderBoardProps) {
+export function WorkOrderBoard({ statuses, workOrders, cardFaceFields, isLoading, selectedId, isAdmin, showMonthBadge, onSelectCard, onDrop }: WorkOrderBoardProps) {
   if (isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center gap-2.5">
@@ -232,6 +236,7 @@ export function WorkOrderBoard({ statuses, workOrders, cardFaceFields, isLoading
           getCardCanDrag={() => isAdmin}
           onSelectCard={onSelectCard}
           onDrop={onDrop}
+          showMonthBadge={showMonthBadge}
         />
       ))}
       {statuses.length === 0 && (

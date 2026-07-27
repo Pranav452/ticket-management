@@ -127,7 +127,7 @@ export function ReminderBell() {
 
       <dialog
         ref={dialogRef}
-        className="w-full max-w-xl rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#111] text-gray-800 dark:text-white/90 p-0 backdrop:bg-black/40 shadow-xl"
+        className="m-auto w-full max-w-xl rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#111] text-gray-800 dark:text-white/90 p-0 backdrop:bg-black/50 backdrop:backdrop-blur-[2px] shadow-xl"
         onClose={() => setSendError(null)}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-white/[0.06]">

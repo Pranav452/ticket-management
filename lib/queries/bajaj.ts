@@ -127,6 +127,7 @@ export function useWorkOrders(moduleSlug: string, filters?: WorkOrderFilters) {
             search:     filters?.search,
             dateFrom:   filters?.dateFrom,
             dateTo:     filters?.dateTo,
+            month:      filters?.month,
             page,
             pageSize,
           })}`
@@ -334,10 +335,10 @@ export function useBajajAuditLogs(params?: { actorEmail?: string; action?: strin
 
 // ─── Analytics ────────────────────────────────────────────────────────────────
 
-export function useBajajAnalytics(moduleSlug?: string) {
+export function useBajajAnalytics(moduleSlug?: string, month?: string) {
   return useQuery<BajajAnalytics>({
-    queryKey: ["bajaj", "analytics", moduleSlug],
-    queryFn:  () => apiFetch(`/api/bajaj/analytics${buildQS({ module: moduleSlug })}`),
+    queryKey: ["bajaj", "analytics", moduleSlug, month],
+    queryFn:  () => apiFetch(`/api/bajaj/analytics${buildQS({ module: moduleSlug, month })}`),
     staleTime: 60_000,
   });
 }

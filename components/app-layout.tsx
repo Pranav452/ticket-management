@@ -10,8 +10,9 @@ import {
   Search,
   PanelLeft, Settings, Globe,
   MessageSquare, Home, Loader2, X,
-  Download, BookOpen,
+  Download, BookOpen, Archive,
 } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 
 const MODULES = [
@@ -346,6 +347,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <ModuleLink key={m.slug} module={m} />
           ))}
 
+          <NavItem href="/bajaj/archive" label="Archive" icon={Archive} active={pathname.startsWith("/bajaj/archive")} />
+
           <Divider />
 
           {/* Tools */}
@@ -358,11 +361,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </nav>
 
         {/* ── Bottom footer ─────────────────────────────────────────── */}
-        <div className="px-2 py-2" style={{ borderTop: `1px solid ${SB_BORDER}` }}>
+        <div className="px-2 py-2 flex items-center gap-1" style={{ borderTop: `1px solid ${SB_BORDER}` }}>
           {bajajUser && (
             <Link
               href="/bajaj/settings"
-              className="flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors w-full group"
+              className="flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors flex-1 min-w-0 group"
               style={{ color: SB_TEXT }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = SB_HOVER; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
@@ -379,6 +382,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <Settings className="size-3.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: SB_MUTED }} />
             </Link>
           )}
+          <ThemeToggle className="size-8 rounded-md flex-shrink-0 hover:bg-black/5 dark:hover:bg-white/5" />
         </div>
       </aside>
 

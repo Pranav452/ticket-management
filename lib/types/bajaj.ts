@@ -153,4 +153,6 @@ export interface WorkOrderFilters {
   dateTo?: string;
   statusId?: string;
   search?: string;    // searches across all jsonb data fields
+  /** Workbook month "YYYY-MM" (data.sheet_month); undefined = all months. */
+  month?: string;
 }

@@ -7,12 +7,20 @@ const PUBLIC_API_PREFIX = "/api/bajaj/auth/";
 // Scheduled (cron) endpoints have no user session — they authorize themselves
 // with CRON_SECRET inside the handler, so the middleware must let them through.
 const CRON_API_PREFIX = "/api/bajaj/cron/";
+// The scheduled sheet sync (vercel.json cron) also self-authorizes: GET
+// requires CRON_SECRET; POST requires an admin session OR the cron secret —
+// both checks live in the route handler.
+const SELF_AUTH_API_PATHS = ["/api/bajaj/sheet-sync"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Always allow public auth API + cron API routes (each self-authorizes)
-  if (pathname.startsWith(PUBLIC_API_PREFIX) || pathname.startsWith(CRON_API_PREFIX)) {
+  if (
+    pathname.startsWith(PUBLIC_API_PREFIX) ||
+    pathname.startsWith(CRON_API_PREFIX) ||
+    SELF_AUTH_API_PATHS.includes(pathname)
+  ) {
     return NextResponse.next({ request });
   }
 
