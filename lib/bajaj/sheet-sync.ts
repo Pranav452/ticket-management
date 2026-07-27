@@ -1,14 +1,22 @@
 /**
- * Google Sheet → bajaj_work_orders sync.
+ * Google Sheets → bajaj_work_orders sync (monthly multi-workbook).
  *
- * Replaces the manual xlsx/paste/manual-form entry paths: the ops team keeps a
- * single Google Sheet (one tab per module, same layout as the old Excel files)
- * and this module pulls it via the read-only service-account client.
+ * Ops starts a NEW Google workbook each month (same tab layout); several
+ * months run in parallel while shipments finish. The workbook list lives in
+ * app_config."bajaj_sheet_sources" (see lib/bajaj/sheet-sources.ts) with the
+ * legacy BAJAJ_SHEET_ID env var as a July-2026 fallback that gets auto-seeded
+ * into the config on the first real sync.
+ *
+ * Every work order belongs to a month: data.sheet_month = "YYYY-MM". All
+ * matching/dedup is scoped per (module, month) — a July WO number reappearing
+ * in the August workbook is a NEW card, never an update of the July one. DB
+ * rows without sheet_month (pre-backfill) count as the OLDEST configured
+ * month so legacy data still matches the July workbook.
  *
  * Mapping / status derivation is shared with lib/bajaj/import-map.mjs so sheet
  * rows produce exactly the same records the old import route produced.
  *
- * Semantics:
+ * Semantics (per workbook/month):
  *   - dedup key = `${wo}|${container_no}|${booking_no}` (same as old import),
  *     with progressive fallback matching (`wo|cont|""`, `wo|""|bkg`, `wo|""|""`)
  *     so a card keeps its identity when ops later fills in the booking or
@@ -17,16 +25,33 @@
  *                     derives a LATER stage than the card's current column the
  *                     card auto-advances forward (never backward), with the
  *                     same sole-editor auto-assignment as a manual move
+ *   - archived row  → a sheet row matching an ARCHIVED card auto-restores it
+ *                     (archived_at/archived_by cleared) and updates it —
+ *                     reappearance in the sheet means it's back
  *   - new row       → inserted with derived status (fallback Planning) at the
  *                     end of the board; Sri-Lanka validation issues are
  *                     reported as warnings, never block the insert
- *   - DB row missing from sheet → reported, NEVER deleted or modified
+ *   - DB row missing from sheet → reported per (module, month), NEVER touched
+ *     by the sync itself (archiveMissing in lib/bajaj/archive.ts is the
+ *     explicit admin action for those)
+ *
+ * Bookings: each month's "Bookings Details" tab is stored under
+ * app_config."bajaj_bookings:<month>"; the legacy "bajaj_bookings" key keeps
+ * mirroring the CURRENT (latest active) month so the existing bookings page
+ * works unchanged. After every successful real run a full version snapshot is
+ * stored (lib/bajaj/versions.ts).
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { validateWorkOrderRules } from "@/lib/bajaj/validation";
-import { fetchSheetRows, listSheetTabs, sheetSyncEnabled, missingSheetSyncEnv } from "@/lib/bajaj/google-sheets";
+import {
+  fetchSheetRows, listSheetTabs, hasGoogleServiceAccount, missingSheetSyncEnv,
+} from "@/lib/bajaj/google-sheets";
+import {
+  resolveSheetSources, saveSheetSources, sheetSyncEnabled, type SheetSource,
+} from "@/lib/bajaj/sheet-sources";
+import { createVersionSnapshot } from "@/lib/bajaj/versions";
 import {
   SHEET_MODULE_MAP, normHeader, buildColMap, buildRecord, deriveStatusName, formatCell,
 } from "@/lib/bajaj/import-map.mjs";
@@ -59,12 +84,16 @@ function serialToISODate(n: number): string {
   return new Date(EXCEL_EPOCH_MS + Math.round(n * 86_400_000)).toISOString().slice(0, 10);
 }
 
-/* ── Bookings list (app_config.bajaj_bookings) ──────────────────────────────
- * The "Bookings Details" tab replaces in-app booking editing: the whole list
- * is rebuilt from the sheet on every sync. Header mapping is local to this
- * tab (it does not share the work-order HEADER_MAP). */
+/* ── Bookings list (app_config."bajaj_bookings:<month>") ────────────────────
+ * The "Bookings Details" tab replaces in-app booking editing: each month's
+ * list is rebuilt from that month's workbook on every sync. Header mapping is
+ * local to this tab (it does not share the work-order HEADER_MAP). */
 const BOOKINGS_TAB_NAME = "Bookings Details";
-const BOOKINGS_CONFIG_KEY = "bajaj_bookings";
+const LEGACY_BOOKINGS_KEY = "bajaj_bookings";
+
+export function bookingsKeyForMonth(month: string): string {
+  return `bajaj_bookings:${month}`;
+}
 
 const BOOKING_HEADER_MAP: Record<string, string> = {
   "ref no":   "ref_no",
@@ -150,9 +179,21 @@ function deepEquals(a: unknown, b: unknown): boolean {
   return stableStringify(a) === stableStringify(b);
 }
 
+/** The month a stored row belongs to; NULL sheet_month = oldest configured month. */
+function rowMonth(d: Record<string, unknown>, oldestMonth: string): string {
+  const m = String(d["sheet_month"] ?? "").trim();
+  return m || oldestMonth;
+}
+
+function isArchivedData(d: Record<string, unknown>): boolean {
+  return d["archived_at"] != null && String(d["archived_at"]).trim() !== "";
+}
+
 export interface TabSyncResult {
   tab: string;
   module: string;
+  /** Month ("YYYY-MM") of the workbook this tab came from. */
+  month: string;
   rows: number;
   inserted: number;
   updated: number;
@@ -160,7 +201,7 @@ export interface TabSyncResult {
   moved: number;
   unchanged: number;
   violations: string[];
-  /** WOs present in the DB for this module but absent from the sheet (never touched). */
+  /** WOs of this module+month present in the DB but absent from the sheet (never touched). */
   missingFromSheet: string[];
   /** WO numbers that were (or would be, in dryRun) inserted. */
   wouldInsert: string[];
@@ -172,34 +213,73 @@ export interface TabSyncResult {
 
 export interface BookingsSyncResult {
   tab: string;
+  /** Month this bookings list belongs to. */
+  month: string;
   rows: number;
-  /** Row count of the previously stored bajaj_bookings list. */
+  /** Row count of the previously stored list for this month. */
   previous: number;
   /** True when the stored list was actually replaced (never in dryRun). */
   replaced: boolean;
   error?: string;
 }
 
+export interface MonthSyncResult {
+  month: string;
+  label: string;
+  sheetId: string;
+  tabs: TabSyncResult[];
+  bookings?: BookingsSyncResult;
+  /** Set when this month's workbook failed to sync (other months continue). */
+  error?: string;
+}
+
+/** A non-archived DB row absent from its month's workbook (archive candidates). */
+export interface UnclaimedRow {
+  id: string;
+  wo: string;
+  module: string;
+  month: string;
+}
+
+export interface SheetSyncTotals {
+  rows: number;
+  inserted: number;
+  updated: number;
+  moved: number;
+  unchanged: number;
+  violations: number;
+  missingFromSheet: number;
+}
+
 export interface SheetSyncResult {
   ok: boolean;
   dryRun: boolean;
   error?: string;
+  /** Flattened per-tab results across ALL months (each tagged with .month). */
   tabs: TabSyncResult[];
+  /** Legacy top-level bookings — the CURRENT (latest active) month's result. */
   bookings?: BookingsSyncResult;
-  totals: {
-    rows: number;
-    inserted: number;
-    updated: number;
-    moved: number;
-    unchanged: number;
-    violations: number;
-    missingFromSheet: number;
-  };
+  /** Per-month breakdown. */
+  months: MonthSyncResult[];
+  /** Totals across all months. */
+  totals: SheetSyncTotals;
+  /** Non-archived DB rows absent from their month's sheet (fully-scanned months only). */
+  unclaimedRows?: UnclaimedRow[];
+  /** app_config key of the version snapshot stored after a real run. */
+  versionKey?: string;
+  versionError?: string;
 }
 
-interface ExistingRow { id: string; wo: string; status_id: string | null; data: Record<string, unknown> }
+interface ExistingRow {
+  id: string;
+  wo: string;
+  status_id: string | null;
+  data: Record<string, unknown>;
+  archived: boolean;
+}
 
-interface ModCtx {
+/** Per-module info shared across all months of a run. */
+interface ModInfo {
   id: string;
   slug: string;
   statusIdByName: Record<string, string>;
@@ -209,30 +289,37 @@ interface ModCtx {
   statusNameById: Record<string, string>;
   /** status id → sole can_edit editor's email (only statuses with exactly one). */
   soleEditorByStatusId: Record<string, string>;
-  /** dedup key → existing DB row */
+  /** All DB rows of the module (fetched once, filtered per month). */
+  allRows: { id: string; status_id: string | null; data: Record<string, unknown> }[];
+  /** Running max column_order for appended inserts — shared across months. */
+  order: number;
+}
+
+/** Per-(module, month) reconciliation state. */
+interface ModCtx {
+  info: ModInfo;
+  month: string;
+  /** dedup key → existing DB row of this month (archived rows included — see restore). */
   existing: Map<string, ExistingRow>;
-  /** dedup keys seen in the sheet (across all tabs mapping to this module) */
+  /** dedup keys seen in this month's sheet (across all tabs mapping to this module) */
   seenKeys: Set<string>;
   /** ids of existing DB rows matched (exactly or via fallback) this run. */
   claimedIds: Set<string>;
-  /** running max column_order for appended inserts (old route's approach) */
-  order: number;
   inserted: number;
   updated: number;
   moved: number;
   rowCount: number;
-  /** first tab result for this module — carries missingFromSheet */
+  /** first tab result for this module+month — carries missingFromSheet */
   firstTab: TabSyncResult | null;
 }
 
-async function getModCtx(
-  sb: SupabaseClient, cache: Map<string, ModCtx>, slug: string,
-): Promise<ModCtx | null> {
-  const cached = cache.get(slug);
-  if (cached) return cached;
+async function getModInfo(
+  sb: SupabaseClient, cache: Map<string, ModInfo | null>, slug: string,
+): Promise<ModInfo | null> {
+  if (cache.has(slug)) return cache.get(slug)!;
 
   const { data: mod } = await sb.from("bajaj_modules").select("id").eq("slug", slug).single();
-  if (!mod) return null;
+  if (!mod) { cache.set(slug, null); return null; }
 
   const { data: statusRows } = await sb
     .from("bajaj_statuses").select("id, name, display_order").eq("module_id", mod.id);
@@ -259,296 +346,411 @@ async function getModCtx(
     if (emails.length === 1) soleEditorByStatusId[sid] = emails[0];
   }
 
-  const { data: existingRows } = await sb
-    .from("bajaj_work_orders")
-    .select("id, data, column_order, status_id")
-    .eq("module_slug", slug);
-
-  const existing = new Map<string, ExistingRow>();
+  // All rows for the module, paging past the PostgREST 1000-row cap.
+  const allRows: ModInfo["allRows"] = [];
   let order = 0;
-  for (const r of existingRows ?? []) {
-    const d = (r.data ?? {}) as Record<string, unknown>;
-    existing.set(rowKey(d), {
-      id: r.id, wo: String(d["wo"] ?? "").trim(),
-      status_id: (r.status_id as string | null) ?? null, data: d,
-    });
-    order = Math.max(order, Number(r.column_order) || 0);
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data: page, error } = await sb
+      .from("bajaj_work_orders")
+      .select("id, data, column_order, status_id")
+      .eq("module_slug", slug)
+      .order("id", { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(`Loading ${slug} rows failed: ${error.message}`);
+    for (const r of page ?? []) {
+      allRows.push({
+        id: r.id,
+        status_id: (r.status_id as string | null) ?? null,
+        data: (r.data ?? {}) as Record<string, unknown>,
+      });
+      order = Math.max(order, Number(r.column_order) || 0);
+    }
+    if (!page || page.length < PAGE) break;
   }
 
-  const ctx: ModCtx = {
+  const info: ModInfo = {
     id: mod.id, slug, statusIdByName, statusOrderByName, statusNameById,
-    soleEditorByStatusId, existing,
-    seenKeys: new Set(), claimedIds: new Set(), order,
+    soleEditorByStatusId, allRows, order,
+  };
+  cache.set(slug, info);
+  return info;
+}
+
+function buildModCtx(info: ModInfo, month: string, oldestMonth: string): ModCtx {
+  const existing = new Map<string, ExistingRow>();
+  for (const r of info.allRows) {
+    if (rowMonth(r.data, oldestMonth) !== month) continue;
+    existing.set(rowKey(r.data), {
+      id: r.id,
+      wo: String(r.data["wo"] ?? "").trim(),
+      status_id: r.status_id,
+      data: r.data,
+      archived: isArchivedData(r.data),
+    });
+  }
+  return {
+    info, month, existing,
+    seenKeys: new Set(), claimedIds: new Set(),
     inserted: 0, updated: 0, moved: 0, rowCount: 0, firstTab: null,
   };
-  cache.set(slug, ctx);
-  return ctx;
+}
+
+async function syncBookingsForMonth(
+  sb: SupabaseClient,
+  sheetId: string,
+  allTabs: string[],
+  month: string,
+  isCurrentMonth: boolean,
+  dryRun: boolean,
+): Promise<BookingsSyncResult> {
+  const bookingsTab = allTabs.find((t) => normHeader(t) === normHeader(BOOKINGS_TAB_NAME));
+  if (!bookingsTab) {
+    return { tab: BOOKINGS_TAB_NAME, month, rows: 0, previous: 0, replaced: false, error: "tab not found" };
+  }
+  try {
+    const grid = await fetchSheetRows(sheetId, bookingsTab);
+    const bookingRows = buildBookingRows(grid);
+    const monthKey = bookingsKeyForMonth(month);
+
+    // Previous count: the per-month key; for the current month fall back to
+    // the legacy key (pre-migration state).
+    let previous = 0;
+    const keysToTry = isCurrentMonth ? [monthKey, LEGACY_BOOKINGS_KEY] : [monthKey];
+    for (const k of keysToTry) {
+      const { data: prev } = await sb
+        .from("app_config").select("value").eq("key", k).maybeSingle();
+      if (!prev?.value) continue;
+      try {
+        const parsed = JSON.parse(prev.value) as { rows?: unknown };
+        if (Array.isArray(parsed.rows)) { previous = parsed.rows.length; break; }
+      } catch { /* corrupt stored value — treat as empty */ }
+    }
+
+    let replaced = false;
+    if (!dryRun) {
+      // Same stored shape as the reference API: { updated_at, rows }.
+      const payload = { updated_at: new Date().toISOString(), rows: bookingRows };
+      const value = JSON.stringify(payload);
+      const { error } = await sb
+        .from("app_config").upsert({ key: monthKey, value }, { onConflict: "key" });
+      if (error) throw new Error(`Bookings save failed: ${error.message}`);
+      if (isCurrentMonth) {
+        // Legacy mirror so the existing bookings page keeps working.
+        const { error: legacyErr } = await sb
+          .from("app_config").upsert({ key: LEGACY_BOOKINGS_KEY, value }, { onConflict: "key" });
+        if (legacyErr) throw new Error(`Bookings legacy mirror failed: ${legacyErr.message}`);
+      }
+      replaced = true;
+    }
+    return { tab: bookingsTab, month, rows: bookingRows.length, previous, replaced };
+  } catch (err) {
+    return {
+      tab: bookingsTab, month, rows: 0, previous: 0, replaced: false,
+      error: err instanceof Error ? err.message : "Bookings sync failed",
+    };
+  }
 }
 
 export interface SheetSyncOptions { dryRun?: boolean }
 
+const EMPTY_TOTALS: SheetSyncTotals = {
+  rows: 0, inserted: 0, updated: 0, moved: 0, unchanged: 0, violations: 0, missingFromSheet: 0,
+};
+
 /**
- * Pull every recognized tab of the configured Google Sheet and reconcile it
- * into bajaj_work_orders. Never throws — failures come back as { ok: false }.
+ * Pull every ACTIVE monthly workbook and reconcile it into bajaj_work_orders.
+ * Never throws — failures come back as { ok: false }; a single workbook
+ * failing does not stop the other months.
  */
 export async function runSheetSync(actor: string, opts: SheetSyncOptions = {}): Promise<SheetSyncResult> {
   const dryRun = !!opts.dryRun;
-  const emptyTotals = { rows: 0, inserted: 0, updated: 0, moved: 0, unchanged: 0, violations: 0, missingFromSheet: 0 };
 
   try {
-    if (!sheetSyncEnabled()) {
+    if (!hasGoogleServiceAccount()) {
       return {
-        ok: false, dryRun, tabs: [], totals: emptyTotals,
+        ok: false, dryRun, tabs: [], months: [], totals: { ...EMPTY_TOTALS },
         error: `Google Sheet sync is not configured — missing env: ${missingSheetSyncEnv().join(", ")}`,
       };
     }
 
-    const sheetId = process.env.BAJAJ_SHEET_ID!;
     const sb = createAdminClient();
-    const ctxCache = new Map<string, ModCtx>();
-    const tabResults: TabSyncResult[] = [];
 
-    const allTabs = await listSheetTabs(sheetId);
-    const knownTabs = allTabs.filter((t) => SHEET_MODULE_MAP[normHeader(t)]);
-    if (knownTabs.length === 0) {
+    const { sources, seededFromEnv } = await resolveSheetSources(sb);
+    const active = sources
+      .filter((s) => s.status === "active")
+      .sort((a, b) => a.month.localeCompare(b.month));
+    if (active.length === 0) {
       return {
-        ok: false, dryRun, tabs: [], totals: emptyTotals,
-        error: `No recognized module tabs found in the sheet. Tabs present: ${allTabs.join(", ") || "(none)"}`,
+        ok: false, dryRun, tabs: [], months: [], totals: { ...EMPTY_TOTALS },
+        error: "Google Sheet sync is not configured — no active workbook sources (set BAJAJ_SHEET_ID or configure bajaj_sheet_sources).",
       };
     }
 
-    for (const tab of knownTabs) {
-      const meta = SHEET_MODULE_MAP[normHeader(tab)];
-      const ctx = await getModCtx(sb, ctxCache, meta.slug);
-      if (!ctx) continue; // unknown module in DB — skip rather than fail the sync
+    // Auto-seed the sources config from the env fallback — real runs only.
+    if (seededFromEnv && !dryRun) {
+      await saveSheetSources(sb, sources);
+    }
 
-      const result: TabSyncResult = {
-        tab, module: meta.slug, rows: 0, inserted: 0, updated: 0, moved: 0, unchanged: 0,
-        violations: [], missingFromSheet: [], wouldInsert: [], wouldUpdate: [], wouldMove: [],
-      };
-      tabResults.push(result);
-      if (!ctx.firstTab) ctx.firstTab = result;
+    // Rows with NULL sheet_month (pre-backfill) count as the OLDEST configured
+    // month, so legacy data still matches its original (July) workbook.
+    const oldestMonth = sources.map((s) => s.month).sort()[0];
+    const currentMonth = active[active.length - 1].month;
 
-      const gridRows = await fetchSheetRows(sheetId, tab);
-      if (gridRows.length < 2) continue;
+    const infoCache = new Map<string, ModInfo | null>();
+    const allCtxs: ModCtx[] = [];
+    const monthResults: MonthSyncResult[] = [];
+    const unclaimedRows: UnclaimedRow[] = [];
 
-      // Adapter shim (a): Sheets rows are 0-based arrays; the shared mapping
-      // helpers expect ExcelJS-style 1-based arrays with an empty slot 0.
-      const colMap = buildColMap([null, ...gridRows[0]]) as Record<string, string>;
-      if (!Object.values(colMap).includes("wo")) continue; // no WO column — not a work-order tab
+    for (const source of active) {
+      const { month, label, sheetId } = source;
+      const mres: MonthSyncResult = { month, label, sheetId, tabs: [] };
+      monthResults.push(mres);
 
-      const defaultCountry = MODULE_DEFAULT_COUNTRY[meta.slug] ?? null;
-      const toInsert: Record<string, unknown>[] = [];
-      const toUpdate: {
-        id: string; data: Record<string, unknown>; status_id?: string; column_order?: number;
-      }[] = [];
-      const moveAudits: Record<string, unknown>[] = [];
+      // Per-month ctx cache — dedup/matching is scoped per (module, month).
+      const ctxCache = new Map<string, ModCtx>();
 
-      for (let i = 1; i < gridRows.length; i++) {
-        const oneBased: unknown[] = [null, ...gridRows[i]];
-
-        // Adapter shim (b): convert date serials → YYYY-MM-DD for date keys
-        // BEFORE the shared coercion turns them into plain number strings.
-        for (const [idxStr, key] of Object.entries(colMap)) {
-          if (!DATE_KEYS.has(key)) continue;
-          const idx = parseInt(idxStr, 10);
-          const v = oneBased[idx];
-          if (typeof v === "number" && v >= SERIAL_MIN && v <= SERIAL_MAX) {
-            oneBased[idx] = serialToISODate(v);
-          }
+      try {
+        const allTabs = await listSheetTabs(sheetId);
+        const knownTabs = allTabs.filter((t) => SHEET_MODULE_MAP[normHeader(t)]);
+        if (knownTabs.length === 0) {
+          mres.error = `No recognized module tabs found. Tabs present: ${allTabs.join(", ") || "(none)"}`;
+          continue;
         }
 
-        const data = buildRecord(colMap, oneBased, { partsFrames: !!meta.partsFrames }) as
-          | Record<string, unknown> | null;
-        if (!data) continue; // no WO number on this row
-        if (!data["country"]) data["country"] = defaultCountry;
-
-        result.rows++;
-        ctx.rowCount++;
-        const wo = String(data["wo"] ?? "").trim();
-        const key = rowKey(data);
-
-        if (ctx.seenKeys.has(key)) { result.unchanged++; continue; } // duplicate sheet row
-        ctx.seenKeys.add(key);
-
-        // Progressive matching: exact key first, then fallbacks with the
-        // booking/container parts blanked. Skip rows already claimed this run
-        // so two sheet rows can never adopt the same card.
-        let existing: ExistingRow | undefined;
-        for (const k of candidateKeys(data)) {
-          const row = ctx.existing.get(k);
-          if (row && !ctx.claimedIds.has(row.id)) { existing = row; break; }
-        }
-
-        if (existing) {
-          ctx.claimedIds.add(existing.id);
-
-          // Merge sheet values over stored data.
-          const merged = { ...existing.data, ...data };
-          const dataChanged = !deepEquals(merged, existing.data);
-
-          // Forward-only auto-move: when the merged data derives a strictly
-          // later stage than the card's current column, advance it. Never
-          // moves backward; unknown derived stages are ignored.
-          const derived      = deriveStatusName(merged) as string;
-          const curName      = ctx.statusNameById[existing.status_id ?? ""];
-          const curOrder     = curName !== undefined ? ctx.statusOrderByName[curName] ?? -Infinity : -Infinity;
-          const derivedOrder = ctx.statusOrderByName[derived];
-          const shouldMove   = derivedOrder !== undefined && derivedOrder > curOrder;
-
-          if (!dataChanged && !shouldMove) { result.unchanged++; continue; }
-
-          if (dataChanged) {
-            result.updated++;
-            ctx.updated++;
-            result.wouldUpdate.push(wo);
+        for (const tab of knownTabs) {
+          const meta = SHEET_MODULE_MAP[normHeader(tab)];
+          let ctx = ctxCache.get(meta.slug);
+          if (!ctx) {
+            const info = await getModInfo(sb, infoCache, meta.slug);
+            if (!info) continue; // unknown module in DB — skip rather than fail the sync
+            ctx = buildModCtx(info, month, oldestMonth);
+            ctxCache.set(meta.slug, ctx);
+            allCtxs.push(ctx);
           }
 
-          let newStatusId: string | undefined;
-          let autoAssigned: string | undefined;
-          if (shouldMove) {
-            result.moved++;
-            ctx.moved++;
-            result.wouldMove.push(`${wo}: ${curName ?? "?"} → ${derived}`);
-            newStatusId = ctx.statusIdByName[derived];
+          const result: TabSyncResult = {
+            tab, module: meta.slug, month, rows: 0, inserted: 0, updated: 0, moved: 0, unchanged: 0,
+            violations: [], missingFromSheet: [], wouldInsert: [], wouldUpdate: [], wouldMove: [],
+          };
+          mres.tabs.push(result);
+          if (!ctx.firstTab) ctx.firstTab = result;
 
-            // Sole-editor auto-assignment (mirrors workflow.ts RULE 7), done
-            // inline on `merged` so the card needs only the one write below.
-            const sole = newStatusId ? ctx.soleEditorByStatusId[newStatusId] : undefined;
-            const assignKey = `assigned_to_${derived.toLowerCase().replace(/\s+/g, "_")}`;
-            if (sole && !merged[assignKey]) {
-              merged[assignKey] = sole;
-              autoAssigned = sole;
+          const gridRows = await fetchSheetRows(sheetId, tab);
+          if (gridRows.length < 2) continue;
+
+          // Adapter shim (a): Sheets rows are 0-based arrays; the shared mapping
+          // helpers expect ExcelJS-style 1-based arrays with an empty slot 0.
+          const colMap = buildColMap([null, ...gridRows[0]]) as Record<string, string>;
+          if (!Object.values(colMap).includes("wo")) continue; // no WO column — not a work-order tab
+
+          const defaultCountry = MODULE_DEFAULT_COUNTRY[meta.slug] ?? null;
+          const toInsert: Record<string, unknown>[] = [];
+          const toUpdate: {
+            id: string; data: Record<string, unknown>; status_id?: string; column_order?: number;
+          }[] = [];
+          const moveAudits: Record<string, unknown>[] = [];
+
+          for (let i = 1; i < gridRows.length; i++) {
+            const oneBased: unknown[] = [null, ...gridRows[i]];
+
+            // Adapter shim (b): convert date serials → YYYY-MM-DD for date keys
+            // BEFORE the shared coercion turns them into plain number strings.
+            for (const [idxStr, key] of Object.entries(colMap)) {
+              if (!DATE_KEYS.has(key)) continue;
+              const idx = parseInt(idxStr, 10);
+              const v = oneBased[idx];
+              if (typeof v === "number" && v >= SERIAL_MIN && v <= SERIAL_MAX) {
+                oneBased[idx] = serialToISODate(v);
+              }
+            }
+
+            const data = buildRecord(colMap, oneBased, { partsFrames: !!meta.partsFrames }) as
+              | Record<string, unknown> | null;
+            if (!data) continue; // no WO number on this row
+            if (!data["country"]) data["country"] = defaultCountry;
+
+            // Every record carries its workbook's month — set BEFORE dedup /
+            // merge so it persists on inserts and merges alike.
+            data["sheet_month"] = month;
+
+            result.rows++;
+            ctx.rowCount++;
+            const wo = String(data["wo"] ?? "").trim();
+            const key = rowKey(data);
+
+            if (ctx.seenKeys.has(key)) { result.unchanged++; continue; } // duplicate sheet row
+            ctx.seenKeys.add(key);
+
+            // Progressive matching: exact key first, then fallbacks with the
+            // booking/container parts blanked. Skip rows already claimed this run
+            // so two sheet rows can never adopt the same card.
+            let existing: ExistingRow | undefined;
+            for (const k of candidateKeys(data)) {
+              const row = ctx.existing.get(k);
+              if (row && !ctx.claimedIds.has(row.id)) { existing = row; break; }
+            }
+
+            if (existing) {
+              ctx.claimedIds.add(existing.id);
+
+              // Merge sheet values over stored data. A sheet row matching an
+              // ARCHIVED card auto-restores it — reappearance means it's back.
+              const merged = { ...existing.data, ...data };
+              if (existing.archived) {
+                delete merged["archived_at"];
+                delete merged["archived_by"];
+              }
+              const dataChanged = !deepEquals(merged, existing.data);
+
+              // Forward-only auto-move: when the merged data derives a strictly
+              // later stage than the card's current column, advance it. Never
+              // moves backward; unknown derived stages are ignored.
+              const derived      = deriveStatusName(merged) as string;
+              const curName      = ctx.info.statusNameById[existing.status_id ?? ""];
+              const curOrder     = curName !== undefined ? ctx.info.statusOrderByName[curName] ?? -Infinity : -Infinity;
+              const derivedOrder = ctx.info.statusOrderByName[derived];
+              const shouldMove   = derivedOrder !== undefined && derivedOrder > curOrder;
+
+              if (!dataChanged && !shouldMove) { result.unchanged++; continue; }
+
+              if (dataChanged) {
+                result.updated++;
+                ctx.updated++;
+                result.wouldUpdate.push(wo);
+              }
+
+              let newStatusId: string | undefined;
+              let autoAssigned: string | undefined;
+              if (shouldMove) {
+                result.moved++;
+                ctx.moved++;
+                result.wouldMove.push(`${wo}: ${curName ?? "?"} → ${derived}`);
+                newStatusId = ctx.info.statusIdByName[derived];
+
+                // Sole-editor auto-assignment (mirrors workflow.ts RULE 7), done
+                // inline on `merged` so the card needs only the one write below.
+                const sole = newStatusId ? ctx.info.soleEditorByStatusId[newStatusId] : undefined;
+                const assignKey = `assigned_to_${derived.toLowerCase().replace(/\s+/g, "_")}`;
+                if (sole && !merged[assignKey]) {
+                  merged[assignKey] = sole;
+                  autoAssigned = sole;
+                }
+              }
+
+              if (!dryRun) {
+                toUpdate.push({
+                  id: existing.id,
+                  data: merged,
+                  ...(shouldMove && newStatusId
+                    ? { status_id: newStatusId, column_order: ++ctx.info.order }
+                    : {}),
+                });
+                if (shouldMove) {
+                  moveAudits.push({
+                    actor_email: "system@sheet-sync",
+                    action:      "moved_card",
+                    target_type: "work_order",
+                    target_id:   existing.id,
+                    old_value:   { status: curName ?? "?" },
+                    new_value:   { status: derived, ...(autoAssigned ? { auto_assigned: autoAssigned } : {}) },
+                  });
+                }
+              }
+              continue;
+            }
+
+            // New row → Sri-Lanka business validation. The sheet is the source of
+            // truth, so violations are reported but the row is still inserted
+            // (unlike the old upload flow, which dropped violating rows).
+            const warnings = await validateWorkOrderRules(sb, [{
+              country:     data["country"]      ? String(data["country"])      : defaultCountry,
+              agent:       data["agent"]        ? String(data["agent"])        : null,
+              containerno: data["container_no"] ? String(data["container_no"]) : null,
+              vslname:     data["vslname"]      ? String(data["vslname"])      : null,
+              assy_config: data["assy_config"]  ? String(data["assy_config"])  : null,
+            }]);
+            if (warnings.length > 0) {
+              result.violations.push(`WO ${wo}: ${warnings.map((w) => w.message).join(" ")}`);
+            }
+
+            const statusName = deriveStatusName(data) as string;
+            const statusId = ctx.info.statusIdByName[statusName] ?? ctx.info.statusIdByName["Planning"] ?? null;
+            result.inserted++;
+            ctx.inserted++;
+            result.wouldInsert.push(wo);
+            if (!dryRun) {
+              toInsert.push({
+                module_id:    ctx.info.id,
+                module_slug:  ctx.info.slug,
+                status_id:    statusId,
+                column_order: ++ctx.info.order,
+                data,
+              });
             }
           }
 
           if (!dryRun) {
-            toUpdate.push({
-              id: existing.id,
-              data: merged,
-              ...(shouldMove && newStatusId
-                ? { status_id: newStatusId, column_order: ++ctx.order }
-                : {}),
-            });
-            if (shouldMove) {
-              moveAudits.push({
-                actor_email: "system@sheet-sync",
-                action:      "moved_card",
-                target_type: "work_order",
-                target_id:   existing.id,
-                old_value:   { status: curName ?? "?" },
-                new_value:   { status: derived, ...(autoAssigned ? { auto_assigned: autoAssigned } : {}) },
-              });
+            for (const upd of toUpdate) {
+              const { error } = await sb
+                .from("bajaj_work_orders")
+                .update({
+                  data: upd.data,
+                  updated_at: new Date().toISOString(),
+                  ...(upd.status_id !== undefined
+                    ? { status_id: upd.status_id, column_order: upd.column_order }
+                    : {}),
+                })
+                .eq("id", upd.id);
+              if (error) throw new Error(`Update failed (tab "${tab}", ${month}): ${error.message}`);
+            }
+            if (toInsert.length > 0) {
+              const { error } = await sb.from("bajaj_work_orders").insert(toInsert);
+              if (error) throw new Error(`Insert failed (tab "${tab}", ${month}): ${error.message}`);
+            }
+            if (moveAudits.length > 0) {
+              const { error } = await sb.from("bajaj_audit_logs").insert(moveAudits);
+              if (error) throw new Error(`Move audit failed (tab "${tab}", ${month}): ${error.message}`);
             }
           }
-          continue;
         }
 
-        // New row → Sri-Lanka business validation. The sheet is the source of
-        // truth, so violations are reported but the row is still inserted
-        // (unlike the old upload flow, which dropped violating rows).
-        const warnings = await validateWorkOrderRules(sb, [{
-          country:     data["country"]      ? String(data["country"])      : defaultCountry,
-          agent:       data["agent"]        ? String(data["agent"])        : null,
-          containerno: data["container_no"] ? String(data["container_no"]) : null,
-          vslname:     data["vslname"]      ? String(data["vslname"])      : null,
-          assy_config: data["assy_config"]  ? String(data["assy_config"])  : null,
-        }]);
-        if (warnings.length > 0) {
-          result.violations.push(`WO ${wo}: ${warnings.map((w) => w.message).join(" ")}`);
+        // DB rows of this month never claimed by any sheet row (exactly or via
+        // fallback) — report only, never touch. Archived rows are already
+        // parked and are not re-reported. Computed here (inside the try) so a
+        // partially-scanned failed month never reports false "missing" rows.
+        for (const ctx of ctxCache.values()) {
+          if (!ctx.firstTab) continue;
+          const missing: string[] = [];
+          for (const [key, row] of ctx.existing) {
+            if (ctx.claimedIds.has(row.id) || row.archived) continue;
+            missing.push(row.wo || key);
+            unclaimedRows.push({ id: row.id, wo: row.wo, module: ctx.info.slug, month });
+          }
+          ctx.firstTab.missingFromSheet = missing;
         }
 
-        const statusName = deriveStatusName(data) as string;
-        const statusId = ctx.statusIdByName[statusName] ?? ctx.statusIdByName["Planning"] ?? null;
-        result.inserted++;
-        ctx.inserted++;
-        result.wouldInsert.push(wo);
-        if (!dryRun) {
-          toInsert.push({
-            module_id:    ctx.id,
-            module_slug:  ctx.slug,
-            status_id:    statusId,
-            column_order: ++ctx.order,
-            data,
-          });
-        }
-      }
-
-      if (!dryRun) {
-        for (const upd of toUpdate) {
-          const { error } = await sb
-            .from("bajaj_work_orders")
-            .update({
-              data: upd.data,
-              updated_at: new Date().toISOString(),
-              ...(upd.status_id !== undefined
-                ? { status_id: upd.status_id, column_order: upd.column_order }
-                : {}),
-            })
-            .eq("id", upd.id);
-          if (error) throw new Error(`Update failed (tab "${tab}"): ${error.message}`);
-        }
-        if (toInsert.length > 0) {
-          const { error } = await sb.from("bajaj_work_orders").insert(toInsert);
-          if (error) throw new Error(`Insert failed (tab "${tab}"): ${error.message}`);
-        }
-        if (moveAudits.length > 0) {
-          const { error } = await sb.from("bajaj_audit_logs").insert(moveAudits);
-          if (error) throw new Error(`Move audit failed (tab "${tab}"): ${error.message}`);
-        }
-      }
-    }
-
-    // DB rows never claimed by any sheet row (exactly or via fallback) —
-    // report only, never touch.
-    for (const ctx of ctxCache.values()) {
-      if (!ctx.firstTab) continue;
-      const missing: string[] = [];
-      for (const [key, row] of ctx.existing) {
-        if (!ctx.claimedIds.has(row.id)) missing.push(row.wo || key);
-      }
-      ctx.firstTab.missingFromSheet = missing;
-    }
-
-    // ── Bookings list: rebuild app_config.bajaj_bookings from its sheet tab ──
-    let bookings: BookingsSyncResult;
-    const bookingsTab = allTabs.find((t) => normHeader(t) === normHeader(BOOKINGS_TAB_NAME));
-    if (!bookingsTab) {
-      bookings = { tab: BOOKINGS_TAB_NAME, rows: 0, previous: 0, replaced: false, error: "tab not found" };
-    } else {
-      try {
-        const grid = await fetchSheetRows(sheetId, bookingsTab);
-        const bookingRows = buildBookingRows(grid);
-
-        let previous = 0;
-        const { data: prev } = await sb
-          .from("app_config").select("value").eq("key", BOOKINGS_CONFIG_KEY).maybeSingle();
-        if (prev?.value) {
-          try {
-            const parsed = JSON.parse(prev.value) as { rows?: unknown };
-            if (Array.isArray(parsed.rows)) previous = parsed.rows.length;
-          } catch { /* corrupt stored value — treat as empty */ }
-        }
-
-        let replaced = false;
-        if (!dryRun) {
-          // Same stored shape as the reference API: { updated_at, rows }.
-          const payload = { updated_at: new Date().toISOString(), rows: bookingRows };
-          const { error } = await sb
-            .from("app_config")
-            .upsert({ key: BOOKINGS_CONFIG_KEY, value: JSON.stringify(payload) }, { onConflict: "key" });
-          if (error) throw new Error(`Bookings save failed: ${error.message}`);
-          replaced = true;
-        }
-        bookings = { tab: bookingsTab, rows: bookingRows.length, previous, replaced };
+        // Bookings for this month's workbook (+ legacy mirror for the current month).
+        mres.bookings = await syncBookingsForMonth(
+          sb, sheetId, allTabs, month, month === currentMonth, dryRun,
+        );
       } catch (err) {
-        bookings = {
-          tab: bookingsTab, rows: 0, previous: 0, replaced: false,
-          error: err instanceof Error ? err.message : "Bookings sync failed",
-        };
+        console.error(`[sheet-sync] month ${month}`, err);
+        mres.error = err instanceof Error ? err.message : "Workbook sync failed";
       }
     }
 
+    const failed = monthResults.filter((m) => m.error);
+    if (failed.length === monthResults.length) {
+      // Every workbook failed — surface it as a failed run.
+      return {
+        ok: false, dryRun, tabs: [], months: monthResults, totals: { ...EMPTY_TOTALS },
+        error: failed.map((m) => `${m.label}: ${m.error}`).join(" · "),
+      };
+    }
+
+    // Flattened tab list (UI compat) + totals across all months.
+    const tabResults = monthResults.flatMap((m) => m.tabs);
     const totals = tabResults.reduce(
       (t, r) => ({
         rows:             t.rows + r.rows,
@@ -559,17 +761,24 @@ export async function runSheetSync(actor: string, opts: SheetSyncOptions = {}): 
         violations:       t.violations + r.violations.length,
         missingFromSheet: t.missingFromSheet + r.missingFromSheet.length,
       }),
-      { ...emptyTotals },
+      { ...EMPTY_TOTALS },
     );
 
+    // Legacy top-level bookings = the current (latest active) month's result.
+    const bookings = monthResults.find((m) => m.month === currentMonth)?.bookings;
+
+    const result: SheetSyncResult = {
+      ok: true, dryRun, tabs: tabResults, bookings, months: monthResults, totals, unclaimedRows,
+    };
+
     if (!dryRun) {
-      // One import-batch row per module that changed ("filename" marks the source).
-      for (const ctx of ctxCache.values()) {
+      // One import-batch row per (module, month) that changed.
+      for (const ctx of allCtxs) {
         if (ctx.inserted === 0 && ctx.updated === 0 && ctx.moved === 0) continue;
         await sb.from("bajaj_import_batches").insert({
-          module_id:     ctx.id,
-          module_slug:   ctx.slug,
-          filename:      "google-sheet",
+          module_id:     ctx.info.id,
+          module_slug:   ctx.info.slug,
+          filename:      `google-sheet:${ctx.month}`,
           imported_by:   actor,
           row_count:     ctx.rowCount,
           added_count:   ctx.inserted,
@@ -580,17 +789,36 @@ export async function runSheetSync(actor: string, opts: SheetSyncOptions = {}): 
         actor_email: actor,
         action:      "sheet_sync",
         target_type: "google_sheet",
-        target_id:   sheetId,
-        new_value:   { ...totals, bookings_rows: bookings.error ? 0 : bookings.rows },
+        target_id:   active.map((s) => s.sheetId).join(","),
+        new_value:   {
+          ...totals,
+          months: monthResults.map((m) => ({ month: m.month, error: m.error ?? null })),
+          bookings_rows: bookings && !bookings.error ? bookings.rows : 0,
+        },
       });
+
+      // Version snapshot of the post-sync state (never fails the sync itself).
+      try {
+        const snap = await createVersionSnapshot(
+          sb, actor, { ...totals } as unknown as Record<string, number>,
+          active.map((s) => s.month),
+        );
+        result.versionKey = snap.key;
+      } catch (err) {
+        console.error("[sheet-sync] snapshot failed", err);
+        result.versionError = err instanceof Error ? err.message : "Snapshot failed";
+      }
     }
 
-    return { ok: true, dryRun, tabs: tabResults, bookings, totals };
+    return result;
   } catch (err) {
     console.error("[sheet-sync]", err);
     return {
-      ok: false, dryRun, tabs: [], totals: emptyTotals,
+      ok: false, dryRun, tabs: [], months: [], totals: { ...EMPTY_TOTALS },
       error: err instanceof Error ? err.message : "Sheet sync failed",
     };
   }
 }
+
+export { sheetSyncEnabled };
+export type { SheetSource };

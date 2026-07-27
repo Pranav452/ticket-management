@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { AdminPanel } from "@/components/bajaj/AdminPanel";
-import { sheetSyncEnabled, missingSheetSyncEnv } from "@/lib/bajaj/google-sheets";
+import { missingSheetSyncEnv } from "@/lib/bajaj/google-sheets";
+import { sheetSyncEnabled } from "@/lib/bajaj/sheet-sources";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Admin — Bajaj Logistics" };
@@ -37,6 +38,8 @@ export default async function BajajAdminPage() {
     redirect("/bajaj/home");
   }
 
+  const syncEnabled = await sheetSyncEnabled();
+
   return (
     <div className="flex flex-col h-full overflow-hidden" style={{ background: "#F5F5F5" }}>
       <div className="flex items-center gap-3 px-6 py-4 border-b bg-white dark:bg-[#0d0d0d] flex-shrink-0" style={{ borderColor: "#E5E7EB" }}>
@@ -50,7 +53,7 @@ export default async function BajajAdminPage() {
       </div>
       <div className="flex-1 overflow-y-auto">
         <Suspense>
-          <AdminPanel sheetSync={{ enabled: sheetSyncEnabled(), missingEnv: missingSheetSyncEnv() }} />
+          <AdminPanel sheetSync={{ enabled: syncEnabled, missingEnv: missingSheetSyncEnv() }} />
         </Suspense>
       </div>
     </div>

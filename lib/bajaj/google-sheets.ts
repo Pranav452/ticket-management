@@ -12,13 +12,14 @@ import { createSign } from "node:crypto";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly";
 
-export function sheetSyncEnabled(): boolean {
-  return Boolean(
-    process.env.GOOGLE_SA_EMAIL && process.env.GOOGLE_SA_PRIVATE_KEY && process.env.BAJAJ_SHEET_ID,
-  );
+/** Service-account credentials present (auth works, regardless of sources). */
+export function hasGoogleServiceAccount(): boolean {
+  return Boolean(process.env.GOOGLE_SA_EMAIL && process.env.GOOGLE_SA_PRIVATE_KEY);
 }
 
-/** Env vars still missing for sheet sync — for the admin UI setup hint. */
+/** Env vars still missing for sheet sync — for the admin UI setup hint.
+ * BAJAJ_SHEET_ID is only a fallback (workbooks now come from the
+ * bajaj_sheet_sources config), but listing it keeps the hint actionable. */
 export function missingSheetSyncEnv(): string[] {
   return (["GOOGLE_SA_EMAIL", "GOOGLE_SA_PRIVATE_KEY", "BAJAJ_SHEET_ID"] as const).filter(
     (name) => !process.env[name],

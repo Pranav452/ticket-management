@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils";
 interface TabSyncResult {
   tab: string;
   module: string;
+  /** Month ("YYYY-MM") of the workbook this tab came from. */
+  month?: string;
   rows: number;
   inserted: number;
   updated: number;
@@ -23,17 +25,31 @@ interface TabSyncResult {
 }
 interface BookingsSyncResult {
   tab: string;
+  month?: string;
   rows: number;
   previous: number;
   replaced: boolean;
+  error?: string;
+}
+interface MonthSyncResult {
+  month: string;
+  label: string;
+  sheetId: string;
+  tabs: TabSyncResult[];
+  bookings?: BookingsSyncResult;
   error?: string;
 }
 interface SheetSyncResult {
   ok: boolean;
   dryRun: boolean;
   error?: string;
+  /** Flattened per-tab results across all months (tabs carry .month). */
   tabs: TabSyncResult[];
+  /** Current (latest active) month's bookings result. */
   bookings?: BookingsSyncResult;
+  months?: MonthSyncResult[];
+  versionKey?: string;
+  versionError?: string;
   totals: {
     rows: number;
     inserted: number;
@@ -207,7 +223,7 @@ export function SheetSyncPanel({ enabled, missingEnv }: SheetSyncPanelProps) {
               </thead>
               <tbody>
                 {result.tabs.map((t) => (
-                  <tr key={t.tab} className="border-b border-gray-50 dark:border-white/5 last:border-0">
+                  <tr key={`${t.month ?? ""}-${t.tab}`} className="border-b border-gray-50 dark:border-white/5 last:border-0">
                     <td className="px-4 py-2 text-gray-900 dark:text-white font-medium">{t.tab}</td>
                     <td className="px-2 py-2 text-gray-500 dark:text-white/50">{t.module}</td>
                     <td className="px-2 py-2 text-right text-gray-700 dark:text-white/70">{t.rows}</td>
@@ -237,7 +253,7 @@ export function SheetSyncPanel({ enabled, missingEnv }: SheetSyncPanelProps) {
                 const hasDetail = t.wouldInsert.length || t.wouldUpdate.length || t.wouldMove.length || t.violations.length || t.missingFromSheet.length;
                 if (!hasDetail) return null;
                 return (
-                  <div key={`detail-${t.tab}`} className="space-y-1.5">
+                  <div key={`detail-${t.month ?? ""}-${t.tab}`} className="space-y-1.5">
                     <p className="text-[11px] font-semibold text-gray-500 dark:text-white/50 uppercase tracking-wide">
                       {t.tab}
                     </p>
