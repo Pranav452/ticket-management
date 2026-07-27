@@ -18,6 +18,7 @@ export default async function BajajBoardPage({
     );
   }
 
-  // In demo mode we always show the board and treat the viewer as admin.
-  return <WorkOrderBoardClient slug={slug} isAdmin />;
+  // Edit/drag rights are derived client-side from the signed-in user's role
+  // (admin/superadmin edit; everyone else read-only) and enforced server-side.
+  return <WorkOrderBoardClient slug={slug} />;
 }

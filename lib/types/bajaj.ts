@@ -75,18 +75,6 @@ export interface BajajUser {
   created_at: string;
 }
 
-export interface BajajRolePermission {
-  id: string;
-  role: BajajUserRole;
-  module_slug: string;
-  can_view: boolean;
-  can_edit_fields: boolean;
-  can_move_stage: boolean;
-  can_import: boolean;
-  can_export: boolean;
-  can_manage_users: boolean;
-}
-
 export interface BajajAuditLog {
   id: string;
   actor_id: string | null;
@@ -158,54 +146,11 @@ export interface BajajAnalytics {
   vesselsOverLimit: { vesselName: string; containerCount: number }[];
 }
 
-// ─── Column-level RBAC ───────────────────────────────────────────────────────
-
-export type BajajGranteeType = "role" | "user";
-export type BajajRole = "admin" | "manager" | "operator" | "viewer";
-
-export interface BajajColumnPerm {
-  id:              string;
-  module_slug:     string;
-  status_id:       string | null;
-  grantee_type:    BajajGranteeType;
-  grantee:         string;
-  can_view:        boolean;
-  can_edit_fields: boolean;
-  can_move_cards:  boolean;
-  can_assign:      boolean;
-  created_at:      string;
-}
-
-// ─── Column RBAC ──────────────────────────────────────────────────────────────
-
-export interface BajajColumnAssignment {
-  id: string;
-  module_slug: string;
-  status_id: string | null;   // null = module-wide
-  user_email: string;
-  can_edit: boolean;
-  can_move: boolean;
-  can_assign: boolean;
-  created_at: string;
-}
-
-export interface BajajColumnRequest {
-  id: string;
-  module_slug: string;
-  status_id: string | null;
-  user_email: string;
-  reason: string | null;
-  status: "pending" | "approved" | "rejected";
-  reviewed_by: string | null;
-  created_at: string;
-}
-
 // ─── Board filters ────────────────────────────────────────────────────────────
 
 export interface WorkOrderFilters {
   dateFrom?: string;
   dateTo?: string;
-  assignedTo?: string;
   statusId?: string;
   search?: string;    // searches across all jsonb data fields
 }

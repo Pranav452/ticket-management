@@ -12,10 +12,7 @@ import type {
   BajajAnalytics,
   WorkOrderFilters,
   BajajReminder,
-  BajajRolePermission,
   BajajUserRole,
-  BajajColumnAssignment,
-  BajajColumnRequest,
 } from "@/lib/types/bajaj";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -127,7 +124,6 @@ export function useWorkOrders(moduleSlug: string, filters?: WorkOrderFilters) {
           `/api/bajaj/work-orders${buildQS({
             module:     moduleSlug,
             statusId:   filters?.statusId,
-            assignedTo: filters?.assignedTo,
             search:     filters?.search,
             dateFrom:   filters?.dateFrom,
             dateTo:     filters?.dateTo,
@@ -227,9 +223,8 @@ export function useUpdateWorkOrder() {
       if (!res.ok) throw new Error(await res.text());
       const result = await res.json();
 
-      // Surface auto-progression / auto-assignment feedback
-      if (result.autoMovedTo)    window.alert(`✅ Card auto-progressed to next stage based on a workflow rule.`);
-      if (result.autoAssignedTo) window.alert(`👤 Auto-assigned to ${result.autoAssignedTo} (sole column owner).`);
+      // Surface auto-move feedback (LINKS invoice auto-complete)
+      if (result.autoMovedTo) window.alert(`✅ Card auto-progressed to next stage based on a workflow rule.`);
 
       return result;
     },
@@ -393,48 +388,7 @@ export function useCreateBajajReminder() {
   });
 }
 
-// ─── Role Permissions ─────────────────────────────────────────────────────────
-
-export function useBajajRolePermissions() {
-  return useQuery<BajajRolePermission[]>({
-    queryKey: ["bajaj", "role-permissions"],
-    queryFn:  () => apiFetch("/api/bajaj/role-permissions"),
-    staleTime: 30_000,
-  });
-}
-
-// ─── Column-level Permissions ─────────────────────────────────────────────────
-
-export function useBajajColumnPerms(moduleSlug?: string) {
-  return useQuery<import("@/lib/types/bajaj").BajajColumnPerm[]>({
-    queryKey: ["bajaj", "column-perms", moduleSlug],
-    queryFn:  () => apiFetch(`/api/bajaj/column-perms${moduleSlug ? `?module=${moduleSlug}` : ""}`),
-    staleTime: 30_000,
-  });
-}
-
-export function useUpsertColumnPerm() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: {
-      module_slug: string; status_id?: string | null;
-      grantee_type: "role" | "user"; grantee: string;
-      can_view?: boolean; can_edit_fields?: boolean; can_move_cards?: boolean; can_assign?: boolean;
-    }) =>
-      apiFetch("/api/bajaj/column-perms", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-      }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["bajaj", "column-perms"] }),
-  });
-}
-
-export function useDeleteColumnPerm() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => apiFetch(`/api/bajaj/column-perms?id=${id}`, { method: "DELETE" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["bajaj", "column-perms"] }),
-  });
-}
+// ─── User Roles ───────────────────────────────────────────────────────────────
 
 export function useUpdateUserRole() {
   const qc = useQueryClient();
@@ -445,19 +399,6 @@ export function useUpdateUserRole() {
         body: JSON.stringify({ action: "set_role", role }),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["bajaj", "users"] }),
-  });
-}
-
-export function useUpdateBajajRolePermission() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (perm: Partial<BajajRolePermission> & { role: BajajUserRole }) =>
-      apiFetch("/api/bajaj/role-permissions", {
-        method:  "PUT",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(perm),
-      }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["bajaj", "role-permissions"] }),
   });
 }
 
@@ -488,226 +429,7 @@ export function useUpdateBajajReminder() {
   });
 }
 
-// ─── Column Assignments ───────────────────────────────────────────────────────
-
-export function useBajajColumnAssignments(moduleSlug?: string) {
-  return useQuery<BajajColumnAssignment[]>({
-    queryKey: ["bajaj-column-assignments", moduleSlug],
-    queryFn: async () => {
-      const url = moduleSlug
-        ? `/api/bajaj/column-assignments?module_slug=${moduleSlug}`
-        : "/api/bajaj/column-assignments";
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-    staleTime: 30 * 1000,
-  });
-}
-
-export function useUpsertColumnAssignment() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (body: {
-      module_slug: string;
-      status_id: string | null;
-      user_email: string;
-      can_edit?: boolean;
-      can_move?: boolean;
-      can_assign?: boolean;
-    }) => {
-      const res = await fetch("/api/bajaj/column-assignments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json() as Promise<BajajColumnAssignment>;
-    },
-    onSuccess: (_, vars) => {
-      qc.invalidateQueries({ queryKey: ["bajaj-column-assignments", vars.module_slug] });
-    },
-  });
-}
-
-export function useDeleteColumnAssignment() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, moduleSlug }: { id: string; moduleSlug: string }) => {
-      const res = await fetch(`/api/bajaj/column-assignments?id=${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error(await res.text());
-      return moduleSlug;
-    },
-    onSuccess: (moduleSlug) => {
-      qc.invalidateQueries({ queryKey: ["bajaj-column-assignments", moduleSlug] });
-    },
-  });
-}
-
-// ─── Column Requests ──────────────────────────────────────────────────────────
-
-export function useBajajColumnRequests(moduleSlug?: string) {
-  return useQuery<BajajColumnRequest[]>({
-    queryKey: ["bajaj-column-requests", moduleSlug],
-    queryFn: async () => {
-      const url = moduleSlug
-        ? `/api/bajaj/column-requests?module_slug=${moduleSlug}`
-        : "/api/bajaj/column-requests";
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-    staleTime: 30 * 1000,
-  });
-}
-
-export function useRequestColumnAccess() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (body: { module_slug: string; status_id: string | null; reason?: string }) => {
-      const res = await fetch("/api/bajaj/column-requests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json() as Promise<BajajColumnRequest>;
-    },
-    onSuccess: (_, vars) => {
-      qc.invalidateQueries({ queryKey: ["bajaj-column-requests", vars.module_slug] });
-    },
-  });
-}
-
-export function useReviewColumnRequest() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: "approved" | "rejected" }) => {
-      const res = await fetch(`/api/bajaj/column-requests?id=${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["bajaj-column-requests"] });
-      qc.invalidateQueries({ queryKey: ["bajaj-column-assignments"] });
-    },
-  });
-}
-
-// ─── My Column Permissions ────────────────────────────────────────────────────
-// Returns a Map<status_name, { can_edit, can_move, can_assign }> for the
-// current user in the given module. Null entry means module-wide access.
-
-export interface ColPerm { can_edit: boolean; can_move: boolean; can_assign: boolean; }
-
-export function useMyColumnPerms(moduleSlug: string) {
-  return useQuery<Map<string | null, ColPerm>>({
-    queryKey: ["bajaj", "my-col-perms", moduleSlug],
-    queryFn: async () => {
-      const data: BajajColumnAssignment[] = await apiFetch(
-        `/api/bajaj/column-assignments?module_slug=${moduleSlug}`
-      );
-      const map = new Map<string | null, ColPerm>();
-      for (const row of data) {
-        const key = (row as BajajColumnAssignment & { status_name?: string | null }).status_name ?? null;
-        map.set(key, { can_edit: row.can_edit, can_move: row.can_move, can_assign: row.can_assign });
-      }
-      return map;
-    },
-    staleTime: 30_000,
-  });
-}
-
-// ─── Column Required Fields ────────────────────────────────────────────────────
-
-export interface ColumnRequiredFields { status_name: string; field_keys: string[]; }
-
-export function useColumnRequiredFields(moduleSlug: string) {
-  return useQuery<ColumnRequiredFields[]>({
-    queryKey: ["bajaj", "column-required-fields", moduleSlug],
-    queryFn: () => apiFetch(`/api/bajaj/column-required-fields?module=${moduleSlug}`),
-    staleTime: 60_000,
-  });
-}
-
-export function useUpsertColumnRequiredField() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (body: { module_slug: string; status_name: string; field_key: string }) => {
-      await apiFetch("/api/bajaj/column-required-fields", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-    },
-    onSuccess: (_, vars) => {
-      qc.invalidateQueries({ queryKey: ["bajaj", "column-required-fields", vars.module_slug] });
-    },
-  });
-}
-
-export function useDeleteColumnRequiredField() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (body: { module_slug: string; status_name: string; field_key: string }) => {
-      await apiFetch("/api/bajaj/column-required-fields", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-    },
-    onSuccess: (_, vars) => {
-      qc.invalidateQueries({ queryKey: ["bajaj", "column-required-fields", vars.module_slug] });
-    },
-  });
-}
-
-// ── Auto-progression rules ────────────────────────────────────────────────────
-
-export interface AutoProgressionRule {
-  id: string;
-  module_slug: string;
-  trigger_field: string;
-  target_status_name: string;
-  description: string | null;
-  created_at: string;
-}
-
-export function useAutoProgressionRules(moduleSlug: string) {
-  return useQuery<AutoProgressionRule[]>({
-    queryKey: ["bajaj", "auto-progression", moduleSlug],
-    queryFn:  () => apiFetch(`/api/bajaj/auto-progression?module_slug=${moduleSlug}`),
-    staleTime: 60_000,
-  });
-}
-
-export function useUpsertAutoProgressionRule() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (body: { module_slug: string; trigger_field: string; target_status_name: string; description?: string }) =>
-      apiFetch("/api/bajaj/auto-progression", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      }),
-    onSuccess: (_, vars) => {
-      qc.invalidateQueries({ queryKey: ["bajaj", "auto-progression", vars.module_slug] });
-    },
-  });
-}
-
-export function useDeleteAutoProgressionRule() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, moduleSlug }: { id: string; moduleSlug: string }) => {
-      await apiFetch(`/api/bajaj/auto-progression?id=${id}`, { method: "DELETE" });
-      return moduleSlug;
-    },
-    onSuccess: (moduleSlug) => {
-      qc.invalidateQueries({ queryKey: ["bajaj", "auto-progression", moduleSlug] });
-    },
-  });
-}
+// NOTE: the column-assignment / column-request / column-required-fields /
+// auto-progression / role-permission hooks were removed — the Google Sheet is
+// the single source of truth and permissions are simple roles (admin edits,
+// everyone else read-only).

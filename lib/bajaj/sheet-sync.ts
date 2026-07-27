@@ -23,8 +23,7 @@
  *     container number and the full key changes
  *   - existing row  → merge sheet data over stored data; when the merged data
  *                     derives a LATER stage than the card's current column the
- *                     card auto-advances forward (never backward), with the
- *                     same sole-editor auto-assignment as a manual move
+ *                     card auto-advances forward (never backward)
  *   - archived row  → a sheet row matching an ARCHIVED card auto-restores it
  *                     (archived_at/archived_by cleared) and updates it —
  *                     reappearance in the sheet means it's back
@@ -287,8 +286,6 @@ interface ModInfo {
   statusOrderByName: Record<string, number>;
   /** status id → status name. */
   statusNameById: Record<string, string>;
-  /** status id → sole can_edit editor's email (only statuses with exactly one). */
-  soleEditorByStatusId: Record<string, string>;
   /** All DB rows of the module (fetched once, filtered per month). */
   allRows: { id: string; status_id: string | null; data: Record<string, unknown> }[];
   /** Running max column_order for appended inserts — shared across months. */
@@ -332,20 +329,6 @@ async function getModInfo(
     statusNameById[s.id]      = s.name;
   }
 
-  // Sole-editor lookup for auto-assignment on auto-moves (mirrors RULE 7 in
-  // lib/bajaj/workflow.ts, prefetched here so the sync loop stays batch-only).
-  const { data: assignRows } = await sb
-    .from("bajaj_column_assignments")
-    .select("status_id, user_email")
-    .eq("module_slug", slug)
-    .eq("can_edit", true);
-  const editorsByStatusId: Record<string, string[]> = {};
-  for (const a of assignRows ?? []) (editorsByStatusId[a.status_id] ??= []).push(a.user_email);
-  const soleEditorByStatusId: Record<string, string> = {};
-  for (const [sid, emails] of Object.entries(editorsByStatusId)) {
-    if (emails.length === 1) soleEditorByStatusId[sid] = emails[0];
-  }
-
   // All rows for the module, paging past the PostgREST 1000-row cap.
   const allRows: ModInfo["allRows"] = [];
   let order = 0;
@@ -371,7 +354,7 @@ async function getModInfo(
 
   const info: ModInfo = {
     id: mod.id, slug, statusIdByName, statusOrderByName, statusNameById,
-    soleEditorByStatusId, allRows, order,
+    allRows, order,
   };
   cache.set(slug, info);
   return info;
@@ -621,21 +604,11 @@ export async function runSheetSync(actor: string, opts: SheetSyncOptions = {}): 
               }
 
               let newStatusId: string | undefined;
-              let autoAssigned: string | undefined;
               if (shouldMove) {
                 result.moved++;
                 ctx.moved++;
                 result.wouldMove.push(`${wo}: ${curName ?? "?"} → ${derived}`);
                 newStatusId = ctx.info.statusIdByName[derived];
-
-                // Sole-editor auto-assignment (mirrors workflow.ts RULE 7), done
-                // inline on `merged` so the card needs only the one write below.
-                const sole = newStatusId ? ctx.info.soleEditorByStatusId[newStatusId] : undefined;
-                const assignKey = `assigned_to_${derived.toLowerCase().replace(/\s+/g, "_")}`;
-                if (sole && !merged[assignKey]) {
-                  merged[assignKey] = sole;
-                  autoAssigned = sole;
-                }
               }
 
               if (!dryRun) {
@@ -653,7 +626,7 @@ export async function runSheetSync(actor: string, opts: SheetSyncOptions = {}): 
                     target_type: "work_order",
                     target_id:   existing.id,
                     old_value:   { status: curName ?? "?" },
-                    new_value:   { status: derived, ...(autoAssigned ? { auto_assigned: autoAssigned } : {}) },
+                    new_value:   { status: derived },
                   });
                 }
               }

@@ -4,7 +4,6 @@ import React, { useRef, useState } from "react";
 import { Search, X, Clock } from "lucide-react";
 import { WorkOrderCard } from "@/components/bajaj/WorkOrderCard";
 import type { BajajStatus, BajajWorkOrder } from "@/lib/types/bajaj";
-import type { ColPerm } from "@/lib/queries/bajaj";
 import { cn } from "@/lib/utils";
 
 interface WorkOrderBoardProps {
@@ -15,8 +14,8 @@ interface WorkOrderBoardProps {
   isLight?: boolean;
   isLoading: boolean;
   selectedId: string | null;
+  /** Admin/superadmin only — everyone else sees a read-only board. */
   isAdmin: boolean;
-  userPerms: Map<string | null, ColPerm>;
   onSelectCard: (id: string) => void;
   onDrop: (workOrderId: string, newStatusId: string, newOrder: number) => void;
 }
@@ -206,20 +205,7 @@ function Column({
   );
 }
 
-export function WorkOrderBoard({ statuses, workOrders, cardFaceFields, isLoading, selectedId, isAdmin, userPerms, onSelectCard, onDrop }: WorkOrderBoardProps) {
-  function resolvedPerm(statusName: string): ColPerm | null {
-    return userPerms.get(statusName) ?? userPerms.get(null) ?? null;
-  }
-  function canDropHere(statusName: string) {
-    if (isAdmin) return true;
-    return resolvedPerm(statusName)?.can_move ?? false;
-  }
-  function getCardCanDrag(wo: BajajWorkOrder) {
-    if (isAdmin) return true;
-    const name = wo.status?.name ?? null;
-    const perm = name ? resolvedPerm(name) : null;
-    return perm?.can_move ?? false;
-  }
+export function WorkOrderBoard({ statuses, workOrders, cardFaceFields, isLoading, selectedId, isAdmin, onSelectCard, onDrop }: WorkOrderBoardProps) {
   if (isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center gap-2.5">
@@ -242,8 +228,8 @@ export function WorkOrderBoard({ statuses, workOrders, cardFaceFields, isLoading
           )}
           cardFaceFields={cardFaceFields}
           selectedId={selectedId}
-          canDropHere={canDropHere(status.name)}
-          getCardCanDrag={getCardCanDrag}
+          canDropHere={isAdmin}
+          getCardCanDrag={() => isAdmin}
           onSelectCard={onSelectCard}
           onDrop={onDrop}
         />

@@ -6,7 +6,7 @@
  *   - SI has NOT been filed (si_filed / sifiling / sifile is empty)
  *   - cutoff date is in the past
  *
- * Fires escalation email to the SI Filing column assignees + all superadmins.
+ * Fires escalation email to all admins + superadmins.
  * Deduped per-WO per-day via bajaj_audit_logs.
  *
  * Scheduled via vercel.json — runs daily at 06:00 UTC.
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     // Fetch all WOs — filter in JS (JSONB field lookup cheaper this way for small datasets)
     const { data: wos, error } = await sb
       .from("bajaj_work_orders")
-      .select("id, module_slug, data");
+      .select("id, data");
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
       if (siFiled) continue; // already filed — skip
 
       checked++;
-      await checkSICutoffAlert(sb, wo.id, wo.module_slug ?? "", d);
+      await checkSICutoffAlert(sb, wo.id, d);
       escalated++;
     }
 

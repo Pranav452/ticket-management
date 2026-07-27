@@ -6,7 +6,7 @@
  *   - blno is empty
  *   - sailing date was between 0–48 hours ago
  *
- * Fires email alert to column assignees of BL Release + all superadmins.
+ * Fires email alert to all admins + superadmins.
  *
  * Called by Vercel Cron daily at 02:00 UTC (see vercel.json). Protected by
  * CRON_SECRET (verifyCronSecret accepts the Authorization: Bearer header Vercel
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     // Fetch all WOs that have sailingdt but no blno
     const { data: wos, error } = await sb
       .from("bajaj_work_orders")
-      .select("id, module_slug, data");
+      .select("id, data");
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
       const sailingdt = String(d["sailingdt"] ?? "").trim();
       if (blno || !sailingdt) continue;
 
-      await checkBL48hrAlert(sb, wo.id, wo.module_slug ?? "", d);
+      await checkBL48hrAlert(sb, wo.id, d);
       alerted++;
     }
 

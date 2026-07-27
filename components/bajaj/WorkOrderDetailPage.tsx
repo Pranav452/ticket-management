@@ -11,8 +11,7 @@ import {
 import {
   useWorkOrder, useUpdateWorkOrder, useBajajComments,
   useAddBajajComment, useBajajStatuses,
-  useBajajAuditLogs, useColumnRequiredFields,
-  useCreateBajajReminder, useMyColumnPerms,
+  useBajajAuditLogs, useCreateBajajReminder,
 } from "@/lib/queries/bajaj";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { cn } from "@/lib/utils";
@@ -424,48 +423,24 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
   const moduleSlug = workOrder
     ? countryToSlug(String((workOrder.data as Record<string, unknown>)?.country ?? ""))
     : undefined;
-  const { data: allStatuses = [] }          = useBajajStatuses(moduleSlug);
-  const { data: columnRequiredFields = [] } = useColumnRequiredFields(moduleSlug ?? "");
-  const { data: myPerms = new Map() }       = useMyColumnPerms(moduleSlug ?? "");
+  const { data: allStatuses = [] } = useBajajStatuses(moduleSlug);
 
   const [showStatusPicker, setShowStatusPicker] = useState(false);
   const [commentText,      setCommentText]      = useState("");
   const [savingField,      setSavingField]      = useState<string | null>(null);
-  const [autoAdvanced,     setAutoAdvanced]     = useState(false);
   const [showReminder,     setShowReminder]     = useState(false);
   const [showNotify,       setShowNotify]       = useState(false);
   const [allBookings,      setAllBookings]      = useState<Record<string, string>[]>([]);
 
+  // No client-side auto-advance — the Google Sheet sync moves cards; manual
+  // admin edits here are corrections only.
   const handleFieldSave = useCallback((key: string, val: string | boolean) => {
     setSavingField(key);
-    const merged = { ...(workOrder?.data as Record<string, unknown> ?? {}), [key]: val };
     updateWorkOrder.mutate(
       { id: workOrderId, updates: { data: { [key]: val } }, baseUpdatedAt: workOrder?.updated_at },
-      {
-        onSettled: () => setSavingField(null),
-        onSuccess: () => {
-          const statusName = workOrder?.status?.name
-            ?? allStatuses.find((s) => s.id === workOrder?.status_id)?.name
-            ?? "";
-          const reqEntry = columnRequiredFields.find((r) => r.status_name === statusName);
-          const required = reqEntry?.field_keys ?? [];
-          const allFilled = required.length > 0 && required.every((f) => {
-            const v = merged[f];
-            return v != null && v !== "" && v !== false;
-          });
-          if (allFilled) {
-            const idx = allStatuses.findIndex((s) => s.id === workOrder?.status_id);
-            const next = allStatuses[idx + 1];
-            if (next) {
-              updateWorkOrder.mutate({ id: workOrderId, updates: { status_id: next.id } });
-              setAutoAdvanced(true);
-              setTimeout(() => setAutoAdvanced(false), 3000);
-            }
-          }
-        },
-      }
+      { onSettled: () => setSavingField(null) }
     );
-  }, [workOrderId, workOrder, allStatuses, columnRequiredFields, updateWorkOrder]);
+  }, [workOrderId, workOrder, updateWorkOrder]);
 
   async function handleComment() {
     if (!commentText.trim() || !bajajUser) return;
@@ -515,11 +490,10 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
   // allStatuses lookup is fallback for after a status change (optimistic update)
   const currentStatus = workOrder.status ?? allStatuses.find((s) => s.id === workOrder.status_id) ?? null;
 
-  // Edit / move permission for this work order's column (admins always allowed).
+  // Simple role model — admin/superadmin may edit/move; everyone else read-only.
   const isAdmin = bajajUser?.role === "admin" || bajajUser?.role === "superadmin";
-  const myPerm  = myPerms.get(currentStatus?.name ?? "") ?? myPerms.get(null) ?? null;
-  const canEdit = isAdmin || !!myPerm?.can_edit;
-  const canMove = isAdmin || !!myPerm?.can_move;
+  const canEdit = isAdmin;
+  const canMove = isAdmin;
 
   return (
     <div className="flex h-full overflow-hidden" style={{ background: "var(--main-bg, #F5F5F5)" }}>
@@ -545,13 +519,6 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
             </button>
           </div>
         </div>
-
-        {/* Auto-advance banner */}
-        {autoAdvanced && (
-          <div className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white text-[13px] font-medium animate-pulse flex-shrink-0">
-            ✓ Auto-advanced to next stage
-          </div>
-        )}
 
         {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto bg-white dark:bg-[#0d0d0d]">

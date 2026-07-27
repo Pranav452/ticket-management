@@ -2,34 +2,26 @@
  * GET   /api/bajaj/work-orders/[id]
  * PATCH /api/bajaj/work-orders/[id]  { status_id?, column_order?, data?, force? }
  *
+ * Permission model: the Google Sheet drives all card data/movement — manual
+ * mutations are admin corrections. Any PATCH requires role admin/superadmin;
+ * everyone else is read-only (403).
+ *
  * Business rules enforced here:
- *  1. Required-field gate — destination column may require fields to be filled
- *  2. Billing prerequisites — blno + sbno + edoc must exist before entering Billing
- *  3. Invoice auto-complete — LINKS WOs auto-move to Completed when invoice_no is set
- *  4. BL 48-hour alert — fires after any save if sailing date passed 48h with no BL
- *  5. SI Cutoff escalation — fires after save if SI cutoff passed and SI not filed
- *  6. HAZ container restriction — HAZ WOs cannot share containers with non-HAZ (hard block)
- *  7. Column auto-assignment — single assignee auto-populated on stage move
- *  8. Admin-configurable field→stage auto-progression
+ *  1. Invoice auto-complete — LINKS WOs auto-move to Completed when invoice_no is set
+ *  2. BL 48-hour alert — fires after any save if sailing date passed 48h with no BL
+ *  3. SI Cutoff escalation — fires after save if SI cutoff passed and SI not filed
+ *  4. HAZ container restriction — HAZ WOs cannot share containers with non-HAZ (hard block)
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { checkColumnAccess, getCurrentUserEmail, isAdminEmail } from "@/lib/bajaj/permissions";
-import { requireApprovedUser } from "@/lib/bajaj/guards";
+import { requireApprovedUser, requireAdmin } from "@/lib/bajaj/guards";
 import { validateWorkOrderRules } from "@/lib/bajaj/validation";
 import {
-  getStatusName,
-  getStatusIdByName,
-  checkRequiredFieldsForMove,
-  checkBillingPrerequisites,
   checkInvoiceAutoComplete,
   checkBL48hrAlert,
   checkSICutoffAlert,
   checkHAZContainerRule,
-  autoAssignColumnOwner,
-  checkAutoProgressionRules,
-  STATUS_BILLING,
 } from "@/lib/bajaj/workflow";
 
 export async function GET(
@@ -82,6 +74,10 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // ── Role check — only admin/superadmin may mutate (viewers are read-only) ─
+    const auth = await requireAdmin();
+    if (auth instanceof NextResponse) return auth;
+
     const { id } = await params;
     const body = await req.json() as {
       status_id?:     string | null;
@@ -91,7 +87,7 @@ export async function PATCH(
       baseUpdatedAt?: string;
     };
 
-    const actorEmail = await getCurrentUserEmail();
+    const actorEmail = auth.email;
     const sb         = createAdminClient();
     const force      = body.force === true;
 
@@ -125,22 +121,6 @@ export async function PATCH(
       ...prevData,
       ...(body.data ?? {}),
     };
-
-    // ── Permission check for non-admins ─────────────────────────────────────
-    if (!(await isAdminEmail(actorEmail))) {
-      if (moduleSlug) {
-        if ("data" in body) {
-          const perm = await checkColumnAccess("can_edit", moduleSlug, curStatusId);
-          if (!perm.allowed)
-            return NextResponse.json({ error: perm.reason ?? "Not assigned to this column" }, { status: 403 });
-        }
-        if ("status_id" in body && body.status_id) {
-          const perm = await checkColumnAccess("can_move", moduleSlug, body.status_id);
-          if (!perm.allowed)
-            return NextResponse.json({ error: perm.reason ?? "Cannot move to target column" }, { status: 403 });
-        }
-      }
-    }
 
     // ── Container / vessel business rule validation ──────────────────────────
     if (body.data && !force) {
@@ -178,34 +158,8 @@ export async function PATCH(
       }
     }
 
-    // ── Required-field gate (column move) ────────────────────────────────────
-    if ("status_id" in body && body.status_id && !force) {
-      const targetStatusName = await getStatusName(sb, body.status_id);
-
-      // Required fields defined by admin for the destination column
-      const reqCheck = await checkRequiredFieldsForMove(
-        sb, moduleSlug, targetStatusName, mergedData
-      );
-      if (reqCheck.blocked) {
-        return NextResponse.json({
-          error:    `Cannot move to "${targetStatusName}" — required fields missing.`,
-          missing:  reqCheck.missing,
-          requiresForce: true,
-        }, { status: 422 });
-      }
-
-      // Billing-specific prerequisites (hard-coded business rule)
-      if (targetStatusName.includes(STATUS_BILLING)) {
-        const billCheck = checkBillingPrerequisites(mergedData);
-        if (billCheck.blocked) {
-          return NextResponse.json({
-            error:   `Cannot move to Billing — prerequisites not met.`,
-            missing: billCheck.missing,
-            requiresForce: false, // billing prereqs are HARD blocks — no override
-          }, { status: 422 });
-        }
-      }
-    }
+    // NOTE: the old required-field / Billing-prerequisite move gates are gone —
+    // the Google Sheet drives card movement; admin manual moves are corrections.
 
     // ── Build update payload ─────────────────────────────────────────────────
     const updates: Record<string, unknown> = {};
@@ -230,14 +184,6 @@ export async function PATCH(
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    // ── Post-save: column auto-assignment (on stage move) ───────────────────
-    let autoAssignedTo: string | null = null;
-    if ("status_id" in body && body.status_id && moduleSlug) {
-      autoAssignedTo = await autoAssignColumnOwner(
-        sb, id, moduleSlug, body.status_id, mergedData
-      ).catch(e => { console.warn("[AutoAssign]", e); return null; });
-    }
-
     // ── Post-save: invoice auto-complete (LINKS only) ────────────────────────
     let autoMovedTo: string | null = null;
     if (body.data && moduleId) {
@@ -261,27 +207,16 @@ export async function PATCH(
       }
     }
 
-    // ── Post-save: admin-configurable field→stage auto-progression ───────────
-    // Only run if no auto-move has already happened this save (avoid double-moves)
-    if (!autoMovedTo && body.data && moduleId) {
-      const progressionResult = await checkAutoProgressionRules(
-        sb, id, moduleId, moduleSlug, curStatusId, body.data, prevData
-      ).catch(e => { console.warn("[AutoProgression]", e); return null; });
-      if (progressionResult) {
-        autoMovedTo = progressionResult.autoMovedTo;
-      }
-    }
-
     // ── Post-save: BL 48-hour alert (async, non-blocking) ───────────────────
     if (body.data) {
-      checkBL48hrAlert(sb, id, moduleSlug, mergedData).catch(e =>
+      checkBL48hrAlert(sb, id, mergedData).catch(e =>
         console.warn("[BL48hr]", e)
       );
     }
 
     // ── Post-save: SI cutoff escalation (async, non-blocking) ───────────────
     if (body.data) {
-      checkSICutoffAlert(sb, id, moduleSlug, mergedData).catch(e =>
+      checkSICutoffAlert(sb, id, mergedData).catch(e =>
         console.warn("[SICutoff]", e)
       );
     }
@@ -299,7 +234,7 @@ export async function PATCH(
       new_value:   body,
     });
 
-    return NextResponse.json({ success: true, autoMovedTo, autoAssignedTo });
+    return NextResponse.json({ success: true, autoMovedTo });
   } catch (err) {
     console.error("[PATCH /api/bajaj/work-orders/[id]]", err);
     return NextResponse.json({ error: "Failed to update work order" }, { status: 500 });

@@ -3,7 +3,6 @@
  *   ?module=<slug>         filter by module_slug
  *   ?statusId=<uuid>       filter by status
  *   ?search=<text>         searches WO, BL no, vessel name, port inside data jsonb
- *   ?assignedTo=<email>    returns WOs in columns assigned to this user
  *   ?dateFrom=<YYYY-MM-DD>
  *   ?dateTo=<YYYY-MM-DD>
  *   ?page=<n>              1-based (default 1)
@@ -23,34 +22,12 @@ export async function GET(req: NextRequest) {
     const moduleSlug = sp.get("module");
     const statusId   = sp.get("statusId");
     const search     = sp.get("search");
-    const assignedTo = sp.get("assignedTo");
     const dateFrom   = sp.get("dateFrom");
     const dateTo     = sp.get("dateTo");
     const page       = Math.max(1, parseInt(sp.get("page") ?? "1", 10) || 1);
     const pageSize   = Math.min(200, Math.max(1, parseInt(sp.get("pageSize") ?? "50", 10) || 50));
 
     const sb = createAdminClient();
-
-    // If assignedTo, resolve which status_ids this user has access to
-    let assignedStatusIds: string[] | null = null;
-    if (assignedTo) {
-      const { data: asgn } = await sb
-        .from("bajaj_column_assignments")
-        .select("status_id, module_slug")
-        .eq("user_email", assignedTo);
-
-      if (asgn && asgn.length > 0) {
-        // null status_id means module-wide access — include all WOs in those modules
-        const hasModuleWide = asgn.some((a) => a.status_id === null);
-        if (!hasModuleWide) {
-          assignedStatusIds = asgn.map((a) => a.status_id).filter(Boolean) as string[];
-        }
-        // if module-wide, assignedStatusIds stays null = no status filter needed
-      } else {
-        // No assignments at all — return empty
-        return NextResponse.json({ data: [], total: 0, page, pageSize });
-      }
-    }
 
     let query = sb
       .from("bajaj_work_orders")
@@ -63,7 +40,6 @@ export async function GET(req: NextRequest) {
 
     if (moduleSlug)          query = query.eq("module_slug", moduleSlug);
     if (statusId)            query = query.eq("status_id", statusId);
-    if (assignedStatusIds)   query = query.in("status_id", assignedStatusIds);
     if (search)              query = query.or(
       `data->>'wo'.ilike.%${search}%,data->>'blno'.ilike.%${search}%,data->>'vslname'.ilike.%${search}%,data->>'port'.ilike.%${search}%`
     );
