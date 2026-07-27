@@ -103,51 +103,5 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function POST(req: NextRequest) {
-  try {
-    const auth = await requireApprovedUser();
-    if (auth instanceof NextResponse) return auth;
-
-    const body = await req.json() as { moduleSlug?: string; data?: Record<string, unknown> } & Record<string, unknown>;
-    const moduleSlug = String(body.moduleSlug ?? body.module_slug ?? "").toLowerCase();
-    const data       = (body.data ?? {}) as Record<string, unknown>;
-
-    if (!moduleSlug) return NextResponse.json({ error: "moduleSlug required" }, { status: 400 });
-    if (!data.wo)    return NextResponse.json({ error: "data.wo (work order number) required" }, { status: 400 });
-
-    const sb = createAdminClient();
-    const { data: mod } = await sb
-      .from("bajaj_modules")
-      .select("id")
-      .eq("slug", moduleSlug)
-      .single();
-
-    if (!mod) return NextResponse.json({ error: `Unknown module: ${moduleSlug}` }, { status: 400 });
-
-    // Default status to "Planning" (display_order 0) for the module
-    const { data: firstStatus } = await sb
-      .from("bajaj_statuses")
-      .select("id")
-      .eq("module_id", mod.id)
-      .order("display_order")
-      .limit(1)
-      .single();
-
-    const { data: inserted, error } = await sb
-      .from("bajaj_work_orders")
-      .insert({
-        module_id:   mod.id,
-        module_slug: moduleSlug,
-        status_id:   firstStatus?.id ?? null,
-        data,
-      })
-      .select("id, module_id, module_slug, status_id, data, created_at")
-      .single();
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json(inserted, { status: 201 });
-  } catch (err) {
-    console.error("[POST /api/bajaj/work-orders]", err);
-    return NextResponse.json({ error: "Failed to create work order" }, { status: 500 });
-  }
-}
+// NOTE: POST (manual work-order creation) was removed — work orders now come
+// exclusively from the Google Sheet sync (/api/bajaj/sheet-sync).

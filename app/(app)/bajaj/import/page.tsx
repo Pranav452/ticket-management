@@ -1,8 +1,15 @@
-import { ImportDropzone } from "@/components/bajaj/ImportDropzone";
+import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
 import Link from "next/link";
-import { ArrowLeft, Upload } from "lucide-react";
+import { ArrowLeft, RefreshCw } from "lucide-react";
+import { SheetSyncPanel } from "@/components/bajaj/SheetSyncPanel";
+import { sheetSyncEnabled, missingSheetSyncEnv } from "@/lib/bajaj/google-sheets";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Sheet Sync — Bajaj Logistics" };
+
+const ADMIN_ROLES = ["superadmin", "admin"];
 
 export default async function BajajImportPage({
   searchParams,
@@ -11,6 +18,31 @@ export default async function BajajImportPage({
 }) {
   const { module: moduleSlug } = await searchParams;
   const slug = moduleSlug ?? "vipar";
+
+  /* ── Server-side role guard (same pattern as /bajaj/admin) ─────────────── */
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
+  );
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.email) redirect("/login");
+
+  const { data: bajajUser } = await supabase
+    .from("bajaj_users")
+    .select("role, status")
+    .eq("email", user.email)
+    .maybeSingle();
+
+  if (
+    !bajajUser ||
+    bajajUser.status !== "approved" ||
+    !ADMIN_ROLES.includes(bajajUser.role ?? "")
+  ) {
+    redirect("/bajaj/home");
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-gray-50 dark:bg-[#0d0d0d]">
@@ -26,15 +58,15 @@ export default async function BajajImportPage({
         </Link>
         <span className="text-gray-200 dark:text-white/20">/</span>
         <div className="flex items-center gap-2">
-          <div className="flex size-7 items-center justify-center rounded-md bg-amber-50 dark:bg-amber-900/20">
-            <Upload className="size-3.5 text-amber-500" />
+          <div className="flex size-7 items-center justify-center rounded-md bg-emerald-50 dark:bg-emerald-900/20">
+            <RefreshCw className="size-3.5 text-emerald-500" />
           </div>
           <div>
             <h1 className="text-[15px] font-semibold text-gray-900 dark:text-white leading-none">
-              Import Dispatch Plan
+              Google Sheet Sync
             </h1>
             <p className="text-[11px] text-gray-400 dark:text-white/40 leading-none mt-0.5">
-              Paste from Bajaj email · Upload Excel · Manual entry
+              Boards pull work orders from the shared ops Google Sheet
             </p>
           </div>
         </div>
@@ -43,7 +75,7 @@ export default async function BajajImportPage({
       {/* Body */}
       <div className="flex-1 overflow-y-auto px-6 py-6">
         <div className="max-w-4xl mx-auto">
-          <ImportDropzone defaultModule={slug} userId="system" />
+          <SheetSyncPanel enabled={sheetSyncEnabled()} missingEnv={missingSheetSyncEnv()} />
         </div>
       </div>
     </div>

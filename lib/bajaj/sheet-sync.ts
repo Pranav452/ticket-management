@@ -1,0 +1,350 @@
+/**
+ * Google Sheet → bajaj_work_orders sync.
+ *
+ * Replaces the manual xlsx/paste/manual-form entry paths: the ops team keeps a
+ * single Google Sheet (one tab per module, same layout as the old Excel files)
+ * and this module pulls it via the read-only service-account client.
+ *
+ * Mapping / status derivation is shared with lib/bajaj/import-map.mjs so sheet
+ * rows produce exactly the same records the old import route produced.
+ *
+ * Semantics (deliberately conservative):
+ *   - dedup key = `${wo}|${container_no}|${booking_no}` (same as old import)
+ *   - existing row  → merge sheet data over stored data; update `data` ONLY
+ *                     (status_id / column_order / assignments never touched)
+ *   - new row       → inserted with derived status (fallback Planning) at the
+ *                     end of the board; Sri-Lanka validation issues are
+ *                     reported as warnings, never block the insert
+ *   - DB row missing from sheet → reported, NEVER deleted or modified
+ */
+
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { validateWorkOrderRules } from "@/lib/bajaj/validation";
+import { fetchSheetRows, listSheetTabs, sheetSyncEnabled, missingSheetSyncEnv } from "@/lib/bajaj/google-sheets";
+import {
+  SHEET_MODULE_MAP, normHeader, buildColMap, buildRecord, deriveStatusName,
+} from "@/lib/bajaj/import-map.mjs";
+
+/* Same defaults as the old /api/bajaj/import route. */
+const MODULE_DEFAULT_COUNTRY: Record<string, string> = {
+  srilanka:   "Sri Lanka",
+  nigeria:    "Nigeria",
+  bangladesh: "Bangladesh",
+  triumph:    "United Kingdom",
+  vipar:      "VIPAR",
+};
+
+/* Canonical keys that hold dates. UNFORMATTED_VALUE returns Google/Excel
+ * date serial numbers for date cells — these keys get serial → YYYY-MM-DD
+ * conversion before the shared coercion runs (which would stringify them). */
+const DATE_KEYS = new Set([
+  "wodt", "stuffing_dt", "lc_date", "do_given_dt", "gate_open", "gate_cut_off",
+  "si_cutoff", "do_etd", "current_etd", "eta_at_destination", "final_vsl_sob",
+  "bldt", "bl_handover_time", "courier_dt", "pickup_dt", "cntr_dispatch",
+  "cntr_report", "cntr_gated", "sb_date", "sailingdt",
+]);
+
+/** Plausible date-serial window: ~1954 … ~2064. */
+const SERIAL_MIN = 20000;
+const SERIAL_MAX = 60000;
+const EXCEL_EPOCH_MS = Date.UTC(1899, 11, 30);
+
+function serialToISODate(n: number): string {
+  return new Date(EXCEL_EPOCH_MS + Math.round(n * 86_400_000)).toISOString().slice(0, 10);
+}
+
+/** Composite dedup key — must match the old import route exactly. */
+function rowKey(d: Record<string, unknown>): string {
+  return [d["wo"], d["container_no"], d["booking_no"]].map((v) => String(v ?? "").trim()).join("|");
+}
+
+/** Order-insensitive deep equality for plain JSON data objects. */
+function stableStringify(v: unknown): string {
+  if (v === null || typeof v !== "object") return JSON.stringify(v);
+  if (Array.isArray(v)) return `[${v.map(stableStringify).join(",")}]`;
+  const o = v as Record<string, unknown>;
+  return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${stableStringify(o[k])}`).join(",")}}`;
+}
+function deepEquals(a: unknown, b: unknown): boolean {
+  return stableStringify(a) === stableStringify(b);
+}
+
+export interface TabSyncResult {
+  tab: string;
+  module: string;
+  rows: number;
+  inserted: number;
+  updated: number;
+  unchanged: number;
+  violations: string[];
+  /** WOs present in the DB for this module but absent from the sheet (never touched). */
+  missingFromSheet: string[];
+  /** WO numbers that were (or would be, in dryRun) inserted. */
+  wouldInsert: string[];
+  /** WO numbers that were (or would be, in dryRun) updated. */
+  wouldUpdate: string[];
+}
+
+export interface SheetSyncResult {
+  ok: boolean;
+  dryRun: boolean;
+  error?: string;
+  tabs: TabSyncResult[];
+  totals: {
+    rows: number;
+    inserted: number;
+    updated: number;
+    unchanged: number;
+    violations: number;
+    missingFromSheet: number;
+  };
+}
+
+interface ExistingRow { id: string; wo: string; data: Record<string, unknown> }
+
+interface ModCtx {
+  id: string;
+  slug: string;
+  statusIdByName: Record<string, string>;
+  /** dedup key → existing DB row */
+  existing: Map<string, ExistingRow>;
+  /** dedup keys seen in the sheet (across all tabs mapping to this module) */
+  seenKeys: Set<string>;
+  /** running max column_order for appended inserts (old route's approach) */
+  order: number;
+  inserted: number;
+  updated: number;
+  rowCount: number;
+  /** first tab result for this module — carries missingFromSheet */
+  firstTab: TabSyncResult | null;
+}
+
+async function getModCtx(
+  sb: SupabaseClient, cache: Map<string, ModCtx>, slug: string,
+): Promise<ModCtx | null> {
+  const cached = cache.get(slug);
+  if (cached) return cached;
+
+  const { data: mod } = await sb.from("bajaj_modules").select("id").eq("slug", slug).single();
+  if (!mod) return null;
+
+  const { data: statusRows } = await sb.from("bajaj_statuses").select("id, name").eq("module_id", mod.id);
+  const statusIdByName: Record<string, string> = {};
+  for (const s of statusRows ?? []) statusIdByName[s.name] = s.id;
+
+  const { data: existingRows } = await sb
+    .from("bajaj_work_orders")
+    .select("id, data, column_order")
+    .eq("module_slug", slug);
+
+  const existing = new Map<string, ExistingRow>();
+  let order = 0;
+  for (const r of existingRows ?? []) {
+    const d = (r.data ?? {}) as Record<string, unknown>;
+    existing.set(rowKey(d), { id: r.id, wo: String(d["wo"] ?? "").trim(), data: d });
+    order = Math.max(order, Number(r.column_order) || 0);
+  }
+
+  const ctx: ModCtx = {
+    id: mod.id, slug, statusIdByName, existing,
+    seenKeys: new Set(), order, inserted: 0, updated: 0, rowCount: 0, firstTab: null,
+  };
+  cache.set(slug, ctx);
+  return ctx;
+}
+
+export interface SheetSyncOptions { dryRun?: boolean }
+
+/**
+ * Pull every recognized tab of the configured Google Sheet and reconcile it
+ * into bajaj_work_orders. Never throws — failures come back as { ok: false }.
+ */
+export async function runSheetSync(actor: string, opts: SheetSyncOptions = {}): Promise<SheetSyncResult> {
+  const dryRun = !!opts.dryRun;
+  const emptyTotals = { rows: 0, inserted: 0, updated: 0, unchanged: 0, violations: 0, missingFromSheet: 0 };
+
+  try {
+    if (!sheetSyncEnabled()) {
+      return {
+        ok: false, dryRun, tabs: [], totals: emptyTotals,
+        error: `Google Sheet sync is not configured — missing env: ${missingSheetSyncEnv().join(", ")}`,
+      };
+    }
+
+    const sheetId = process.env.BAJAJ_SHEET_ID!;
+    const sb = createAdminClient();
+    const ctxCache = new Map<string, ModCtx>();
+    const tabResults: TabSyncResult[] = [];
+
+    const allTabs = await listSheetTabs(sheetId);
+    const knownTabs = allTabs.filter((t) => SHEET_MODULE_MAP[normHeader(t)]);
+    if (knownTabs.length === 0) {
+      return {
+        ok: false, dryRun, tabs: [], totals: emptyTotals,
+        error: `No recognized module tabs found in the sheet. Tabs present: ${allTabs.join(", ") || "(none)"}`,
+      };
+    }
+
+    for (const tab of knownTabs) {
+      const meta = SHEET_MODULE_MAP[normHeader(tab)];
+      const ctx = await getModCtx(sb, ctxCache, meta.slug);
+      if (!ctx) continue; // unknown module in DB — skip rather than fail the sync
+
+      const result: TabSyncResult = {
+        tab, module: meta.slug, rows: 0, inserted: 0, updated: 0, unchanged: 0,
+        violations: [], missingFromSheet: [], wouldInsert: [], wouldUpdate: [],
+      };
+      tabResults.push(result);
+      if (!ctx.firstTab) ctx.firstTab = result;
+
+      const gridRows = await fetchSheetRows(sheetId, tab);
+      if (gridRows.length < 2) continue;
+
+      // Adapter shim (a): Sheets rows are 0-based arrays; the shared mapping
+      // helpers expect ExcelJS-style 1-based arrays with an empty slot 0.
+      const colMap = buildColMap([null, ...gridRows[0]]) as Record<string, string>;
+      if (!Object.values(colMap).includes("wo")) continue; // no WO column — not a work-order tab
+
+      const defaultCountry = MODULE_DEFAULT_COUNTRY[meta.slug] ?? null;
+      const toInsert: Record<string, unknown>[] = [];
+      const toUpdate: { id: string; data: Record<string, unknown> }[] = [];
+
+      for (let i = 1; i < gridRows.length; i++) {
+        const oneBased: unknown[] = [null, ...gridRows[i]];
+
+        // Adapter shim (b): convert date serials → YYYY-MM-DD for date keys
+        // BEFORE the shared coercion turns them into plain number strings.
+        for (const [idxStr, key] of Object.entries(colMap)) {
+          if (!DATE_KEYS.has(key)) continue;
+          const idx = parseInt(idxStr, 10);
+          const v = oneBased[idx];
+          if (typeof v === "number" && v >= SERIAL_MIN && v <= SERIAL_MAX) {
+            oneBased[idx] = serialToISODate(v);
+          }
+        }
+
+        const data = buildRecord(colMap, oneBased, { partsFrames: !!meta.partsFrames }) as
+          | Record<string, unknown> | null;
+        if (!data) continue; // no WO number on this row
+        if (!data["country"]) data["country"] = defaultCountry;
+
+        result.rows++;
+        ctx.rowCount++;
+        const wo = String(data["wo"] ?? "").trim();
+        const key = rowKey(data);
+
+        if (ctx.seenKeys.has(key)) { result.unchanged++; continue; } // duplicate sheet row
+        ctx.seenKeys.add(key);
+
+        const existing = ctx.existing.get(key);
+        if (existing) {
+          // Merge sheet values over stored data; only `data` may change.
+          const merged = { ...existing.data, ...data };
+          if (deepEquals(merged, existing.data)) { result.unchanged++; continue; }
+          result.updated++;
+          ctx.updated++;
+          result.wouldUpdate.push(wo);
+          if (!dryRun) toUpdate.push({ id: existing.id, data: merged });
+          continue;
+        }
+
+        // New row → Sri-Lanka business validation. The sheet is the source of
+        // truth, so violations are reported but the row is still inserted
+        // (unlike the old upload flow, which dropped violating rows).
+        const warnings = await validateWorkOrderRules(sb, [{
+          country:     data["country"]      ? String(data["country"])      : defaultCountry,
+          agent:       data["agent"]        ? String(data["agent"])        : null,
+          containerno: data["container_no"] ? String(data["container_no"]) : null,
+          vslname:     data["vslname"]      ? String(data["vslname"])      : null,
+          assy_config: data["assy_config"]  ? String(data["assy_config"])  : null,
+        }]);
+        if (warnings.length > 0) {
+          result.violations.push(`WO ${wo}: ${warnings.map((w) => w.message).join(" ")}`);
+        }
+
+        const statusName = deriveStatusName(data) as string;
+        const statusId = ctx.statusIdByName[statusName] ?? ctx.statusIdByName["Planning"] ?? null;
+        result.inserted++;
+        ctx.inserted++;
+        result.wouldInsert.push(wo);
+        if (!dryRun) {
+          toInsert.push({
+            module_id:    ctx.id,
+            module_slug:  ctx.slug,
+            status_id:    statusId,
+            column_order: ++ctx.order,
+            data,
+          });
+        }
+      }
+
+      if (!dryRun) {
+        for (const upd of toUpdate) {
+          const { error } = await sb
+            .from("bajaj_work_orders")
+            .update({ data: upd.data, updated_at: new Date().toISOString() })
+            .eq("id", upd.id);
+          if (error) throw new Error(`Update failed (tab "${tab}"): ${error.message}`);
+        }
+        if (toInsert.length > 0) {
+          const { error } = await sb.from("bajaj_work_orders").insert(toInsert);
+          if (error) throw new Error(`Insert failed (tab "${tab}"): ${error.message}`);
+        }
+      }
+    }
+
+    // DB rows whose key never appeared in the sheet — report only, never touch.
+    for (const ctx of ctxCache.values()) {
+      if (!ctx.firstTab) continue;
+      const missing: string[] = [];
+      for (const [key, row] of ctx.existing) {
+        if (!ctx.seenKeys.has(key)) missing.push(row.wo || key);
+      }
+      ctx.firstTab.missingFromSheet = missing;
+    }
+
+    const totals = tabResults.reduce(
+      (t, r) => ({
+        rows:             t.rows + r.rows,
+        inserted:         t.inserted + r.inserted,
+        updated:          t.updated + r.updated,
+        unchanged:        t.unchanged + r.unchanged,
+        violations:       t.violations + r.violations.length,
+        missingFromSheet: t.missingFromSheet + r.missingFromSheet.length,
+      }),
+      { ...emptyTotals },
+    );
+
+    if (!dryRun) {
+      // One import-batch row per module that changed ("filename" marks the source).
+      for (const ctx of ctxCache.values()) {
+        if (ctx.inserted === 0 && ctx.updated === 0) continue;
+        await sb.from("bajaj_import_batches").insert({
+          module_id:     ctx.id,
+          module_slug:   ctx.slug,
+          filename:      "google-sheet",
+          imported_by:   actor,
+          row_count:     ctx.rowCount,
+          added_count:   ctx.inserted,
+          skipped_count: ctx.rowCount - ctx.inserted,
+        });
+      }
+      await sb.from("bajaj_audit_logs").insert({
+        actor_email: actor,
+        action:      "sheet_sync",
+        target_type: "google_sheet",
+        target_id:   sheetId,
+        new_value:   totals,
+      });
+    }
+
+    return { ok: true, dryRun, tabs: tabResults, totals };
+  } catch (err) {
+    console.error("[sheet-sync]", err);
+    return {
+      ok: false, dryRun, tabs: [], totals: emptyTotals,
+      error: err instanceof Error ? err.message : "Sheet sync failed",
+    };
+  }
+}

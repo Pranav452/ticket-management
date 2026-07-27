@@ -240,22 +240,6 @@ export function useUpdateWorkOrder() {
   });
 }
 
-// Components call: mutate({ moduleSlug, data: {...} })
-export function useCreateWorkOrder() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (payload: Partial<BajajWorkOrder> & { moduleSlug?: string }) =>
-      apiFetch("/api/bajaj/work-orders", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(payload),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["bajaj", "work-orders"] });
-    },
-  });
-}
-
 // ─── Comments ─────────────────────────────────────────────────────────────────
 // Components pass workOrderId (camelCase string)
 
