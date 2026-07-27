@@ -19,11 +19,19 @@ interface TabSyncResult {
   wouldInsert: string[];
   wouldUpdate: string[];
 }
+interface BookingsSyncResult {
+  tab: string;
+  rows: number;
+  previous: number;
+  replaced: boolean;
+  error?: string;
+}
 interface SheetSyncResult {
   ok: boolean;
   dryRun: boolean;
   error?: string;
   tabs: TabSyncResult[];
+  bookings?: BookingsSyncResult;
   totals: {
     rows: number;
     inserted: number;
@@ -46,7 +54,7 @@ export function SheetSyncPanel({ enabled, missingEnv }: SheetSyncPanelProps) {
 
   async function run(dryRun: boolean) {
     if (!dryRun && !window.confirm(
-      "Sync the Google Sheet into the boards now?\n\nNew rows are inserted and existing card data is updated. Statuses, card positions and assignments are never changed, and nothing is ever deleted."
+      "Sync the Google Sheet into the boards now?\n\nNew rows are inserted and existing card data is updated. Statuses, card positions and assignments are never changed, and nothing is ever deleted.\n\nThe bookings list is fully replaced from the sheet's \"Bookings Details\" tab."
     )) return;
 
     setRunning(dryRun ? "preview" : "sync");
@@ -255,6 +263,29 @@ export function SheetSyncPanel({ enabled, missingEnv }: SheetSyncPanelProps) {
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* Bookings list */}
+          {result.bookings && (
+            <div className="px-4 py-3 border-t border-gray-100 dark:border-white/5 space-y-1.5">
+              <p className="text-[11px] font-semibold text-gray-500 dark:text-white/50 uppercase tracking-wide">
+                Bookings — {result.bookings.tab}
+              </p>
+              {result.bookings.error ? (
+                <p className="text-[11px] text-red-600 dark:text-red-400">
+                  Bookings not synced: {result.bookings.error}
+                </p>
+              ) : (
+                <p className="text-[11px] text-gray-600 dark:text-white/60">
+                  {result.bookings.rows} rows in the sheet · {result.bookings.previous} stored previously ·{" "}
+                  {result.bookings.replaced ? (
+                    <span className="text-emerald-600 dark:text-emerald-400 font-medium">list replaced</span>
+                  ) : (
+                    <span className="text-gray-400 dark:text-white/40">preview — not replaced</span>
+                  )}
+                </p>
+              )}
             </div>
           )}
         </div>

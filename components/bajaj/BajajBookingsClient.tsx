@@ -1,21 +1,22 @@
 "use client";
 
 /**
- * Booking desk (the June file's Sheet8) + rate-card view (Sheet10), stored as
- * JSON in app_config. Bookings are fully editable in-app: add, edit, delete,
- * set the remark (CANCELLED / HOLD / RELEASED …) and link a booking to a work
- * order via the WO Ref field. Saves use an optimistic lock so two desks editing
- * at once don't silently clobber each other. The rate card stays read-only here.
+ * Booking desk + rate-card view, stored as JSON in app_config. Bookings are
+ * synced from the Google Sheet ("Bookings Details" tab) and are read-only in
+ * the app — the sheet is the single source of truth. The rate card remains
+ * editable here (optimistic lock so two desks editing at once don't silently
+ * clobber each other).
  */
 
 import React, { useEffect, useMemo, useState } from "react";
-import { BookOpen, DollarSign, Search, RefreshCw, Plus, Pencil, Trash2, X, Loader2, AlertTriangle } from "lucide-react";
+import { BookOpen, DollarSign, Search, RefreshCw, Plus, Pencil, Trash2, Loader2, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type Tab = "bookings" | "rates";
 type Booking = Record<string, string>;
 
 const BOOKING_COLS: { key: string; label: string }[] = [
+  { key: "ref_no",        label: "Ref No" },
   { key: "bkg_no",        label: "Booking No" },
   { key: "bkg_no_alt",    label: "Alt Booking" },
   { key: "cntr_qty",      label: "Cntr Qty" },
@@ -30,8 +31,6 @@ const BOOKING_COLS: { key: string; label: string }[] = [
   { key: "wo_ref",        label: "WO Ref" },
 ];
 
-const REMARK_PRESETS = ["", "TAKE BOOKING", "AVAILABLE", "PLANNED", "RELEASED", "HOLD", "CANCELLED"];
-
 function remarkClass(remark: string): string {
   const r = remark.toUpperCase();
   if (r.includes("CANCEL")) return "bg-red-50 text-red-600 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/30";
@@ -42,18 +41,13 @@ function remarkClass(remark: string): string {
   return "bg-gray-50 text-gray-500 border-gray-200 dark:bg-white/5 dark:text-white/50 dark:border-white/10";
 }
 
-const inputCls =
-  "w-full bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-[12px] text-gray-800 dark:text-white/90 placeholder:text-gray-300 dark:placeholder:text-white/30 focus:outline-none focus:border-amber-500 transition-colors";
-
 export function BajajBookingsClient() {
   const [tab, setTab] = useState<Tab>("bookings");
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [grid, setGrid] = useState<string[][]>([]);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
-  const [editing, setEditing] = useState<{ row: Booking; index: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Rate-card editing
   const [ratesUpdatedAt, setRatesUpdatedAt] = useState<string | null>(null);
@@ -110,67 +104,6 @@ export function BajajBookingsClient() {
 
   useEffect(() => { load(); }, []);
 
-  /** Persist the full bookings array, guarded by the optimistic lock. */
-  async function persist(rows: Booking[]) {
-    setSaving(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/bajaj/reference", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "bookings", rows, baseUpdatedAt: updatedAt }),
-      });
-      if (res.status === 409) {
-        setError("This list was changed by someone else. Reloading the latest version…");
-        await load();
-        return false;
-      }
-      if (!res.ok) throw new Error("Save failed");
-      const payload = await res.json();
-      setBookings(Array.isArray(payload.rows) ? payload.rows : rows);
-      setUpdatedAt(payload.updated_at ?? null);
-      return true;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed");
-      return false;
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function openAdd() {
-    setEditing({ row: Object.fromEntries(BOOKING_COLS.map((c) => [c.key, ""])), index: -1 });
-  }
-  function openEdit(b: Booking) {
-    setEditing({ row: { ...b }, index: bookings.indexOf(b) });
-  }
-
-  async function saveEditing() {
-    if (!editing) return;
-    const next = [...bookings];
-    if (editing.index < 0) next.push(editing.row);
-    else next[editing.index] = editing.row;
-    const ok = await persist(next);
-    if (ok) setEditing(null);
-  }
-
-  async function deleteBooking(b: Booking) {
-    const idx = bookings.indexOf(b);
-    if (idx < 0) return;
-    if (!window.confirm(`Delete booking ${b.bkg_no || "(blank)"}?`)) return;
-    const next = bookings.filter((_, i) => i !== idx);
-    await persist(next);
-  }
-
-  async function quickRemark(b: Booking, remark: string) {
-    const idx = bookings.indexOf(b);
-    if (idx < 0) return;
-    const next = bookings.map((row, i) => (i === idx ? { ...row, remark } : row));
-    // persist() sets state from the server on success and reloads on conflict;
-    // on a plain failure the UI keeps the last saved value (no stale optimistic row).
-    await persist(next);
-  }
-
   const filteredBookings = useMemo(() => {
     if (!search.trim()) return bookings;
     const q = search.toLowerCase();
@@ -195,7 +128,7 @@ export function BajajBookingsClient() {
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h1 className="text-lg font-semibold text-gray-900 dark:text-white/90">Bookings &amp; Rates</h1>
-            <p className="text-[13px] text-gray-500 dark:text-white/50 mt-0.5">Booking desk (editable) and the June buy-rate card.</p>
+            <p className="text-[13px] text-gray-500 dark:text-white/50 mt-0.5">Bookings sync from the Google Sheet · rate card editable</p>
           </div>
           <div className="flex items-center gap-2">
             {tabBtn("bookings", `Bookings (${bookings.length})`, BookOpen)}
@@ -216,18 +149,16 @@ export function BajajBookingsClient() {
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div className="flex items-center gap-2">
                 <span className="text-[13px] text-gray-500 dark:text-white/50"><span className="font-medium text-gray-800 dark:text-white/90">{filteredBookings.length}</span> bookings</span>
-                {saving && <span className="flex items-center gap-1 text-[12px] text-amber-600"><Loader2 className="size-3 animate-spin" /> Saving…</span>}
+                {updatedAt && (
+                  <span className="text-[12px] text-gray-400 dark:text-white/40">
+                    Last synced {new Date(updatedAt).toLocaleString()}
+                  </span>
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-gray-400 dark:text-white/40 pointer-events-none" />
-                  <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search bookings…"
-                    className="h-8 w-56 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] pl-8 pr-3 text-[12px] text-gray-800 dark:text-white/90 focus:border-amber-500 focus:outline-none" />
-                </div>
-                <button onClick={openAdd} disabled={saving}
-                  className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-amber-500 text-white text-[12px] font-semibold hover:bg-amber-600 disabled:opacity-50 transition-colors shadow-sm">
-                  <Plus className="size-3.5" /> Add booking
-                </button>
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-gray-400 dark:text-white/40 pointer-events-none" />
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search bookings…"
+                  className="h-8 w-56 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] pl-8 pr-3 text-[12px] text-gray-800 dark:text-white/90 focus:border-amber-500 focus:outline-none" />
               </div>
             </div>
 
@@ -237,44 +168,28 @@ export function BajajBookingsClient() {
                   <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-[#161616]">
                     <tr className="border-b border-gray-200 dark:border-white/10">
                       {BOOKING_COLS.map((c) => <th key={c.key} className="px-3 py-2.5 text-left font-semibold text-gray-500 dark:text-white/50 whitespace-nowrap">{c.label}</th>)}
-                      <th className="px-3 py-2.5 text-right font-semibold text-gray-500 dark:text-white/50">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredBookings.length === 0 ? (
-                      <tr><td colSpan={BOOKING_COLS.length + 1} className="px-4 py-8 text-center text-gray-400 dark:text-white/40">No bookings.</td></tr>
+                      <tr><td colSpan={BOOKING_COLS.length} className="px-4 py-8 text-center text-gray-400 dark:text-white/40">No bookings.</td></tr>
                     ) : filteredBookings.map((b, i) => (
-                      <tr key={i} className="border-b border-gray-100 dark:border-white/[0.06] hover:bg-gray-50 dark:hover:bg-white/[0.03] group">
+                      <tr key={i} className="border-b border-gray-100 dark:border-white/[0.06] hover:bg-gray-50 dark:hover:bg-white/[0.03]">
                         {BOOKING_COLS.map((c) => (
                           <td key={c.key} className={cn("px-3 py-2 text-gray-700 dark:text-white/70 whitespace-nowrap", c.key === "bkg_no" && "font-mono font-medium")}>
                             {c.key === "remark" ? (
-                              <select
-                                value={REMARK_PRESETS.includes((b.remark ?? "").toUpperCase()) ? (b.remark ?? "").toUpperCase() : (b.remark ?? "")}
-                                onChange={(e) => quickRemark(b, e.target.value)}
-                                disabled={saving}
-                                className={cn("rounded-full border px-2 py-0.5 text-[11px] font-medium focus:outline-none cursor-pointer", remarkClass(b.remark ?? ""))}
-                              >
-                                {(REMARK_PRESETS.includes((b.remark ?? "").toUpperCase()) ? REMARK_PRESETS : [b.remark ?? "", ...REMARK_PRESETS]).map((p, pi) => (
-                                  <option key={pi} value={p}>{p || "—"}</option>
-                                ))}
-                              </select>
+                              b.remark ? (
+                                <span className={cn("inline-block rounded-full border px-2 py-0.5 text-[11px] font-medium", remarkClass(b.remark))}>
+                                  {b.remark}
+                                </span>
+                              ) : (
+                                <span className="text-gray-300 dark:text-white/30">—</span>
+                              )
                             ) : (
                               b[c.key] || <span className="text-gray-300 dark:text-white/30">—</span>
                             )}
                           </td>
                         ))}
-                        <td className="px-3 py-2 text-right whitespace-nowrap">
-                          <div className="inline-flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => openEdit(b)} title="Edit booking"
-                              className="size-7 inline-flex items-center justify-center rounded-md text-gray-400 dark:text-white/40 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-colors">
-                              <Pencil className="size-3.5" />
-                            </button>
-                            <button onClick={() => deleteBooking(b)} title="Delete booking"
-                              className="size-7 inline-flex items-center justify-center rounded-md text-gray-400 dark:text-white/40 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors">
-                              <Trash2 className="size-3.5" />
-                            </button>
-                          </div>
-                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -338,55 +253,6 @@ export function BajajBookingsClient() {
           </>
         )}
       </div>
-
-      {/* Add / edit booking modal */}
-      {editing && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40" onClick={() => setEditing(null)}>
-          <div onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-2xl rounded-2xl bg-white dark:bg-[#111] border border-gray-200 dark:border-white/10 shadow-xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-white/10">
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">{editing.index < 0 ? "Add booking" : "Edit booking"}</p>
-              <button onClick={() => setEditing(null)} className="size-7 inline-flex items-center justify-center rounded-md text-gray-400 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/70 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
-                <X className="size-4" />
-              </button>
-            </div>
-            <div className="px-5 py-4 grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto">
-              {BOOKING_COLS.map((c) => (
-                <div key={c.key} className="space-y-1">
-                  <label className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-white/40 font-semibold">
-                    {c.label}{c.key === "wo_ref" && " (links to work order)"}
-                  </label>
-                  {c.key === "remark" ? (
-                    <input
-                      list="remark-presets"
-                      value={editing.row[c.key] ?? ""}
-                      onChange={(e) => setEditing({ ...editing, row: { ...editing.row, [c.key]: e.target.value } })}
-                      className={inputCls}
-                    />
-                  ) : (
-                    <input
-                      value={editing.row[c.key] ?? ""}
-                      onChange={(e) => setEditing({ ...editing, row: { ...editing.row, [c.key]: e.target.value } })}
-                      className={inputCls}
-                    />
-                  )}
-                </div>
-              ))}
-              <datalist id="remark-presets">
-                {REMARK_PRESETS.filter(Boolean).map((p) => <option key={p} value={p} />)}
-              </datalist>
-            </div>
-            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100 dark:border-white/10">
-              <button onClick={() => setEditing(null)} className="px-3 py-2 rounded-lg text-[13px] text-gray-500 dark:text-white/50 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">Cancel</button>
-              <button onClick={saveEditing} disabled={saving}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-500 text-[13px] font-medium text-white hover:bg-amber-600 disabled:opacity-50 transition-colors">
-                {saving ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-                {editing.index < 0 ? "Add booking" : "Save changes"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

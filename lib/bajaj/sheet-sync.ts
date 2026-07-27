@@ -23,7 +23,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { validateWorkOrderRules } from "@/lib/bajaj/validation";
 import { fetchSheetRows, listSheetTabs, sheetSyncEnabled, missingSheetSyncEnv } from "@/lib/bajaj/google-sheets";
 import {
-  SHEET_MODULE_MAP, normHeader, buildColMap, buildRecord, deriveStatusName,
+  SHEET_MODULE_MAP, normHeader, buildColMap, buildRecord, deriveStatusName, formatCell,
 } from "@/lib/bajaj/import-map.mjs";
 
 /* Same defaults as the old /api/bajaj/import route. */
@@ -42,7 +42,7 @@ const DATE_KEYS = new Set([
   "wodt", "stuffing_dt", "lc_date", "do_given_dt", "gate_open", "gate_cut_off",
   "si_cutoff", "do_etd", "current_etd", "eta_at_destination", "final_vsl_sob",
   "bldt", "bl_handover_time", "courier_dt", "pickup_dt", "cntr_dispatch",
-  "cntr_report", "cntr_gated", "sb_date", "sailingdt",
+  "cntr_report", "cntr_gated", "sb_date", "sailingdt", "si_submitted", "vgm_submitted",
 ]);
 
 /** Plausible date-serial window: ~1954 … ~2064. */
@@ -52,6 +52,58 @@ const EXCEL_EPOCH_MS = Date.UTC(1899, 11, 30);
 
 function serialToISODate(n: number): string {
   return new Date(EXCEL_EPOCH_MS + Math.round(n * 86_400_000)).toISOString().slice(0, 10);
+}
+
+/* ── Bookings list (app_config.bajaj_bookings) ──────────────────────────────
+ * The "Bookings Details" tab replaces in-app booking editing: the whole list
+ * is rebuilt from the sheet on every sync. Header mapping is local to this
+ * tab (it does not share the work-order HEADER_MAP). */
+const BOOKINGS_TAB_NAME = "Bookings Details";
+const BOOKINGS_CONFIG_KEY = "bajaj_bookings";
+
+const BOOKING_HEADER_MAP: Record<string, string> = {
+  "ref no":   "ref_no",
+  "bkg no":   "bkg_no",
+  "cntr qty": "cntr_qty",
+  "line":     "line",
+  "validity": "validity",
+};
+
+function bookingKeyForHeader(h: unknown): string | null {
+  const norm = normHeader(h) as string;
+  // The vessel columns appear with inconsistent spacing around "/" in the
+  // sheet ("Place /Require BKG on VSL", "Place/Require…") — match loosely.
+  if (norm.includes("bkg on vsl")) {
+    if (norm.includes("place")) return "place_req_vsl";
+    if (norm.includes("received")) return "received_vsl";
+  }
+  return BOOKING_HEADER_MAP[norm] ?? null;
+}
+
+/** Grid (row 1 = headers) → booking rows. Rows without a BKG number are skipped. */
+function buildBookingRows(grid: unknown[][]): Record<string, string>[] {
+  if (grid.length < 2) return [];
+  const cols: { idx: number; key: string }[] = [];
+  (grid[0] ?? []).forEach((h, idx) => {
+    const key = bookingKeyForHeader(h);
+    if (key) cols.push({ idx, key });
+  });
+  const rows: Record<string, string>[] = [];
+  for (let i = 1; i < grid.length; i++) {
+    const row: Record<string, string> = {};
+    for (const { idx, key } of cols) {
+      let v: unknown = grid[i]?.[idx];
+      // "validity" is a date column — convert Google/Excel serials to ISO.
+      if (key === "validity" && typeof v === "number" && v >= SERIAL_MIN && v <= SERIAL_MAX) {
+        v = serialToISODate(v);
+      }
+      const formatted = formatCell(v);
+      if (formatted != null) row[key] = String(formatted);
+    }
+    if (!String(row["bkg_no"] ?? "").trim()) continue;
+    rows.push(row);
+  }
+  return rows;
 }
 
 /** Composite dedup key — must match the old import route exactly. */
@@ -86,11 +138,22 @@ export interface TabSyncResult {
   wouldUpdate: string[];
 }
 
+export interface BookingsSyncResult {
+  tab: string;
+  rows: number;
+  /** Row count of the previously stored bajaj_bookings list. */
+  previous: number;
+  /** True when the stored list was actually replaced (never in dryRun). */
+  replaced: boolean;
+  error?: string;
+}
+
 export interface SheetSyncResult {
   ok: boolean;
   dryRun: boolean;
   error?: string;
   tabs: TabSyncResult[];
+  bookings?: BookingsSyncResult;
   totals: {
     rows: number;
     inserted: number;
@@ -304,6 +367,45 @@ export async function runSheetSync(actor: string, opts: SheetSyncOptions = {}): 
       ctx.firstTab.missingFromSheet = missing;
     }
 
+    // ── Bookings list: rebuild app_config.bajaj_bookings from its sheet tab ──
+    let bookings: BookingsSyncResult;
+    const bookingsTab = allTabs.find((t) => normHeader(t) === normHeader(BOOKINGS_TAB_NAME));
+    if (!bookingsTab) {
+      bookings = { tab: BOOKINGS_TAB_NAME, rows: 0, previous: 0, replaced: false, error: "tab not found" };
+    } else {
+      try {
+        const grid = await fetchSheetRows(sheetId, bookingsTab);
+        const bookingRows = buildBookingRows(grid);
+
+        let previous = 0;
+        const { data: prev } = await sb
+          .from("app_config").select("value").eq("key", BOOKINGS_CONFIG_KEY).maybeSingle();
+        if (prev?.value) {
+          try {
+            const parsed = JSON.parse(prev.value) as { rows?: unknown };
+            if (Array.isArray(parsed.rows)) previous = parsed.rows.length;
+          } catch { /* corrupt stored value — treat as empty */ }
+        }
+
+        let replaced = false;
+        if (!dryRun) {
+          // Same stored shape as the reference API: { updated_at, rows }.
+          const payload = { updated_at: new Date().toISOString(), rows: bookingRows };
+          const { error } = await sb
+            .from("app_config")
+            .upsert({ key: BOOKINGS_CONFIG_KEY, value: JSON.stringify(payload) }, { onConflict: "key" });
+          if (error) throw new Error(`Bookings save failed: ${error.message}`);
+          replaced = true;
+        }
+        bookings = { tab: bookingsTab, rows: bookingRows.length, previous, replaced };
+      } catch (err) {
+        bookings = {
+          tab: bookingsTab, rows: 0, previous: 0, replaced: false,
+          error: err instanceof Error ? err.message : "Bookings sync failed",
+        };
+      }
+    }
+
     const totals = tabResults.reduce(
       (t, r) => ({
         rows:             t.rows + r.rows,
@@ -335,11 +437,11 @@ export async function runSheetSync(actor: string, opts: SheetSyncOptions = {}): 
         action:      "sheet_sync",
         target_type: "google_sheet",
         target_id:   sheetId,
-        new_value:   totals,
+        new_value:   { ...totals, bookings_rows: bookings.error ? 0 : bookings.rows },
       });
     }
 
-    return { ok: true, dryRun, tabs: tabResults, totals };
+    return { ok: true, dryRun, tabs: tabResults, bookings, totals };
   } catch (err) {
     console.error("[sheet-sync]", err);
     return {

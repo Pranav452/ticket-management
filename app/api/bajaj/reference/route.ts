@@ -2,9 +2,10 @@
  * GET /api/bajaj/reference?type=bookings|rates
  *   Reads the booking list / rate card stored in app_config (JSON blobs).
  * PUT /api/bajaj/reference
- *   Body: { type, rows?, grid?, baseUpdatedAt? } — saves the booking list / rate
- *   card. Uses an optimistic lock (baseUpdatedAt) so two desks editing at once
- *   don't silently clobber each other.
+ *   Body: { type, rows?, grid?, baseUpdatedAt? } — saves the rate card. Uses an
+ *   optimistic lock (baseUpdatedAt) so two desks editing at once don't silently
+ *   clobber each other. Bookings are synced from the Google Sheet and are
+ *   read-only here (PUT type=bookings → 403).
  * Auth: any approved Bajaj user (middleware blocks anonymous).
  */
 
@@ -47,6 +48,14 @@ export async function PUT(req: NextRequest) {
   const type = body.type ?? "bookings";
   const key = KEY[type];
   if (!key) return NextResponse.json({ error: "Unknown type" }, { status: 400 });
+
+  // Bookings are replaced wholesale by the Google Sheet sync — no in-app edits.
+  if (type === "bookings") {
+    return NextResponse.json(
+      { error: "Bookings are synced from the Google Sheet and are read-only in the app." },
+      { status: 403 },
+    );
+  }
 
   const sb = createAdminClient();
 
