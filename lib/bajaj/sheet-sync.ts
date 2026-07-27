@@ -113,7 +113,11 @@ function buildBookingRows(grid: unknown[][]): Record<string, string>[] {
 
 /** Composite dedup key — must match the old import route exactly. */
 function rowKey(d: Record<string, unknown>): string {
-  return [d["wo"], d["container_no"], d["booking_no"]].map((v) => String(v ?? "").trim()).join("|");
+  // Case-insensitive: ops occasionally re-type a WO with different casing
+  // ("5327994/l1" → "5327994/L1") — that must not spawn a duplicate card.
+  return [d["wo"], d["container_no"], d["booking_no"]]
+    .map((v) => String(v ?? "").trim().toUpperCase())
+    .join("|");
 }
 
 /**
@@ -124,9 +128,9 @@ function rowKey(d: Record<string, unknown>): string {
  * multi-row WOs (same WO, different containers) stay separate.
  */
 function candidateKeys(d: Record<string, unknown>): string[] {
-  const wo   = String(d["wo"] ?? "").trim();
-  const cont = String(d["container_no"] ?? "").trim();
-  const bkg  = String(d["booking_no"] ?? "").trim();
+  const wo   = String(d["wo"] ?? "").trim().toUpperCase();
+  const cont = String(d["container_no"] ?? "").trim().toUpperCase();
+  const bkg  = String(d["booking_no"] ?? "").trim().toUpperCase();
   return [...new Set([
     `${wo}|${cont}|${bkg}`,
     `${wo}|${cont}|`,
