@@ -140,12 +140,16 @@ function buildBookingRows(grid: unknown[][]): Record<string, string>[] {
 }
 
 /** Composite dedup key — must match the old import route exactly. */
+/** Normalize a key part: trim, uppercase, collapse inner whitespace runs
+ * (container lists get re-typed with double spaces all the time). */
+function keyPart(v: unknown): string {
+  return String(v ?? "").trim().toUpperCase().replace(/\s+/g, " ");
+}
+
 function rowKey(d: Record<string, unknown>): string {
   // Case-insensitive: ops occasionally re-type a WO with different casing
   // ("5327994/l1" → "5327994/L1") — that must not spawn a duplicate card.
-  return [d["wo"], d["container_no"], d["booking_no"]]
-    .map((v) => String(v ?? "").trim().toUpperCase())
-    .join("|");
+  return [d["wo"], d["container_no"], d["booking_no"]].map(keyPart).join("|");
 }
 
 /**
@@ -156,9 +160,9 @@ function rowKey(d: Record<string, unknown>): string {
  * multi-row WOs (same WO, different containers) stay separate.
  */
 function candidateKeys(d: Record<string, unknown>): string[] {
-  const wo   = String(d["wo"] ?? "").trim().toUpperCase();
-  const cont = String(d["container_no"] ?? "").trim().toUpperCase();
-  const bkg  = String(d["booking_no"] ?? "").trim().toUpperCase();
+  const wo   = keyPart(d["wo"]);
+  const cont = keyPart(d["container_no"]);
+  const bkg  = keyPart(d["booking_no"]);
   return [...new Set([
     `${wo}|${cont}|${bkg}`,
     `${wo}|${cont}|`,
@@ -298,6 +302,8 @@ interface ModCtx {
   month: string;
   /** dedup key → existing DB row of this month (archived rows included — see restore). */
   existing: Map<string, ExistingRow>;
+  /** normalized WO number → this month's DB rows (last-resort rename matching). */
+  byWo: Map<string, ExistingRow[]>;
   /** dedup keys seen in this month's sheet (across all tabs mapping to this module) */
   seenKeys: Set<string>;
   /** ids of existing DB rows matched (exactly or via fallback) this run. */
@@ -362,18 +368,26 @@ async function getModInfo(
 
 function buildModCtx(info: ModInfo, month: string, oldestMonth: string): ModCtx {
   const existing = new Map<string, ExistingRow>();
+  const byWo = new Map<string, ExistingRow[]>();
   for (const r of info.allRows) {
     if (rowMonth(r.data, oldestMonth) !== month) continue;
-    existing.set(rowKey(r.data), {
+    const row: ExistingRow = {
       id: r.id,
       wo: String(r.data["wo"] ?? "").trim(),
       status_id: r.status_id,
       data: r.data,
       archived: isArchivedData(r.data),
-    });
+    };
+    existing.set(rowKey(r.data), row);
+    const woKey = keyPart(r.data["wo"]);
+    if (woKey) {
+      const list = byWo.get(woKey) ?? [];
+      list.push(row);
+      byWo.set(woKey, list);
+    }
   }
   return {
-    info, month, existing,
+    info, month, existing, byWo,
     seenKeys: new Set(), claimedIds: new Set(),
     inserted: 0, updated: 0, moved: 0, rowCount: 0, firstTab: null,
   };
@@ -572,6 +586,31 @@ export async function runSheetSync(actor: string, opts: SheetSyncOptions = {}): 
             for (const k of candidateKeys(data)) {
               const row = ctx.existing.get(k);
               if (row && !ctx.claimedIds.has(row.id)) { existing = row; break; }
+            }
+
+            // Last-resort WO-level matching: ops sometimes REPLACE a booking or
+            // container number on an existing row (rebooking) — every key
+            // candidate then misses and the card would duplicate. Among this
+            // month's unclaimed rows with the same WO number, prefer a row whose
+            // container list overlaps, then one whose booking matches, and only
+            // when the WO is otherwise unambiguous (single unclaimed row) adopt
+            // that. Ambiguous multi-row WOs fall through to insert.
+            if (!existing) {
+              const woRows = (ctx.byWo.get(keyPart(data["wo"])) ?? []).filter(
+                (r) => !ctx.claimedIds.has(r.id),
+              );
+              if (woRows.length > 0) {
+                const sheetConts = new Set(keyPart(data["container_no"]).split(" ").filter(Boolean));
+                const overlap = woRows.find((r) => {
+                  const rc = keyPart(r.data["container_no"]).split(" ").filter(Boolean);
+                  return rc.some((c) => sheetConts.has(c));
+                });
+                const bkgMatch = woRows.find(
+                  (r) => keyPart(r.data["booking_no"]) !== "" &&
+                         keyPart(r.data["booking_no"]) === keyPart(data["booking_no"]),
+                );
+                existing = overlap ?? bkgMatch ?? (woRows.length === 1 ? woRows[0] : undefined);
+              }
             }
 
             if (existing) {
