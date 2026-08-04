@@ -29,12 +29,18 @@ export async function GET(req: NextRequest) {
   try {
     const sb = createAdminClient();
 
-    // Fetch all WOs that have sailingdt but no blno
-    const { data: wos, error } = await sb
-      .from("bajaj_work_orders")
-      .select("id, data");
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    // Fetch all WOs that have sailingdt but no blno (paginated — the table
+    // exceeds supabase's 1000-row default cap now that months accumulate).
+    const wos: { id: string; data: Record<string, unknown> }[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data: page, error } = await sb
+        .from("bajaj_work_orders")
+        .select("id, data")
+        .range(from, from + 999);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      wos.push(...((page ?? []) as { id: string; data: Record<string, unknown> }[]));
+      if (!page || page.length < 1000) break;
+    }
 
     let alerted = 0;
     for (const wo of wos ?? []) {

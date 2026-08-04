@@ -30,10 +30,24 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const { data: wos, error } = await woQuery;
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-    const rows = wos ?? [];
+    // Paginate — supabase caps unpaginated selects at 1000 rows and the board
+    // crossed that once multiple months went live; a plain select silently
+    // truncates and every sum comes out short.
+    type WoRow = {
+      id: string;
+      module_slug: string | null;
+      status_id: string | null;
+      data: Record<string, unknown>;
+      created_at: string | null;
+      bajaj_statuses: { name: string; color_hex: string } | null;
+    };
+    const rows: WoRow[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data: page, error } = await woQuery.range(from, from + 999);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      rows.push(...((page ?? []) as unknown as WoRow[]));
+      if (!page || page.length < 1000) break;
+    }
 
     // Total
     const totalWorkOrders = rows.length;
@@ -89,22 +103,28 @@ export async function GET(req: NextRequest) {
       return d?.blno != null && String(d.blno).trim() !== "";
     }).length;
 
-    // BL pending after ETD (no blno but vessel_etd set)
+    // BL pending after ETD: sailed (an ETD/sailing date in the past) but no BL
+    // number yet. Sheet keys: sailingdt / current_etd / do_etd.
+    const today = new Date().toISOString().slice(0, 10);
     const blPendingAfterETD = rows.filter((wo) => {
       const d = wo.data as Record<string, unknown>;
       const hasBlno = d?.blno != null && String(d.blno).trim() !== "";
-      const hasEtd  = d?.vessel_etd != null && String(d.vessel_etd).trim() !== "";
-      return !hasBlno && hasEtd;
+      if (hasBlno) return false;
+      const etd = [d?.sailingdt, d?.current_etd, d?.do_etd]
+        .map((v) => String(v ?? "").trim())
+        .find((v) => /^\d{4}-\d{2}-\d{2}$/.test(v));
+      return !!etd && etd <= today;
     }).length;
 
-    // Top agents (as "by line")
-    const agentMap = new Map<string, number>();
+    // Containers by shipping line (sum of cont per s_line)
+    const lineMap = new Map<string, number>();
     for (const wo of rows) {
       const d = wo.data as Record<string, unknown>;
-      const agent = String(d?.agent ?? "Unknown");
-      agentMap.set(agent, (agentMap.get(agent) ?? 0) + 1);
+      const line = String(d?.s_line ?? "").trim().toUpperCase() || "Unknown";
+      const cont = parseInt(String(d?.cont ?? 0), 10) || 0;
+      lineMap.set(line, (lineMap.get(line) ?? 0) + cont);
     }
-    const containersByLine = [...agentMap.entries()]
+    const containersByLine = [...lineMap.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10)
       .map(([lineName, containerCount]) => ({ lineName, containerCount }));
