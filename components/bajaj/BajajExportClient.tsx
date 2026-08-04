@@ -137,6 +137,12 @@ export function BajajExportClient() {
 
   const month = useSelectedMonthParam();
 
+  // "All months" export mixes workbooks — carry each row's Sheet Month so the
+  // recipient can tell them apart. (Single-month exports don't need it.)
+  const exportColumns: { key: string; label: string }[] = month
+    ? activeColumns
+    : [...activeColumns, { key: "sheet_month", label: "Sheet Month" }];
+
   const fetchData = useCallback(async () => {
     setLoading(true); setError(null); setFetched(false);
     try {
@@ -212,14 +218,14 @@ export function BajajExportClient() {
       const ExcelJS = (await import("exceljs")).default;
       const wb = new ExcelJS.Workbook();
       const ws = wb.addWorksheet("Work Orders");
-      ws.columns = activeColumns.map((c) => ({
+      ws.columns = exportColumns.map((c) => ({
         header: c.label, key: c.key,
         width: Math.min(40, Math.max(c.label.length + 2, ...exportRows.map((r) => cellValue(c.key, r).length + 2))),
       }));
       ws.getRow(1).font = { bold: true };
-      const stageIdx = activeColumns.findIndex((c) => c.key === "status");
+      const stageIdx = exportColumns.findIndex((c) => c.key === "status");
       exportRows.forEach((r) => {
-        const row = ws.addRow(Object.fromEntries(activeColumns.map((c) => [c.key, cellValue(c.key, r)])));
+        const row = ws.addRow(Object.fromEntries(exportColumns.map((c) => [c.key, cellValue(c.key, r)])));
         // Mirror the spreadsheet's colour coding: fill each row by its workflow
         // status colour so recipients keep the glanceable status in Excel.
         const hex = String(r.status_color ?? "").replace(/^#/, "");
@@ -240,8 +246,8 @@ export function BajajExportClient() {
   function exportCsv() {
     if (exportRows.length === 0) return;
     const esc = (s: string) => /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    const lines = [activeColumns.map((c) => esc(c.label)).join(",")];
-    for (const r of exportRows) lines.push(activeColumns.map((c) => esc(cellValue(c.key, r))).join(","));
+    const lines = [exportColumns.map((c) => esc(c.label)).join(",")];
+    for (const r of exportRows) lines.push(exportColumns.map((c) => esc(cellValue(c.key, r))).join(","));
     download(new Blob(["﻿" + lines.join("\n")], { type: "text/csv;charset=utf-8" }), `Bajaj_${moduleSlug}_${dateStr()}.csv`);
   }
 

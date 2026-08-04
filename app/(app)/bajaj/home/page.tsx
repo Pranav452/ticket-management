@@ -131,22 +131,19 @@ type WORow = {
   module_slug?: string;
 };
 
-// ─── My Shipments section ─────────────────────────────────────────────────────
+// ─── Recently Updated section ─────────────────────────────────────────────────
 
-function MyShipments({
+function RecentlyUpdated({
   wos,
   isLoading,
-  email,
   router,
 }: {
   wos: WORow[];
   isLoading: boolean;
-  email?: string;
   router: ReturnType<typeof useRouter>;
 }) {
-  const MAX = 10;
+  const MAX = 8;
   const visible = wos.slice(0, MAX);
-  const hasMore = wos.length > MAX;
 
   const getString = (v: unknown): string =>
     v != null ? String(v) : "";
@@ -156,7 +153,7 @@ function MyShipments({
       <div className="mb-4 flex items-center gap-2">
         <Package className="w-4 h-4 text-amber-500" />
         <h2 className="text-xs font-semibold uppercase tracking-widest text-amber-500">
-          My Shipments
+          Recently Updated
         </h2>
         {!isLoading && wos.length > 0 && (
           <span className="rounded-full bg-amber-500/12 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
@@ -186,7 +183,7 @@ function MyShipments({
           <div className="flex flex-col items-center justify-center gap-2 py-10">
             <Package className="w-8 h-8 opacity-20" style={{ color: "var(--muted-fg)" }} />
             <p className="text-sm" style={{ color: "var(--muted-fg)" }}>
-              No work orders assigned to you
+              No recently updated work orders this month
             </p>
           </div>
         ) : (
@@ -262,27 +259,6 @@ function MyShipments({
                 </button>
               );
             })}
-
-            {hasMore && (
-              <button
-                onClick={() => {
-                  if (!email) return;
-                  // Route to the board where most of the user's shipments live,
-                  // instead of always defaulting to vipar.
-                  const counts = new Map<string, number>();
-                  for (const w of wos) {
-                    if (w.module_slug) counts.set(w.module_slug, (counts.get(w.module_slug) ?? 0) + 1);
-                  }
-                  let slug = "vipar", best = -1;
-                  counts.forEach((n, s) => { if (n > best) { best = n; slug = s; } });
-                  router.push(`/bajaj/boards/${slug}?assignedTo=${encodeURIComponent(email)}`);
-                }}
-                className="flex w-full items-center justify-center gap-1.5 px-4 py-3 text-xs font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-50/60 dark:hover:bg-amber-500/6 transition-colors"
-              >
-                Show all {wos.length} shipments
-                <ArrowRight className="w-3 h-3" />
-              </button>
-            )}
           </div>
         )}
       </div>
@@ -306,14 +282,13 @@ export default function BajajHomePage() {
   const { data: modules = [] } = useBajajModules();
   const month = useSelectedMonthParam();
 
-  // My Work Orders
-  const { data: myWOs = [], isLoading: myWOLoading } = useQuery({
-    queryKey: ["bajaj", "my-work-orders", bajajUser?.email, month],
-    enabled: !!bajajUser?.email,
+  // Recently updated work orders (across all boards, current month)
+  const { data: recentWOs = [], isLoading: recentLoading } = useQuery({
+    queryKey: ["bajaj", "recently-updated-work-orders", month],
     queryFn: async () => {
       const sp = new URLSearchParams({
-        assignedTo: bajajUser!.email!,
-        pageSize: "100",
+        sort: "updated",
+        pageSize: "8",
       });
       if (month) sp.set("month", month);
       const res = await fetch(`/api/bajaj/work-orders?${sp}`);
@@ -409,11 +384,10 @@ export default function BajajHomePage() {
           </p>
         </div>
 
-        {/* My Shipments — primary section */}
-        <MyShipments
-          wos={myWOs}
-          isLoading={myWOLoading}
-          email={bajajUser?.email}
+        {/* Recently Updated — primary section */}
+        <RecentlyUpdated
+          wos={recentWOs}
+          isLoading={recentLoading}
           router={router}
         />
 

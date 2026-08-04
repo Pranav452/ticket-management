@@ -1,11 +1,11 @@
 "use client";
 
-import React, { useState, useCallback, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Loader2, Check,
   MessageSquare, Clock, Send, Bell, Mail,
-  ChevronDown, AlertTriangle, Edit2,
+  ChevronDown, AlertTriangle,
   X, CheckCircle, BellPlus, CalendarClock, Monitor,
 } from "lucide-react";
 import {
@@ -17,90 +17,78 @@ import { useAuthStore } from "@/lib/stores/auth-store";
 import { cn } from "@/lib/utils";
 import type { BajajAuditLog } from "@/lib/types/bajaj";
 
+/* Field keys are the CANONICAL data keys the Google Sheet sync writes
+ * (lib/bajaj/import-map.mjs HEADER_MAP). */
 const FIELD_LABELS: Record<string, string> = {
-  wo: "WO No", wodt: "WO Date", country: "Country", port: "Port",
+  wo: "WO No", country: "Country", port: "Port",
   plant: "Plant", brand: "Brand", variant: "Variant",
   qty: "Quantity", hc40: "40 HC", std20: "20 STD",
-  veh: "Vehicle", cont: "Containers", type: "Type",
-  s_line: "Shipping Line", vessel_name: "Vessel Name",
+  veh: "Vehicle", cont: "Containers", cont_type: "Cont Type", veh_category: "Veh Type",
+  s_line: "Shipping Line", vslname: "Vessel Name",
   booking_no: "Booking No", container_no: "Container No",
   agent: "Agent", transporter: "Transporter", consignee: "Consignee",
   po_no: "PO No", lc_no: "LC No", lc_date: "LC Date",
   ff_job: "FF Job No", sbno: "SB No", sb_date: "SB Date",
   blno: "BL No", bldt: "BL Date", bl_handover_time: "BL Handover Time",
   for_hbl: "For HBL", haz: "Hazardous", vgm_submitted: "VGM Submitted", si_submitted: "SI Submitted",
-  pol_gate: "POL Gate", stuffing_on: "Stuffing On", do_given_dt: "DO Given Date",
-  pick_up_dt: "Pick Up Date", cntr_dispatch: "Cntr Dispatch", gate_open: "Gate Open",
-  gate_cut_off: "Gate Cut Off", si_cut_off: "SI Cut Off",
-  cntr_report_nhava_sheva: "Cntr Report Nhava Sheva", cntr_gated_in_port: "Cntr Gated In Port",
+  pol_gate: "POL Gate", stuffing_dt: "Stuffing Date", do_given_dt: "DO Given Date",
+  pickup_dt: "Pick Up Date", cntr_dispatch: "Cntr Dispatch", gate_open: "Gate Open",
+  gate_cut_off: "Gate Cut Off", si_cutoff: "SI Cut Off",
+  cntr_report: "Cntr Report Nhava Sheva", cntr_gated: "Cntr Gated In Port",
   final_vsl_sob: "Final VSL SOB", do_etd: "DO ETD", current_etd: "Current ETD",
   eta_at_destination: "ETA at Destination", sailingdt: "Sailing Date",
-  s_line_payment_status: "S/Line Payment Status", e_doc_status: "E-Doc Status",
+  sline_payment: "S/Line Payment Status", e_doc_status: "E-Doc Status",
   clearance_point: "Clearance Point", open_order: "Open Order", buffer_yard: "Buffer Yard",
   courier_dt: "Courier Date", assy_config: "Assy Config", remark: "Remark",
 };
 
 const SECTIONS = [
-  { title: "Cargo",         fields: ["veh", "type", "qty", "cont", "std20", "plant"] },
-  { title: "Shipping",      fields: ["s_line", "vessel_name", "agent", "transporter", "consignee", "booking_no", "container_no"] },
-  { title: "Route & Dates", fields: ["port", "country", "wodt", "stuffing_on", "gate_open", "gate_cut_off", "do_etd", "current_etd", "eta_at_destination", "sailingdt"] },
+  { title: "Cargo",         fields: ["veh", "veh_category", "qty", "cont", "cont_type", "hc40", "std20", "plant"] },
+  { title: "Shipping",      fields: ["s_line", "vslname", "agent", "transporter", "consignee", "booking_no", "container_no"] },
+  { title: "Route & Dates", fields: ["port", "country", "stuffing_dt", "gate_open", "gate_cut_off", "si_cutoff", "do_etd", "current_etd", "eta_at_destination", "sailingdt"] },
   { title: "Documents",     fields: ["po_no", "lc_no", "lc_date", "ff_job", "booking_no", "sbno", "sb_date", "blno", "bldt", "bl_handover_time", "for_hbl"] },
   { title: "Status Flags",  fields: ["haz", "vgm_submitted", "si_submitted"] },
-  { title: "Port Tracking", fields: ["pol_gate", "pick_up_dt", "cntr_dispatch", "cntr_report_nhava_sheva", "cntr_gated_in_port", "final_vsl_sob", "s_line_payment_status", "e_doc_status"] },
+  { title: "Port Tracking", fields: ["pol_gate", "pickup_dt", "cntr_dispatch", "cntr_report", "cntr_gated", "final_vsl_sob", "sline_payment", "e_doc_status"] },
   { title: "Notes",         fields: ["clearance_point", "open_order", "buffer_yard", "courier_dt", "assy_config", "remark"] },
 ];
 
 
-// ─── Inline editable field ────────────────────────────────────────────────────
-function EditField({ fieldKey, label, value, onSave, boolean: isBool = false, canEdit = true }: {
-  fieldKey: string; label: string; value: unknown;
-  onSave: (key: string, val: string | boolean) => void; boolean?: boolean; canEdit?: boolean;
+/** Sheet-synced flags are strings ("YES"/"NO", or a date for SI/VGM) — any
+ * non-empty value counts as set except explicit negatives. */
+function isCheckedValue(v: unknown): boolean {
+  if (v == null || v === false || v === 0) return false;
+  const s = String(v).trim();
+  if (s === "") return false;
+  const up = s.toUpperCase();
+  return up !== "NO" && up !== "FALSE" && up !== "0";
+}
+
+// ─── Read-only field (the Google Sheet owns all work-order data) ─────────────
+function DisplayField({ label, value, boolean: isBool = false }: {
+  label: string; value: unknown; boolean?: boolean;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [val, setVal]         = useState(value != null ? String(value) : "");
   const displayVal = value != null && value !== "" ? String(value) : null;
-  const isTrueish  = value === true || value === 1 || value === "true";
 
   if (isBool) {
+    const isTrueish = isCheckedValue(value);
     return (
       <div className="flex flex-col gap-0.5">
         <span className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-white/40 font-semibold">{label}</span>
-        <button
-          onClick={canEdit ? () => onSave(fieldKey, !isTrueish) : undefined}
-          disabled={!canEdit}
-          className={cn("inline-flex items-center gap-1.5 text-[12px] font-medium px-2 py-1 rounded-md border w-fit transition-colors",
-            !canEdit && "cursor-default",
-            isTrueish ? "bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-500/30" : "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100 dark:bg-white/5 dark:text-white/50 dark:border-white/10 dark:hover:bg-white/8")}
+        <span
+          className={cn("inline-flex items-center gap-1.5 text-[12px] font-medium px-2 py-1 rounded-md border w-fit",
+            isTrueish ? "bg-orange-50 text-orange-600 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-500/30" : "bg-gray-50 text-gray-500 border-gray-200 dark:bg-white/5 dark:text-white/50 dark:border-white/10")}
         >
           {isTrueish ? <AlertTriangle className="size-3" /> : <div className="size-3 rounded-full border border-gray-400 dark:border-white/30" />}
           {isTrueish ? "Yes" : "No"}
-        </button>
+        </span>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-0.5 group">
+    <div className="flex flex-col gap-0.5">
       <span className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-white/40 font-semibold">{label}</span>
-      {!canEdit ? (
-        <span className={cn("text-[13px]", displayVal ? "text-gray-800 dark:text-white/90" : "text-gray-300 dark:text-white/25 italic")}>{displayVal ?? "—"}</span>
-      ) : editing ? (
-        <input
-          autoFocus value={val}
-          onChange={(e) => setVal(e.target.value)}
-          onBlur={() => { setEditing(false); if (val !== String(value ?? "")) onSave(fieldKey, val); }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") { setEditing(false); if (val !== String(value ?? "")) onSave(fieldKey, val); }
-            if (e.key === "Escape") { setVal(String(value ?? "")); setEditing(false); }
-          }}
-          className="bg-white dark:bg-[#1a1a1a] border border-amber-400 rounded-md px-2 py-1 text-[13px] text-gray-800 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-amber-400/30"
-        />
-      ) : (
-        <button onClick={() => { setVal(String(value ?? "")); setEditing(true); }} className="flex items-center gap-1.5 text-[13px] text-left group/field">
-          <span className={displayVal ? "text-gray-800 dark:text-white/90" : "text-gray-300 dark:text-white/25 italic"}>{displayVal ?? "—"}</span>
-          <Edit2 className="size-2.5 text-gray-300 dark:text-white/25 opacity-0 group-hover/field:opacity-100 transition-opacity flex-shrink-0" />
-        </button>
-      )}
+      <span className={cn("text-[13px]", displayVal ? "text-gray-800 dark:text-white/90" : "text-gray-300 dark:text-white/25 italic")}>{displayVal ?? "—"}</span>
     </div>
   );
 }
@@ -427,20 +415,13 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
 
   const [showStatusPicker, setShowStatusPicker] = useState(false);
   const [commentText,      setCommentText]      = useState("");
-  const [savingField,      setSavingField]      = useState<string | null>(null);
   const [showReminder,     setShowReminder]     = useState(false);
   const [showNotify,       setShowNotify]       = useState(false);
   const [allBookings,      setAllBookings]      = useState<Record<string, string>[]>([]);
 
-  // No client-side auto-advance — the Google Sheet sync moves cards; manual
-  // admin edits here are corrections only.
-  const handleFieldSave = useCallback((key: string, val: string | boolean) => {
-    setSavingField(key);
-    updateWorkOrder.mutate(
-      { id: workOrderId, updates: { data: { [key]: val } }, baseUpdatedAt: workOrder?.updated_at },
-      { onSettled: () => setSavingField(null) }
-    );
-  }, [workOrderId, workOrder, updateWorkOrder]);
+  // Data fields are read-only here — the Google Sheet is the single source of
+  // truth and the sync would silently overwrite any in-app edit. Admins can
+  // still move cards (status) below; updateWorkOrder handles that only.
 
   async function handleComment() {
     if (!commentText.trim() || !bajajUser) return;
@@ -483,16 +464,16 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
 
   const d            = workOrder.data as Record<string, unknown>;
   const wo           = String(d.wo ?? workOrderId);
-  const brand        = d.veh  ? String(d.veh)  : (d.brand   ? String(d.brand)   : "");
-  const variant      = d.type ? String(d.type) : (d.variant ? String(d.variant) : "");
+  const brand        = d.veh          ? String(d.veh)          : (d.brand   ? String(d.brand)   : "");
+  const variant      = d.veh_category ? String(d.veh_category) : (d.variant ? String(d.variant) : "");
   const title        = [brand, variant].filter(Boolean).join(" · ") || `WO ${wo}`;
   // workOrder.status is returned directly by the API — always correct
   // allStatuses lookup is fallback for after a status change (optimistic update)
   const currentStatus = workOrder.status ?? allStatuses.find((s) => s.id === workOrder.status_id) ?? null;
 
-  // Simple role model — admin/superadmin may edit/move; everyone else read-only.
+  // Simple role model — admin/superadmin may move cards; data fields are
+  // always read-only (they sync from the Google Sheet).
   const isAdmin = bajajUser?.role === "admin" || bajajUser?.role === "superadmin";
-  const canEdit = isAdmin;
   const canMove = isAdmin;
 
   return (
@@ -555,7 +536,10 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
               </div>
             </div>
 
-            {/* Field sections */}
+            {/* Field sections — read-only, synced from the Google Sheet */}
+            <p className="text-[11px] text-gray-400 dark:text-white/40 mb-6 -mt-2">
+              Synced from Google Sheet — edit there.
+            </p>
             {SECTIONS.map((section, sectionIdx) => {
               const hasValues = section.fields.some((f) => d[f] != null && d[f] !== "" && d[f] !== false);
               return (
@@ -570,11 +554,12 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
                   </div>
                   <div className="grid grid-cols-2 gap-x-8 gap-y-5">
                     {section.fields.map((f) => {
-                      const isBool = ["haz", "vgm_submitted", "si_submitted"].includes(f);
+                      // si_submitted / vgm_submitted carry the raw sheet value
+                      // (usually a date) — show it as-is, not a checkbox.
+                      const isBool = f === "haz";
                       return (
                         <div key={f} className="relative">
-                          <EditField fieldKey={f} label={FIELD_LABELS[f] ?? f} value={d[f]} onSave={handleFieldSave} boolean={isBool} canEdit={canEdit} />
-                          {savingField === f && <Loader2 className="size-3 text-amber-500 animate-spin absolute right-0 top-0" />}
+                          <DisplayField label={FIELD_LABELS[f] ?? f} value={d[f]} boolean={isBool} />
                         </div>
                       );
                     })}
@@ -682,8 +667,8 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
             <p className="text-[13px] text-gray-700 dark:text-white/80">{d.port ? String(d.port) : "—"}</p>
           </div>
           <div className="mb-3">
-            <p className="text-[10px] text-gray-400 dark:text-white/40 uppercase tracking-wider mb-1">WO Date</p>
-            <p className="text-[13px] text-gray-700 dark:text-white/80">{d.wodt ? String(d.wodt) : "—"}</p>
+            <p className="text-[10px] text-gray-400 dark:text-white/40 uppercase tracking-wider mb-1">Stuffing Date</p>
+            <p className="text-[13px] text-gray-700 dark:text-white/80">{d.stuffing_dt ? String(d.stuffing_dt) : "—"}</p>
           </div>
           <div className="mb-3">
             <p className="text-[10px] text-gray-400 dark:text-white/40 uppercase tracking-wider mb-1">Sailing Date</p>
@@ -724,7 +709,7 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
               <p className="text-[18px] font-bold text-gray-900 dark:text-white tabular-nums">{String(d.qty ?? "—")}</p>
             </div>
             <div className="bg-gray-50 dark:bg-[#1a1a1a] rounded-lg px-3 py-2.5">
-              <p className="text-[10px] text-gray-400 dark:text-white/40 uppercase tracking-wider">40 HC</p>
+              <p className="text-[10px] text-gray-400 dark:text-white/40 uppercase tracking-wider">Cont</p>
               <p className="text-[18px] font-bold text-gray-900 dark:text-white tabular-nums">{String(d.cont ?? "—")}</p>
             </div>
           </div>

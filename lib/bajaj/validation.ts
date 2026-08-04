@@ -50,6 +50,35 @@ export function containerList(containerno: string | null | undefined): string[] 
   return containerno.trim().split(/\s+/).filter(Boolean);
 }
 
+/* ── shared paged fetch (archived rows always excluded) ──────────────────── */
+async function fetchActiveRows(
+  sb: SupabaseClient,
+  opts: { excludeId?: string; month?: string } = {},
+): Promise<{ id: string; data: Record<string, unknown> }[]> {
+  const rows: { id: string; data: Record<string, unknown> }[] = [];
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    let q = sb
+      .from("bajaj_work_orders")
+      .select("id, data")
+      .eq("module_slug", "srilanka")
+      // Archived cards are parked — they never count toward rule checks.
+      .is("data->>archived_at", null)
+      .order("id", { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (opts.excludeId) q = q.neq("id", opts.excludeId);
+    // Month scoping (sync validates per-month inserts). NULL sheet_month rows
+    // are legacy pre-backfill data — keep them in scope for any month.
+    if (opts.month) {
+      q = q.or(`data->>sheet_month.eq.${opts.month},data->>sheet_month.is.null`);
+    }
+    const { data } = await q;
+    rows.push(...((data ?? []).map(w => ({ id: w.id, data: w.data as Record<string, unknown> }))));
+    if (!data || data.length < PAGE) break;
+  }
+  return rows;
+}
+
 /* ── main validator ───────────────────────────────────────────────────────── */
 export async function validateWorkOrderRules(
   sb: SupabaseClient,
@@ -60,7 +89,8 @@ export async function validateWorkOrderRules(
     vslname?:     string | null;
     assy_config?: string | null;
     excludeId?:   string;
-  }[]
+  }[],
+  opts: { month?: string } = {}
 ): Promise<ValidationWarning[]> {
   const warnings: ValidationWarning[] = [];
 
@@ -75,12 +105,8 @@ export async function validateWorkOrderRules(
     let linksWOs: { id: string; data: Record<string, unknown> }[] | null = null;
     async function getLinksWOs() {
       if (linksWOs !== null) return linksWOs;
-      let q = sb.from("bajaj_work_orders").select("id, data").eq("module_slug", "srilanka");
-      if (excludeId) q = q.neq("id", excludeId);
-      const { data } = await q;
-      linksWOs = (data ?? [])
-        .filter(w => isLinks(String((w.data as Record<string, unknown>)["agent"] ?? "")))
-        .map(w => ({ id: w.id, data: w.data as Record<string, unknown> }));
+      const all = await fetchActiveRows(sb, { excludeId, month: opts.month });
+      linksWOs = all.filter(w => isLinks(String(w.data["agent"] ?? "")));
       return linksWOs;
     }
 
@@ -159,20 +185,20 @@ export interface VesselViolation {
   }[];
 }
 
-export async function auditExistingViolations(sb: SupabaseClient): Promise<{
+export async function auditExistingViolations(
+  sb: SupabaseClient,
+  opts: { month?: string } = {}
+): Promise<{
   containerConflicts: { woId: string; woA: string; woB: string; containers: string[]; assyA: string; assyB: string }[];
   vesselViolations:   VesselViolation[];
 }> {
-  const { data: all } = await sb
-    .from("bajaj_work_orders")
-    .select("id, data")
-    .eq("module_slug", "srilanka");
+  const all = await fetchActiveRows(sb, { month: opts.month });
 
   // Filter to LINKS only
-  const rows = (all ?? [])
-    .filter(wo => isLinks(String((wo.data as Record<string, unknown>)["agent"] ?? "")))
+  const rows = all
+    .filter(wo => isLinks(String(wo.data["agent"] ?? "")))
     .map(wo => {
-      const d = wo.data as Record<string, unknown>;
+      const d = wo.data;
       return {
         id:         wo.id,
         d,

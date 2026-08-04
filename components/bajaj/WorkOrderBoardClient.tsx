@@ -7,7 +7,7 @@ import { Eye, Search, X, SlidersHorizontal, RefreshCw, Star, LayoutGrid, Table2,
 
 import { WorkOrderBoard } from "@/components/bajaj/WorkOrderBoard";
 import { WorkOrderSpreadsheet } from "@/components/bajaj/WorkOrderSpreadsheet";
-import { useBajajStatuses, useBajajBoardConfig, useWorkOrders, useUpdateWorkOrder } from "@/lib/queries/bajaj";
+import { useBajajStatuses, useBajajBoardConfig, useWorkOrders } from "@/lib/queries/bajaj";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { useMonthStore, useSelectedMonthParam } from "@/lib/stores/month";
 import type { WorkOrderFilters } from "@/lib/types/bajaj";
@@ -85,10 +85,6 @@ export function WorkOrderBoardClient({ slug }: WorkOrderBoardClientProps) {
   const showMonthBadge = useMonthStore((s) => s.selectedMonth) === "all";
   const { data: workOrders = [], isLoading: woLoading, refetch } =
     useWorkOrders(slug, { ...filters, month: monthParam });
-  const updateWorkOrder = useUpdateWorkOrder();
-
-  // Only admins may edit the grid — viewers get a read-only spreadsheet.
-  const gridCanEdit = isAdmin;
 
   const meta           = MODULE_META[slug] ?? { name: slug, flag: "🌐", port: "" };
   const cardFaceFields = customFields.length ? customFields : (boardConfig?.card_face_fields ?? ["wo", "brand", "variant", "port", "qty"]);
@@ -271,11 +267,11 @@ export function WorkOrderBoardClient({ slug }: WorkOrderBoardClientProps) {
           </select>
 
           <div className="flex items-center gap-1.5 text-[12px] text-gray-400 dark:text-white/40">
-            <span>From</span>
-            <input type="date" value={filters.dateFrom ?? ""} onChange={(e) => setFilters((f) => ({ ...f, dateFrom: e.target.value || undefined }))}
+            <span>Stuffing date from</span>
+            <input type="date" title="Stuffing date from" value={filters.dateFrom ?? ""} onChange={(e) => setFilters((f) => ({ ...f, dateFrom: e.target.value || undefined }))}
               className="rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] px-2 py-1.5 text-[12px] text-gray-700 dark:text-white/80 focus:border-amber-500 focus:outline-none" />
             <span>to</span>
-            <input type="date" value={filters.dateTo ?? ""} onChange={(e) => setFilters((f) => ({ ...f, dateTo: e.target.value || undefined }))}
+            <input type="date" title="Stuffing date to" value={filters.dateTo ?? ""} onChange={(e) => setFilters((f) => ({ ...f, dateTo: e.target.value || undefined }))}
               className="rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] px-2 py-1.5 text-[12px] text-gray-700 dark:text-white/80 focus:border-amber-500 focus:outline-none" />
           </div>
           {hasActiveFilter && (
@@ -350,12 +346,6 @@ export function WorkOrderBoardClient({ slug }: WorkOrderBoardClientProps) {
             workOrders={filteredOrders}
             statuses={statuses}
             isLoading={statusLoading || woLoading}
-            canEdit={gridCanEdit}
-            onUpdate={(id, data) => {
-              const wo = filteredOrders.find((w) => w.id === id);
-              // No client-side auto-advance — the Google Sheet sync moves cards.
-              updateWorkOrder.mutate({ id, updates: { data }, baseUpdatedAt: wo?.updated_at });
-            }}
           />
         </div>
       )}

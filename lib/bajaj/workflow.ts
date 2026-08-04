@@ -28,6 +28,14 @@ function present(v: unknown): boolean {
   return s !== "" && s !== "null" && s !== "0";
 }
 
+/** True when a HAZ flag value is affirmative. The Google Sheet sync writes
+ * "YES"/"NO" strings; legacy manual data used booleans/1/"true". */
+export function isHazValue(v: unknown): boolean {
+  if (v === true || v === 1) return true;
+  const s = String(v ?? "").trim().toUpperCase();
+  return s === "TRUE" || s === "1" || s === "YES";
+}
+
 /* ─── Resolve status name from ID ───────────────────────────────────────────── */
 export async function getStatusName(sb: SupabaseClient, statusId: string): Promise<string> {
   const { data } = await sb
@@ -256,7 +264,8 @@ export async function checkSICutoffAlert(
 
 /* ═══════════════════════════════════════════════════════════════════════════════
    RULE — HAZ container restriction
-   If the work order has haz = true/1/"true"/"1", it must travel in a dedicated
+   If the work order has an affirmative haz flag (see isHazValue — the sheet
+   writes "YES"/"NO"), it must travel in a dedicated
    HAZ-only container. It cannot share a container number with any non-HAZ WO,
    and a non-HAZ WO cannot be assigned a container already used by a HAZ WO.
 
@@ -272,18 +281,27 @@ export async function checkHAZContainerRule(
 ): Promise<{ blocked: boolean; reason?: string }> {
   if (!containerno.trim()) return { blocked: false };
 
-  // Find any OTHER WOs that share at least one container number
-  const { data: others } = await sb
-    .from("bajaj_work_orders")
-    .select("id, data")
-    .neq("id", workOrderId);
+  // Find any OTHER WOs that share at least one container number (paginated —
+  // the table exceeds supabase's 1000-row default cap now that months accumulate).
+  const others: { id: string; data: Record<string, unknown> }[] = [];
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data: page } = await sb
+      .from("bajaj_work_orders")
+      .select("id, data")
+      .neq("id", workOrderId)
+      .order("id", { ascending: true })
+      .range(from, from + PAGE - 1);
+    others.push(...((page ?? []) as { id: string; data: Record<string, unknown> }[]));
+    if (!page || page.length < PAGE) break;
+  }
 
   const containers = containerno
     .split(/[\s,;/]+/)
     .map(s => s.trim().toUpperCase())
     .filter(Boolean);
 
-  for (const wo of others ?? []) {
+  for (const wo of others) {
     const d = wo.data as Record<string, unknown>;
     const otherContainers = String(d["containerno"] ?? d["container_no"] ?? "")
       .split(/[\s,;/]+/)
@@ -293,7 +311,7 @@ export async function checkHAZContainerRule(
     const shared = containers.filter(c => otherContainers.includes(c));
     if (!shared.length) continue;
 
-    const otherHAZ = d["haz"] === true || d["haz"] === 1 || d["haz"] === "true" || d["haz"] === "1";
+    const otherHAZ = isHazValue(d["haz"]);
     const woNo     = String(d["wo"] ?? wo.id);
 
     if (isHAZ && !otherHAZ) {

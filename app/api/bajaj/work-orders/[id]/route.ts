@@ -22,6 +22,7 @@ import {
   checkBL48hrAlert,
   checkSICutoffAlert,
   checkHAZContainerRule,
+  isHazValue,
 } from "@/lib/bajaj/workflow";
 
 export async function GET(
@@ -144,8 +145,7 @@ export async function PATCH(
 
       // ── HAZ container restriction (hard block — no force override) ─────────
       const incomingContainerno = String(body.data["containerno"] ?? body.data["container_no"] ?? prevData["containerno"] ?? "");
-      const hazRaw = body.data["haz"] ?? prevData["haz"];
-      const isHAZ  = hazRaw === true || hazRaw === 1 || hazRaw === "true" || hazRaw === "1";
+      const isHAZ = isHazValue(body.data["haz"] ?? prevData["haz"]);
 
       if (incomingContainerno) {
         const hazCheck = await checkHAZContainerRule(sb, id, incomingContainerno, isHAZ);

@@ -1,73 +1,86 @@
 "use client";
 
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef } from "react";
 import Link from "next/link";
-import { ArrowUp, ArrowDown, ArrowUpDown, ExternalLink, Check, X } from "lucide-react";
+import { ArrowUp, ArrowDown, ArrowUpDown, ExternalLink } from "lucide-react";
 import type { BajajWorkOrder, BajajStatus } from "@/lib/types/bajaj";
 import { cn } from "@/lib/utils";
 
+/* Column keys are the CANONICAL data keys the Google Sheet sync writes
+ * (lib/bajaj/import-map.mjs HEADER_MAP). The grid is a pure read-only view —
+ * the sheet is the single source of truth, so all data entry happens there. */
 const COLUMNS_DEF = [
-  { key: "wo",           label: "WO No",        defaultWidth: 140, sticky: true, readOnly: true },
-  { key: "_status",      label: "Status",        defaultWidth: 140, readOnly: true },
-  { key: "veh",          label: "Brand",         defaultWidth: 110 },
-  { key: "type",         label: "Variant",       defaultWidth: 140 },
-  { key: "qty",          label: "Qty",           defaultWidth: 70,  type: "number" },
-  { key: "cont",         label: "40 HC",         defaultWidth: 70,  type: "number" },
-  { key: "std20",        label: "20 STD",        defaultWidth: 70,  type: "number" },
-  { key: "port",         label: "Port",          defaultWidth: 130 },
-  { key: "country",      label: "Country",       defaultWidth: 100 },
-  { key: "s_line",       label: "S/Line",        defaultWidth: 130 },
-  { key: "vessel_name",  label: "Vessel",        defaultWidth: 160 },
-  { key: "booking_no",   label: "Booking No",    defaultWidth: 130 },
-  { key: "container_no", label: "Container No",  defaultWidth: 140 },
-  { key: "blno",         label: "BL No",         defaultWidth: 130 },
-  { key: "bldt",         label: "BL Date",       defaultWidth: 110, type: "date" },
-  { key: "agent",        label: "Agent",         defaultWidth: 130 },
-  { key: "current_etd",  label: "ETD",           defaultWidth: 110, type: "date" },
-  { key: "sailingdt",    label: "Sailing",       defaultWidth: 110, type: "date" },
-  { key: "eta_at_destination", label: "ETA",     defaultWidth: 110, type: "date" },
-  { key: "si_submitted", label: "SI",            defaultWidth: 52,  type: "boolean" },
-  { key: "vgm_submitted",label: "VGM",           defaultWidth: 52,  type: "boolean" },
-  { key: "haz",          label: "HAZ",           defaultWidth: 52,  type: "boolean" },
-  // Extended columns — full parity with the dispatch sheet so operators can do
-  // all data entry in the grid (each is also editable on the detail page).
-  { key: "transporter",  label: "Transporter",   defaultWidth: 130 },
-  { key: "consignee",    label: "Consignee",     defaultWidth: 120 },
-  { key: "plant",        label: "Plant",         defaultWidth: 80 },
-  { key: "po_no",        label: "PO No",         defaultWidth: 120 },
-  { key: "lc_no",        label: "LC No",         defaultWidth: 130 },
-  { key: "lc_date",      label: "LC Date",       defaultWidth: 110, type: "date" },
-  { key: "ff_job",       label: "FF Job",        defaultWidth: 120 },
-  { key: "sbno",         label: "SB No",         defaultWidth: 120 },
-  { key: "sb_date",      label: "SB Date",       defaultWidth: 110, type: "date" },
-  { key: "stuffing_on",  label: "Stuffing",      defaultWidth: 110, type: "date" },
-  { key: "do_given_dt",  label: "DO Given",      defaultWidth: 110, type: "date" },
-  { key: "pol_gate",     label: "POL Gate",      defaultWidth: 110 },
-  { key: "gate_open",    label: "Gate Open",     defaultWidth: 110, type: "date" },
-  { key: "gate_cut_off", label: "Gate Cut-off",  defaultWidth: 110, type: "date" },
-  { key: "si_cut_off",   label: "SI Cut-off",    defaultWidth: 110, type: "date" },
-  { key: "do_etd",       label: "DO ETD",        defaultWidth: 110, type: "date" },
-  { key: "final_vsl_sob",label: "Final VSL SOB", defaultWidth: 120, type: "date" },
-  { key: "pick_up_dt",   label: "Pick Up",       defaultWidth: 110, type: "date" },
-  { key: "cntr_dispatch",label: "Cntr Dispatch", defaultWidth: 120, type: "date" },
-  { key: "s_line_payment_status", label: "S/Line Pay", defaultWidth: 150 },
-  { key: "e_doc_status", label: "E-Doc",         defaultWidth: 120 },
-  { key: "clearance_point", label: "Clearance",  defaultWidth: 120 },
-  { key: "remark",       label: "Remark",        defaultWidth: 220 },
+  { key: "wo",            label: "WO No",         defaultWidth: 140, sticky: true },
+  { key: "_status",       label: "Status",        defaultWidth: 140 },
+  { key: "veh",           label: "Brand",         defaultWidth: 110 },
+  { key: "veh_category",  label: "Variant",       defaultWidth: 140 },
+  { key: "qty",           label: "Qty",           defaultWidth: 70,  type: "number" },
+  { key: "cont",          label: "Cont",          defaultWidth: 70,  type: "number" },
+  { key: "hc40",          label: "40 HC",         defaultWidth: 70,  type: "number" },
+  { key: "std20",         label: "20 STD",        defaultWidth: 70,  type: "number" },
+  { key: "cont_type",     label: "Cont Type",     defaultWidth: 90 },
+  { key: "port",          label: "Port",          defaultWidth: 130 },
+  { key: "country",       label: "Country",       defaultWidth: 100 },
+  { key: "s_line",        label: "S/Line",        defaultWidth: 130 },
+  { key: "vslname",       label: "Vessel",        defaultWidth: 160 },
+  { key: "booking_no",    label: "Booking No",    defaultWidth: 130 },
+  { key: "container_no",  label: "Container No",  defaultWidth: 140 },
+  { key: "blno",          label: "BL No",         defaultWidth: 130 },
+  { key: "bldt",          label: "BL Date",       defaultWidth: 110, type: "date" },
+  { key: "agent",         label: "Agent",         defaultWidth: 130 },
+  { key: "current_etd",   label: "ETD",           defaultWidth: 110, type: "date" },
+  { key: "sailingdt",     label: "Sailing",       defaultWidth: 110, type: "date" },
+  { key: "eta_at_destination", label: "ETA",      defaultWidth: 110, type: "date" },
+  { key: "si_submitted",  label: "SI",            defaultWidth: 52,  type: "boolean" },
+  { key: "vgm_submitted", label: "VGM",           defaultWidth: 52,  type: "boolean" },
+  { key: "haz",           label: "HAZ",           defaultWidth: 52,  type: "boolean" },
+  // Extended columns — full parity with the dispatch sheet.
+  { key: "transporter",   label: "Transporter",   defaultWidth: 130 },
+  { key: "consignee",     label: "Consignee",     defaultWidth: 120 },
+  { key: "plant",         label: "Plant",         defaultWidth: 80 },
+  { key: "po_no",         label: "PO No",         defaultWidth: 120 },
+  { key: "lc_no",         label: "LC No",         defaultWidth: 130 },
+  { key: "lc_date",       label: "LC Date",       defaultWidth: 110, type: "date" },
+  { key: "ff_job",        label: "FF Job",        defaultWidth: 120 },
+  { key: "sbno",          label: "SB No",         defaultWidth: 120 },
+  { key: "sb_date",       label: "SB Date",       defaultWidth: 110, type: "date" },
+  { key: "stuffing_dt",   label: "Stuffing",      defaultWidth: 110, type: "date" },
+  { key: "do_given_dt",   label: "DO Given",      defaultWidth: 110, type: "date" },
+  { key: "pol_gate",      label: "POL Gate",      defaultWidth: 110 },
+  { key: "gate_open",     label: "Gate Open",     defaultWidth: 110, type: "date" },
+  { key: "gate_cut_off",  label: "Gate Cut-off",  defaultWidth: 110, type: "date" },
+  { key: "si_cutoff",     label: "SI Cut-off",    defaultWidth: 110, type: "date" },
+  { key: "do_etd",        label: "DO ETD",        defaultWidth: 110, type: "date" },
+  { key: "final_vsl_sob", label: "Final VSL SOB", defaultWidth: 120, type: "date" },
+  { key: "pickup_dt",     label: "Pick Up",       defaultWidth: 110, type: "date" },
+  { key: "cntr_dispatch", label: "Cntr Dispatch", defaultWidth: 120, type: "date" },
+  { key: "cntr_report",   label: "Cntr Report",   defaultWidth: 120, type: "date" },
+  { key: "cntr_gated",    label: "Cntr Gated",    defaultWidth: 120, type: "date" },
+  { key: "sline_payment", label: "S/Line Pay",    defaultWidth: 150 },
+  { key: "e_doc_status",  label: "E-Doc",         defaultWidth: 120 },
+  { key: "clearance_point", label: "Clearance",   defaultWidth: 120 },
+  { key: "remark",        label: "Remark",        defaultWidth: 220 },
 ] as const;
-
-type ColKey = typeof COLUMNS_DEF[number]["key"];
 
 interface ColDef {
   key: string;
   label: string;
   defaultWidth: number;
   type?: "text" | "number" | "boolean" | "date";
-  readOnly?: boolean;
   sticky?: boolean;
 }
 
 const COLUMNS: ColDef[] = COLUMNS_DEF as unknown as ColDef[];
+
+/** Sheet-synced flags are strings ("YES"/"NO", or a date for SI/VGM) — any
+ * non-empty value counts as checked except explicit negatives. */
+function isCheckedValue(v: unknown): boolean {
+  if (v == null || v === false || v === 0) return false;
+  const s = String(v).trim();
+  if (s === "") return false;
+  const up = s.toUpperCase();
+  return up !== "NO" && up !== "FALSE" && up !== "0";
+}
 
 type SortDir = "asc" | "desc" | null;
 
@@ -115,83 +128,19 @@ function ResizeHandle({ onResize }: { onResize: (dx: number) => void }) {
   );
 }
 
-function EditCell({
-  col, value, isFocused, onFocus, onChange, onNavigate, disabled = false,
-}: {
-  col: ColDef;
-  value: unknown;
-  isFocused: boolean;
-  onFocus: () => void;
-  onChange?: (val: string | boolean | number) => void;
-  onNavigate?: (dir: "up" | "down" | "tab") => void;
-  disabled?: boolean;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft]     = useState("");
-  const inputRef              = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (editing) inputRef.current?.focus();
-  }, [editing]);
-
+/** Read-only cell — the sheet owns all data, so the grid never edits. */
+function DisplayCell({ col, value }: { col: ColDef; value: unknown }) {
   if (col.type === "boolean") {
-    const on = value === true || value === 1 || value === "true";
+    const on = isCheckedValue(value);
     return (
-      <button
-        onClick={disabled ? undefined : () => { onFocus(); onChange?.(!on); }}
-        disabled={disabled}
-        className={cn("w-full h-full flex items-center justify-center text-[12px] font-semibold transition-colors", disabled && "cursor-default")}
-      >
+      <div className="w-full h-full flex items-center justify-center text-[12px] font-semibold">
         <span className={on ? "text-amber-500" : "text-gray-300 dark:text-white/20"}>{on ? "✓" : "—"}</span>
-      </button>
-    );
-  }
-
-  if (col.readOnly || disabled) {
-    return (
-      <div className="w-full h-full flex items-center px-2.5 text-[12px] text-gray-600 dark:text-white/60 truncate">
-        {value != null && value !== "" ? String(value) : <span className="text-gray-300 dark:text-white/20">—</span>}
       </div>
     );
   }
-
-  const display = value != null && value !== "" ? String(value) : "";
-
-  function commit(newDraft: string) {
-    setEditing(false);
-    const original = String(value ?? "");
-    if (newDraft !== original) {
-      if (col.type === "number") onChange?.(newDraft === "" ? "" : Number(newDraft));
-      else onChange?.(newDraft);
-    }
-  }
-
-  if (editing) {
-    return (
-      <input
-        ref={inputRef}
-        value={draft}
-        type={col.type === "number" ? "number" : col.type === "date" ? "date" : "text"}
-        className="w-full h-full px-2.5 text-[12px] text-gray-800 dark:text-white/90 bg-[#fffbf0] dark:bg-[#1a1a1a] border-0 outline-none ring-2 ring-inset ring-amber-400 dark:border-white/10"
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => commit(draft)}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") { setEditing(false); setDraft(display); }
-          if (e.key === "Enter")  { (e.target as HTMLInputElement).blur(); onNavigate?.("down"); }
-          if (e.key === "Tab")    { e.preventDefault(); (e.target as HTMLInputElement).blur(); onNavigate?.(e.shiftKey ? "up" : "tab"); }
-          if (e.key === "ArrowUp")   { e.preventDefault(); (e.target as HTMLInputElement).blur(); onNavigate?.("up"); }
-          if (e.key === "ArrowDown") { e.preventDefault(); (e.target as HTMLInputElement).blur(); onNavigate?.("down"); }
-        }}
-      />
-    );
-  }
-
   return (
-    <div
-      className="w-full h-full flex items-center px-2.5 text-[12px] text-gray-700 dark:text-white/80 truncate cursor-text select-none"
-      onClick={() => { onFocus(); setDraft(display); setEditing(true); }}
-    >
-      {display || <span className="text-gray-300 dark:text-white/20">—</span>}
+    <div className="w-full h-full flex items-center px-2.5 text-[12px] text-gray-700 dark:text-white/80 truncate">
+      {value != null && value !== "" ? String(value) : <span className="text-gray-300 dark:text-white/20">—</span>}
     </div>
   );
 }
@@ -200,51 +149,18 @@ interface WorkOrderSpreadsheetProps {
   workOrders: BajajWorkOrder[];
   statuses: BajajStatus[];
   isLoading: boolean;
-  onUpdate: (id: string, data: Record<string, unknown>) => void;
-  canEdit?: boolean;
 }
 
 const ROW_NUM_WIDTH = 40;
 
-export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate, canEdit = true }: WorkOrderSpreadsheetProps) {
-  const [sortKey,  setSortKey]  = useState<string>("wo");
-  const [sortDir,  setSortDir]  = useState<SortDir>("asc");
-  const [focusCell,setFocusCell]= useState<[number, number] | null>(null);
-  const [hovRow,   setHovRow]   = useState<number | null>(null);
-  const [widths,   setWidths]   = useState<number[]>(() => COLUMNS.map((c) => c.defaultWidth));
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [bulkCol,  setBulkCol]  = useState<string>("");
-  const [bulkVal,  setBulkVal]  = useState<string>("");
+export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading }: WorkOrderSpreadsheetProps) {
+  const [sortKey, setSortKey] = useState<string>("wo");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [hovRow,  setHovRow]  = useState<number | null>(null);
+  const [widths,  setWidths]  = useState<number[]>(() => COLUMNS.map((c) => c.defaultWidth));
 
   const statusMap = Object.fromEntries(statuses.map((s) => [s.id, s]));
   const sorted    = sortRows(workOrders, sortKey, sortDir);
-
-  // Columns that can be bulk-applied (exclude read-only WO/status).
-  const bulkColumns = COLUMNS.filter((c) => !c.readOnly);
-  const bulkColDef  = bulkColumns.find((c) => c.key === bulkCol);
-
-  function toggleSelect(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }
-  function toggleSelectAll() {
-    setSelected((prev) => (prev.size === sorted.length ? new Set() : new Set(sorted.map((w) => w.id))));
-  }
-  function clearSelection() { setSelected(new Set()); }
-
-  function applyBulk() {
-    if (!bulkCol || selected.size === 0) return;
-    let val: unknown = bulkVal;
-    if (bulkColDef?.type === "boolean") val = bulkVal === "true";
-    else if (bulkColDef?.type === "number") val = bulkVal === "" ? "" : Number(bulkVal);
-    // Fire one update per selected row; each carries its own optimistic-lock base.
-    for (const id of selected) onUpdate(id, { [bulkCol]: val });
-    clearSelection();
-    setBulkVal("");
-  }
 
   function handleSort(key: string) {
     if (sortKey === key) setSortDir((d) => d === "asc" ? "desc" : d === "desc" ? null : "asc");
@@ -257,18 +173,6 @@ export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate
       next[colIdx] = Math.max(40, next[colIdx] + dx);
       return next;
     });
-  }
-
-  const handleCellChange = useCallback((woId: string, key: string, val: unknown) => {
-    if (key === "_status") return;
-    onUpdate(woId, { [key]: val });
-  }, [onUpdate]);
-
-  function handleNavigate(rowIdx: number, colIdx: number, dir: "up" | "down" | "tab") {
-    let nr = rowIdx;
-    if (dir === "down" || dir === "tab") nr = Math.min(sorted.length - 1, rowIdx + 1);
-    else if (dir === "up") nr = Math.max(0, rowIdx - 1);
-    setFocusCell([nr, colIdx]);
   }
 
   if (isLoading) {
@@ -288,53 +192,15 @@ export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate
   const stickyWoLeft = ROW_NUM_WIDTH;
 
   const headerBg    = "bg-gray-100 dark:bg-[#111]";
-  const headerBorder = "border-gray-200 dark:border-white/[0.06]";
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Bulk edit bar — appears when one or more rows are selected */}
-      {canEdit && selected.size > 0 && (
-        <div className="flex items-center gap-2 flex-wrap px-3 py-2 border-b border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 flex-shrink-0">
-          <span className="text-[12px] font-semibold text-amber-700 dark:text-amber-300">{selected.size} selected</span>
-          <span className="text-[12px] text-gray-500 dark:text-white/50">Set</span>
-          <select
-            value={bulkCol}
-            onChange={(e) => { setBulkCol(e.target.value); setBulkVal(""); }}
-            className="h-7 rounded-md border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] px-2 text-[12px] text-gray-800 dark:text-white/90 focus:border-amber-500 focus:outline-none"
-          >
-            <option value="">column…</option>
-            {bulkColumns.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
-          </select>
-          <span className="text-[12px] text-gray-500 dark:text-white/50">to</span>
-          {bulkColDef?.type === "boolean" ? (
-            <select value={bulkVal} onChange={(e) => setBulkVal(e.target.value)}
-              className="h-7 rounded-md border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] px-2 text-[12px] text-gray-800 dark:text-white/90 focus:border-amber-500 focus:outline-none">
-              <option value="">value…</option>
-              <option value="true">Yes</option>
-              <option value="false">No</option>
-            </select>
-          ) : (
-            <input
-              type={bulkColDef?.type === "number" ? "number" : bulkColDef?.type === "date" ? "date" : "text"}
-              value={bulkVal}
-              onChange={(e) => setBulkVal(e.target.value)}
-              placeholder="value…"
-              disabled={!bulkCol}
-              className="h-7 w-44 rounded-md border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] px-2 text-[12px] text-gray-800 dark:text-white/90 placeholder:text-gray-300 dark:placeholder:text-white/30 focus:border-amber-500 focus:outline-none disabled:opacity-50"
-            />
-          )}
-          <button
-            onClick={applyBulk}
-            disabled={!bulkCol || (bulkColDef?.type !== "boolean" && bulkVal === "")}
-            className="h-7 px-3 rounded-md bg-amber-500 text-white text-[12px] font-semibold hover:bg-amber-600 disabled:opacity-50 transition-colors"
-          >
-            Apply to {selected.size}
-          </button>
-          <button onClick={clearSelection} className="h-7 px-2 inline-flex items-center gap-1 rounded-md text-[12px] text-gray-500 dark:text-white/50 hover:bg-white/60 dark:hover:bg-white/10 transition-colors">
-            <X className="size-3.5" /> Clear
-          </button>
-        </div>
-      )}
+      {/* Read-only notice — the Google Sheet is the single source of truth */}
+      <div className="px-3 py-1.5 border-b border-gray-100 dark:border-white/[0.06] bg-gray-50 dark:bg-[#111] flex-shrink-0">
+        <span className="text-[11px] text-gray-400 dark:text-white/40">
+          Synced from the Google Sheet — edit data there. This grid is read-only.
+        </span>
+      </div>
       <div className="flex-1 overflow-auto" style={{ fontFamily: "inherit" }}>
       <table
         style={{
@@ -353,23 +219,7 @@ export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate
             <th
               className={cn("sticky left-0 top-0 z-40", headerBg, "border-r border-gray-200 dark:border-white/[0.06]")}
               style={{ width: ROW_NUM_WIDTH }}
-            >
-              {canEdit && (
-                <button
-                  type="button"
-                  onClick={toggleSelectAll}
-                  title={selected.size === sorted.length ? "Clear selection" : "Select all"}
-                  className={cn(
-                    "mx-auto flex items-center justify-center size-4 rounded border transition-colors",
-                    selected.size > 0 && selected.size === sorted.length
-                      ? "bg-amber-500 border-amber-500 text-white"
-                      : "border-gray-300 dark:border-white/30 text-transparent hover:border-amber-400",
-                  )}
-                >
-                  <Check className="size-3" />
-                </button>
-              )}
-            </th>
+            />
 
             {COLUMNS.map((col, colIdx) => {
               const isSorted = sortKey === col.key;
@@ -418,15 +268,12 @@ export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate
             const isHov  = hovRow === rowIdx;
             const isEven = rowIdx % 2 === 0;
             const isParts = String(d.veh ?? "").toUpperCase().includes("PART");
-            const isSelected = selected.has(wo.id);
 
-            const bgClass = isSelected
-              ? "bg-amber-100 dark:bg-amber-500/20"
-              : isHov
-                ? "bg-amber-50 dark:bg-amber-900/20"
-                : isParts
-                  ? isEven ? "bg-blue-50 dark:bg-blue-950/30" : "bg-blue-100/60 dark:bg-blue-900/20"
-                  : isEven ? "bg-emerald-50/70 dark:bg-emerald-950/20" : "bg-emerald-100/50 dark:bg-emerald-900/10";
+            const bgClass = isHov
+              ? "bg-amber-50 dark:bg-amber-900/20"
+              : isParts
+                ? isEven ? "bg-blue-50 dark:bg-blue-950/30" : "bg-blue-100/60 dark:bg-blue-900/20"
+                : isEven ? "bg-emerald-50/70 dark:bg-emerald-950/20" : "bg-emerald-100/50 dark:bg-emerald-900/10";
 
             const rowClass = cn("h-8 border-b border-gray-100 dark:border-white/[0.04] transition-colors", bgClass);
             const stickyBgClass = bgClass;
@@ -439,27 +286,22 @@ export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate
                 onMouseLeave={() => setHovRow(null)}
               >
                 <td
-                  onClick={canEdit ? () => toggleSelect(wo.id) : undefined}
-                  title={canEdit ? "Select row for bulk edit" : undefined}
                   className={cn(
                     "sticky left-0 z-10 border-r border-gray-100 dark:border-white/[0.04] text-center select-none transition-colors",
-                    canEdit && "cursor-pointer",
                     stickyBgClass,
-                    isSelected ? "text-amber-600 dark:text-amber-300" : "text-gray-300 dark:text-white/20",
+                    "text-gray-300 dark:text-white/20",
                   )}
                   style={{ fontSize: 10, userSelect: "none", fontVariantNumeric: "tabular-nums" }}
                 >
-                  {canEdit && isSelected ? <Check className="size-3.5 mx-auto" /> : rowIdx + 1}
+                  {rowIdx + 1}
                 </td>
 
                 {COLUMNS.map((col, colIdx) => {
-                  const rawVal   = col.key === "_status" ? (status?.name ?? null) : d[col.key];
-                  const isFocused= focusCell?.[0] === rowIdx && focusCell?.[1] === colIdx;
+                  const rawVal = col.key === "_status" ? (status?.name ?? null) : d[col.key];
 
                   return (
                     <td
                       key={col.key}
-                      onClick={() => setFocusCell([rowIdx, colIdx])}
                       className={cn(
                         "border-r border-gray-100 dark:border-white/[0.04] overflow-hidden transition-colors",
                         col.sticky ? cn("sticky z-10", stickyBgClass) : "",
@@ -468,8 +310,6 @@ export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate
                         left: col.sticky ? stickyWoLeft : undefined,
                         padding: 0,
                         maxWidth: widths[colIdx],
-                        outline: isFocused ? "2px solid #f59e0b" : undefined,
-                        outlineOffset: isFocused ? "-2px" : undefined,
                       }}
                     >
                       {col.key === "wo" ? (
@@ -496,15 +336,7 @@ export function WorkOrderSpreadsheet({ workOrders, statuses, isLoading, onUpdate
                           }
                         </div>
                       ) : (
-                        <EditCell
-                          col={col}
-                          value={rawVal}
-                          isFocused={isFocused}
-                          disabled={!canEdit}
-                          onFocus={() => setFocusCell([rowIdx, colIdx])}
-                          onChange={(val) => handleCellChange(wo.id, col.key, val)}
-                          onNavigate={(dir) => handleNavigate(rowIdx, colIdx, dir)}
-                        />
+                        <DisplayCell col={col} value={rawVal} />
                       )}
                     </td>
                   );

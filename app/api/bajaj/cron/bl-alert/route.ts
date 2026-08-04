@@ -45,6 +45,8 @@ export async function GET(req: NextRequest) {
     let alerted = 0;
     for (const wo of wos ?? []) {
       const d    = wo.data as Record<string, unknown>;
+      // Archived cards are parked — never alert on them.
+      if (d["archived_at"] != null && String(d["archived_at"]).trim() !== "") continue;
       const blno = String(d["blno"] ?? "").trim();
       const sailingdt = String(d["sailingdt"] ?? "").trim();
       if (blno || !sailingdt) continue;

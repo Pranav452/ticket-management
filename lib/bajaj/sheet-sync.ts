@@ -204,6 +204,8 @@ export interface TabSyncResult {
   moved: number;
   unchanged: number;
   violations: string[];
+  /** Set when this tab could not be processed safely (e.g. empty/renamed). */
+  error?: string;
   /** WOs of this module+month present in the DB but absent from the sheet (never touched). */
   missingFromSheet: string[];
   /** WO numbers that were (or would be, in dryRun) inserted. */
@@ -595,7 +597,10 @@ export async function runSheetSync(actor: string, opts: SheetSyncOptions = {}): 
             // container list overlaps, then one whose booking matches, and only
             // when the WO is otherwise unambiguous (single unclaimed row) adopt
             // that. Ambiguous multi-row WOs fall through to insert.
-            if (!existing) {
+            // Guard: a sheet row with NEITHER container nor booking must only
+            // exact-match its `wo||` key — letting it adopt a filled-in row here
+            // would mis-claim that row and spawn a duplicate later.
+            if (!existing && (keyPart(data["container_no"]) || keyPart(data["booking_no"]))) {
               const woRows = (ctx.byWo.get(keyPart(data["wo"])) ?? []).filter(
                 (r) => !ctx.claimedIds.has(r.id),
               );
@@ -681,7 +686,7 @@ export async function runSheetSync(actor: string, opts: SheetSyncOptions = {}): 
               containerno: data["container_no"] ? String(data["container_no"]) : null,
               vslname:     data["vslname"]      ? String(data["vslname"])      : null,
               assy_config: data["assy_config"]  ? String(data["assy_config"])  : null,
-            }]);
+            }], { month });
             if (warnings.length > 0) {
               result.violations.push(`WO ${wo}: ${warnings.map((w) => w.message).join(" ")}`);
             }
@@ -733,6 +738,14 @@ export async function runSheetSync(actor: string, opts: SheetSyncOptions = {}): 
         // partially-scanned failed month never reports false "missing" rows.
         for (const ctx of ctxCache.values()) {
           if (!ctx.firstTab) continue;
+          // A (module, month) that yielded ZERO sheet rows means the tab is
+          // empty or its headers were not recognized — reporting every DB row
+          // as "missing" would be false alarm noise, so skip detection.
+          if (ctx.rowCount === 0) {
+            ctx.firstTab.error =
+              "tab empty or headers unrecognized — missing-row detection skipped";
+            continue;
+          }
           const missing: string[] = [];
           for (const [key, row] of ctx.existing) {
             if (ctx.claimedIds.has(row.id) || row.archived) continue;

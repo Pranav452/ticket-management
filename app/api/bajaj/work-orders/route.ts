@@ -3,8 +3,9 @@
  *   ?module=<slug>         filter by module_slug
  *   ?statusId=<uuid>       filter by status
  *   ?search=<text>         searches WO, BL no, vessel name, port inside data jsonb
- *   ?dateFrom=<YYYY-MM-DD>
+ *   ?dateFrom=<YYYY-MM-DD> stuffing-date (data->>stuffing_dt) range filter
  *   ?dateTo=<YYYY-MM-DD>
+ *   ?sort=updated          order by updated_at desc (default: column_order asc)
  *   ?month=<YYYY-MM>       filter by workbook month (data->>sheet_month);
  *                          rows with NULL sheet_month count as the OLDEST
  *                          configured month (legacy pre-backfill data)
@@ -33,6 +34,7 @@ export async function GET(req: NextRequest) {
     const dateFrom   = sp.get("dateFrom");
     const dateTo     = sp.get("dateTo");
     const month      = sp.get("month");
+    const sort       = sp.get("sort");
     const includeArchived = sp.get("includeArchived") === "1";
     const page       = Math.max(1, parseInt(sp.get("page") ?? "1", 10) || 1);
     const pageSize   = Math.min(200, Math.max(1, parseInt(sp.get("pageSize") ?? "50", 10) || 50));
@@ -45,16 +47,27 @@ export async function GET(req: NextRequest) {
         id, module_id, module_slug, status_id, data, column_order,
         import_batch_id, created_at, updated_at,
         bajaj_statuses ( id, name, color_hex, display_order )
-      `, { count: "exact" })
-      .order("column_order", { ascending: true });
+      `, { count: "exact" });
+
+    query = sort === "updated"
+      ? query.order("updated_at", { ascending: false })
+      : query.order("column_order", { ascending: true });
 
     if (moduleSlug)          query = query.eq("module_slug", moduleSlug);
     if (statusId)            query = query.eq("status_id", statusId);
-    if (search)              query = query.or(
-      `data->>'wo'.ilike.%${search}%,data->>'blno'.ilike.%${search}%,data->>'vslname'.ilike.%${search}%,data->>'port'.ilike.%${search}%`
-    );
-    if (dateFrom)            query = query.gte("data->>'wodt'", dateFrom);
-    if (dateTo)              query = query.lte("data->>'wodt'", dateTo);
+    if (search) {
+      // PostgREST JSONB paths in .or() must NOT be quoted (data->>wo, not
+      // data->>'wo') — quoted paths silently match nothing. Strip characters
+      // that break the .or() clause grammar first.
+      const safeSearch = search.replace(/[,()]/g, " ").replace(/\s+/g, " ").trim();
+      if (safeSearch) query = query.or(
+        `data->>wo.ilike.%${safeSearch}%,data->>blno.ilike.%${safeSearch}%,data->>vslname.ilike.%${safeSearch}%,data->>port.ilike.%${safeSearch}%`
+      );
+    }
+    // Date range keys off the stuffing date — the sheet populates stuffing_dt
+    // on real rows (wodt is effectively never present).
+    if (dateFrom)            query = query.gte("data->>stuffing_dt", dateFrom);
+    if (dateTo)              query = query.lte("data->>stuffing_dt", dateTo);
 
     // Month filter — NULL sheet_month rows belong to the oldest configured month.
     if (month && MONTH_RE.test(month)) {

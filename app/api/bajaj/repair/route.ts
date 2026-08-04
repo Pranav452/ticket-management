@@ -38,18 +38,26 @@ export async function POST(req: NextRequest) {
 
     const sb = createAdminClient();
 
-    // Fetch all WOs for this module
-    const { data: allWOs, error: fetchErr } = await sb
-      .from("bajaj_work_orders")
-      .select("id, data")
-      .eq("module_slug", moduleSlug);
-
-    if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+    // Fetch all WOs for this module (paginated — the table exceeds supabase's
+    // 1000-row default cap now that months accumulate).
+    const allWOs: { id: string; data: Record<string, unknown> }[] = [];
+    const PAGE = 1000;
+    for (let from = 0; ; from += PAGE) {
+      const { data: page, error: fetchErr } = await sb
+        .from("bajaj_work_orders")
+        .select("id, data")
+        .eq("module_slug", moduleSlug)
+        .order("id", { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+      allWOs.push(...((page ?? []) as { id: string; data: Record<string, unknown> }[]));
+      if (!page || page.length < PAGE) break;
+    }
 
     const nullRows:    string[] = [];
     const variantRows: string[] = [];
 
-    for (const wo of allWOs ?? []) {
+    for (const wo of allWOs) {
       const d = wo.data as Record<string, unknown>;
       const country = d["country"];
 

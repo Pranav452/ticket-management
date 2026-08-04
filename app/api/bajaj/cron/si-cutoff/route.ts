@@ -47,6 +47,8 @@ export async function GET(req: NextRequest) {
 
     for (const wo of wos ?? []) {
       const d        = wo.data as Record<string, unknown>;
+      // Archived cards are parked — never escalate on them.
+      if (d["archived_at"] != null && String(d["archived_at"]).trim() !== "") continue;
       const sicutoff = String(d["sicutoff"] ?? d["si_cutoff"] ?? "").trim();
       if (!sicutoff) continue; // no cutoff date — skip
 

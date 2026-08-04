@@ -41,7 +41,9 @@ export async function GET(req: NextRequest) {
     const moduleId = sp.get("module_id");
 
     const sb = createAdminClient();
-    let query = sb.from("bajaj_reminders").select("*").order("due_at");
+    // Capped at 500 — the bell only needs the nearest reminders, and an
+    // unbounded select grows without limit as months accumulate.
+    let query = sb.from("bajaj_reminders").select("*").order("due_at").limit(500);
     if (woId)     query = query.eq("work_order_id", woId);
     if (moduleId) query = query.eq("module_id", moduleId);
 

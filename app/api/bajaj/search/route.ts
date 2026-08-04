@@ -1,9 +1,9 @@
 /**
  * GET /api/bajaj/search?q=xxx&limit=10
  *
- * Full-DB work order search across ALL modules.
- * Searches: wo, brand, variant, vslname, containerno, blno, booking_no,
- *           sbno, agent, port, remarks — using Postgres ILIKE on the JSONB cast.
+ * Full-DB work order search across ALL modules (archived cards excluded).
+ * Searches the canonical data keys the sheet sync writes (see
+ * lib/bajaj/import-map.mjs HEADER_MAP) using Postgres ILIKE on the JSONB cast.
  * Returns up to `limit` results (default 10, max 30) with enough fields to
  * render a result row + navigate to the detail page.
  */
@@ -13,9 +13,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireApprovedUser } from "@/lib/bajaj/guards";
 
 const SEARCH_FIELDS = [
-  "wo", "brand", "variant", "vslname", "containerno", "container_no",
-  "blno", "booking_no", "sbno", "agent", "port", "remarks",
-  "erp_exp_no", "hbl_no", "mbl_no", "transporter",
+  "wo", "variant", "vslname", "container_no", "blno", "booking_no",
+  "sbno", "agent", "port", "consignee", "transporter", "remark",
 ];
 
 const MODULE_META: Record<string, { name: string; flag: string }> = {
@@ -33,7 +32,11 @@ export async function GET(req: NextRequest) {
   const q     = req.nextUrl.searchParams.get("q")?.trim() ?? "";
   const limit = Math.min(parseInt(req.nextUrl.searchParams.get("limit") ?? "10"), 30);
 
-  if (!q || q.length < 2)
+  // Strip characters that break PostgREST's .or() clause grammar (commas
+  // separate clauses, parens group them) before building the filter.
+  const safeQ = q.replace(/[,()]/g, " ").replace(/\s+/g, " ").trim();
+
+  if (!safeQ || safeQ.length < 2)
     return NextResponse.json([]);
 
   const sb = createAdminClient();
@@ -41,13 +44,15 @@ export async function GET(req: NextRequest) {
   // Build OR filter across all searchable fields using PostgREST JSONB syntax.
   // Correct format: data->>fieldname.ilike.%value% (no quotes around field name)
   const orClauses = SEARCH_FIELDS
-    .map(f => `data->>${f}.ilike.%${q}%`)
+    .map(f => `data->>${f}.ilike.%${safeQ}%`)
     .join(",");
 
   const { data, error } = await sb
     .from("bajaj_work_orders")
     .select("id, module_slug, status_id, data, bajaj_statuses(name, color_hex)")
     .or(orClauses)
+    // Archived cards are parked — never surfaced in search.
+    .is("data->>archived_at", null)
     .limit(limit);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
