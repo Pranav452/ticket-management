@@ -199,9 +199,15 @@ async function main() {
   const has = (f) => argv.includes(f);
   const val = (f) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : null; };
 
-  const mode = has("--apply") ? "apply" : has("--clear") ? "clear" : has("--list") ? "list" : "dry";
+  const mode = has("--apply") ? "apply" : has("--clear") ? "clear"
+    : has("--relax-header") ? "relax" : has("--list") ? "list" : "dry";
   const onlyTab = val("--tab") ? normTab(val("--tab")) : null;
   const keepBanner = has("--keep-banner");
+  // The header row carries the filter controls everyone uses to sort/filter.
+  // A hard lock there blocks the basic filter, so it defaults to warning-only:
+  // edits are still possible but Sheets challenges them first. --header-strict
+  // restores the hard lock (admins only).
+  const headerStrict = has("--header-strict");
 
   const SHEETS = { july: process.env.BAJAJ_SHEET_ID, august: "1kyhxcIp4AzEQE1Tptioo-tgFpqgBCNeWbve01Kpq2RQ" };
   const sheetArg = val("--sheet");
@@ -223,6 +229,20 @@ async function main() {
           console.log(`  ${sh.properties.title.padEnd(28)} ${cols.padEnd(12)} ${(pr.editors?.users ?? []).length} editor(s)  ${pr.description ?? ""}`);
         }
       }
+      continue;
+    }
+
+    if (mode === "relax") {
+      // Convert existing header-row locks to warning-only so the filter row works.
+      const requests = (meta.sheets ?? []).flatMap((sh) =>
+        (sh.protectedRanges ?? []).filter((pr) => (pr.description ?? "") === `${DESC}: header row`)
+          .map((pr) => ({ updateProtectedRange: {
+            protectedRange: { protectedRangeId: pr.protectedRangeId, warningOnly: true },
+            fields: "warningOnly",
+          } })));
+      if (!requests.length) { console.log("  no header-row locks to relax"); continue; }
+      await api(token, `https://sheets.googleapis.com/v4/spreadsheets/${id}:batchUpdate`, { method: "POST", body: JSON.stringify({ requests }) });
+      console.log(`  relaxed ${requests.length} header-row lock(s) to warning-only`);
       continue;
     }
 
@@ -313,11 +333,13 @@ async function main() {
       if (!(p.sh.protectedRanges ?? []).some((pr) => pr.description === headerDesc)) {
         requests.push({ addProtectedRange: { protectedRange: {
           range: { sheetId: p.sh.properties.sheetId, startRowIndex: 0, endRowIndex: firstDataRow },
-          description: headerDesc, warningOnly: false,
-          editors: { users: withCreator(ADMINS), domainUsersCanEdit: false },
+          description: headerDesc,
+          ...(headerStrict
+            ? { warningOnly: false, editors: { users: withCreator(ADMINS), domainUsersCanEdit: false } }
+            : { warningOnly: true }),
         } } });
         planned++;
-        console.log(`    row ${firstDataRow}        → ADMINS only (header row lock)`);
+        console.log(`    row ${firstDataRow}        → ${headerStrict ? "ADMINS only (hard lock)" : "warning on edit (filters stay usable)"}`);
       }
 
       for (const b of p.blocks) {
