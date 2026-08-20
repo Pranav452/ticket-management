@@ -10,7 +10,7 @@ import {
   Search,
   PanelLeft, Settings, Globe,
   MessageSquare, Home, Loader2, X,
-  Download, BookOpen, Archive,
+  Download, BookOpen, Archive, Ship,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
@@ -332,6 +332,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           {/* Top-level */}
           <div className="pt-1">
             <NavItem href="/bajaj/home"      label="Home"         icon={Home}          active={pathname === "/bajaj/home" || pathname === "/bajaj"} />
+            <NavItem href="/bajaj/live"      label="Live Shipments" icon={Ship}        active={pathname.startsWith("/bajaj/live")} />
             <NavItem href="/bajaj/chat"      label="Chat"         icon={MessageSquare} active={pathname.startsWith("/bajaj/chat")} />
             <NavItem href="/bajaj/dashboard" label="Analytics"    icon={BarChart2}     active={pathname.startsWith("/bajaj/dashboard")} />
             <NavItem href="/bajaj/bookings"  label="Bookings"     icon={BookOpen}      active={pathname.startsWith("/bajaj/bookings")} />
