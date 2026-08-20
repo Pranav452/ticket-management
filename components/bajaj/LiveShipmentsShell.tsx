@@ -1,8 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { STAGE_NAMES, type BoardOption, type LiveShipment } from "@/lib/bajaj/live-shipments";
+import { useRouter } from "next/navigation";
+import {
+  DETAIL_CHIPS_KEY,
+  DETAIL_GROUPS,
+  DETAIL_LONG_KEYS,
+  STAGE_NAMES,
+  type BoardOption,
+  type LiveShipment,
+} from "@/lib/bajaj/live-shipments";
 
 const LiveShipmentsMap = dynamic(() => import("./LiveShipmentsMap"), {
   ssr: false,
@@ -81,6 +89,14 @@ const shipIcon = (
     <rect x="11" y="6" width="3" height="3" />
   </svg>
 );
+
+/** Two-letter monogram for the agent company code (LINKS -> LI, "MGH BD" -> MB). */
+function agentMonogram(agent: string): string {
+  const words = agent.replace(/[^A-Za-z0-9 ]/g, " ").trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "—";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
 
 /* ------------------------------------------------------------------ */
 /* Shipment journey — the full ten-stage lifecycle ladder for one WO   */
@@ -253,6 +269,264 @@ function JourneySection({ sel }: { sel: LiveShipment }) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Full-details drawer — every meaningful ops-sheet field for one WO   */
+/* ------------------------------------------------------------------ */
+
+const microLabel: React.CSSProperties = {
+  fontSize: 7.5,
+  fontWeight: 800,
+  letterSpacing: ".8px",
+  color: "#525d68",
+  textTransform: "uppercase",
+};
+
+function DetailRowLine({ label, value }: { label: string; value: string | undefined }) {
+  return (
+    <>
+      <div style={{ ...microLabel, paddingTop: 3 }}>{label}</div>
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 700,
+          color: value ? "#dfe6ec" : "#525d68",
+          wordBreak: "break-word",
+        }}
+      >
+        {value || "—"}
+      </div>
+    </>
+  );
+}
+
+function FullDetailsDrawer({
+  sel,
+  monthLabel,
+  onClose,
+}: {
+  sel: LiveShipment;
+  monthLabel: string;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const d = sel.details;
+  const chips = (d[DETAIL_CHIPS_KEY] ?? "")
+    .split(/[,;/\n]+/)
+    .map((c) => c.trim())
+    .filter(Boolean);
+
+  return (
+    <div
+      style={{ position: "absolute", inset: 0, zIndex: 20, display: "flex", justifyContent: "flex-end" }}
+    >
+      <div
+        onClick={onClose}
+        style={{ position: "absolute", inset: 0, background: "rgba(6,9,12,.62)", backdropFilter: "blur(2px)" }}
+      />
+      <div
+        role="dialog"
+        aria-label={`Full details for ${sel.id}`}
+        style={{
+          position: "relative",
+          width: 460,
+          maxWidth: "100%",
+          height: "100%",
+          background: "#0e1319",
+          borderLeft: "1px solid rgba(255,255,255,.08)",
+          boxShadow: "-20px 0 60px rgba(0,0,0,.55)",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        {/* header */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 10,
+            padding: "16px 18px 12px",
+            borderBottom: "1px solid rgba(255,255,255,.07)",
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 21, fontWeight: 800, color: "#f2f6f9", letterSpacing: ".4px" }}>
+              {sel.id}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, flexWrap: "wrap" }}>
+              <span
+                style={{
+                  fontSize: 8,
+                  fontWeight: 800,
+                  letterSpacing: ".9px",
+                  color: sel.sc,
+                  border: `1px solid ${sel.sc}55`,
+                  background: "rgba(255,255,255,.03)",
+                  borderRadius: 999,
+                  padding: "3px 9px",
+                }}
+              >
+                {sel.status}
+              </span>
+              <span
+                style={{
+                  fontSize: 8,
+                  fontWeight: 800,
+                  letterSpacing: ".9px",
+                  color: "#9aa5b1",
+                  background: "#1b222a",
+                  border: "1px solid rgba(255,255,255,.08)",
+                  borderRadius: 999,
+                  padding: "3px 9px",
+                }}
+              >
+                {sel.boardLabel.toUpperCase()}
+              </span>
+              <span
+                style={{
+                  fontSize: 8,
+                  fontWeight: 800,
+                  letterSpacing: ".9px",
+                  color: "#9aa5b1",
+                  background: "#1b222a",
+                  border: "1px solid rgba(255,255,255,.08)",
+                  borderRadius: 999,
+                  padding: "3px 9px",
+                }}
+              >
+                {monthLabel.toUpperCase()}
+              </span>
+            </div>
+          </div>
+          <HoverBox
+            title="Close"
+            onClick={onClose}
+            base={{
+              width: 28,
+              height: 28,
+              flex: "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#7d8894",
+              cursor: "pointer",
+              fontSize: 15,
+              borderRadius: 8,
+            }}
+            hover={{ background: "#171d24", color: "#dfe6ec" }}
+          >
+            ✕
+          </HoverBox>
+        </div>
+
+        {/* groups */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "4px 18px 26px" }}>
+          {DETAIL_GROUPS.map((group) => {
+            const rows = group.rows.filter((r) => !DETAIL_LONG_KEYS.has(r.key));
+            const longRows = group.rows.filter((r) => DETAIL_LONG_KEYS.has(r.key) && d[r.key]);
+            const groupChips = group.title === "Vessel & booking" ? chips : [];
+            const populated =
+              group.rows.some((r) => d[r.key]) || groupChips.length > 0;
+            if (!populated) return null;
+
+            return (
+              <div key={group.title} style={{ marginTop: 18 }}>
+                <div style={{ ...microLabel, color: "#4aa8f0", marginBottom: 9 }}>{group.title}</div>
+                <div
+                  style={{
+                    background: "#141a21",
+                    border: "1px solid rgba(255,255,255,.06)",
+                    borderRadius: 12,
+                    padding: "11px 13px",
+                    display: "grid",
+                    gridTemplateColumns: "132px 1fr",
+                    columnGap: 12,
+                    rowGap: 8,
+                    alignItems: "start",
+                  }}
+                >
+                  {rows.map((r) => (
+                    <DetailRowLine key={r.key} label={r.label} value={d[r.key]} />
+                  ))}
+                </div>
+
+                {groupChips.length > 0 && (
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ ...microLabel, marginBottom: 6 }}>Container numbers</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                      {groupChips.map((c, i) => (
+                        <span
+                          key={`${c}-${i}`}
+                          style={{
+                            fontFamily:
+                              "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+                            fontSize: 10,
+                            fontWeight: 600,
+                            color: "#c6cfd8",
+                            background: "#141a21",
+                            border: "1px solid rgba(255,255,255,.08)",
+                            borderRadius: 5,
+                            padding: "3px 7px",
+                          }}
+                        >
+                          {c}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {longRows.map((r) => (
+                  <div key={r.key} style={{ marginTop: 8 }}>
+                    <div style={{ ...microLabel, marginBottom: 5 }}>{r.label}</div>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        lineHeight: 1.55,
+                        color: "#c6cfd8",
+                        background: "#141a21",
+                        border: "1px solid rgba(255,255,255,.06)",
+                        borderRadius: 10,
+                        padding: "9px 11px",
+                        whiteSpace: "pre-wrap",
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      {d[r.key]}
+                    </div>
+                  </div>
+                ))}
+
+                {group.title === "Sync" && (
+                  <div
+                    style={{
+                      fontSize: 9.5,
+                      fontWeight: 600,
+                      color: "#5f6a76",
+                      marginTop: 8,
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    All fields above are read from the ops Google Sheet — edits made in the sheet
+                    appear here after the next sync.
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 
 export default function LiveShipmentsShell({
   shipments,
@@ -270,8 +544,10 @@ export default function LiveShipmentsShell({
   monthLabel: string;
   fontClassName: string;
 }) {
+  const router = useRouter();
   const [selKey, setSelKey] = useState<string>(shipments[0]?.key ?? "");
   const [detailOpen, setDetailOpen] = useState(true);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [board, setBoard] = useState<string>("all");
   const [query, setQuery] = useState("");
 
@@ -354,56 +630,9 @@ export default function LiveShipmentsShell({
             }}
           >
             <div style={{ fontSize: 16, fontWeight: 700, color: "#eef2f5" }}>Tracking list</div>
-            <div style={{ display: "flex", gap: 6 }}>
-              <HoverBox
-                title="Filters"
-                base={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 9,
-                  background: "#151a20",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  cursor: "pointer",
-                }}
-                hover={{ background: "#1c232b" }}
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#9aa5b1"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                >
-                  <path d="M3 5h18l-7 8v6l-4-2v-4L3 5z" />
-                </svg>
-              </HoverBox>
-              <HoverBox
-                title="More"
-                base={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 9,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  cursor: "pointer",
-                }}
-                hover={{ background: "#151a20" }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="#9aa5b1">
-                  <circle cx="12" cy="5" r="1.8" />
-                  <circle cx="12" cy="12" r="1.8" />
-                  <circle cx="12" cy="19" r="1.8" />
-                </svg>
-              </HoverBox>
-            </div>
           </div>
 
-          <div style={{ display: "flex", gap: 8, padding: "0 14px 8px" }}>
+          <div style={{ display: "flex", padding: "0 14px 8px" }}>
             <div
               style={{
                 flex: 1,
@@ -432,7 +661,7 @@ export default function LiveShipmentsShell({
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Order ID..."
+                placeholder="Search WO, vessel, POD, booking…"
                 style={{
                   background: "none",
                   border: "none",
@@ -444,27 +673,6 @@ export default function LiveShipmentsShell({
                 }}
               />
             </div>
-            <HoverButton
-              base={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                background: "#2f9bf0",
-                border: "none",
-                borderRadius: 10,
-                color: "#fff",
-                fontFamily: "inherit",
-                fontWeight: 700,
-                fontSize: 12.5,
-                padding: "0 13px",
-                height: 36,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-              hover={{ background: "#4babf4" }}
-            >
-              <span style={{ fontSize: 15, fontWeight: 600 }}>+</span> New order
-            </HoverButton>
           </div>
 
           <div
@@ -759,17 +967,24 @@ export default function LiveShipmentsShell({
                 >
                   {sel.headline}
                 </div>
-                <div
-                  style={{
+                <HoverBox
+                  title="Open full details"
+                  onClick={() => setDrawerOpen(true)}
+                  base={{
+                    display: "inline-block",
                     fontSize: 21,
                     fontWeight: 800,
                     color: "#f2f6f9",
                     letterSpacing: ".5px",
                     marginTop: 5,
+                    cursor: "pointer",
+                    borderRadius: 10,
+                    padding: "1px 10px",
                   }}
+                  hover={{ background: "#171d24" }}
                 >
                   {sel.id}
-                </div>
+                </HoverBox>
                 <HoverBox
                   onClick={() => setDetailOpen(false)}
                   base={{
@@ -1118,13 +1333,28 @@ export default function LiveShipmentsShell({
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src="/live/avatar-agent.png"
-                    alt=""
-                    style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover" }}
-                  />
-                  <div style={{ flex: 1 }}>
+                  {/* agent is a company code (LINKS / MGH …) — a monogram, not a
+                      stock photo, and no contact link: we hold no address. */}
+                  <div
+                    style={{
+                      width: 32,
+                      height: 32,
+                      flex: "none",
+                      borderRadius: "50%",
+                      background: "#1b222a",
+                      border: "1px solid rgba(255,255,255,.1)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 10.5,
+                      fontWeight: 800,
+                      letterSpacing: ".5px",
+                      color: "#9aa5b1",
+                    }}
+                  >
+                    {agentMonogram(sel.agent)}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 12, fontWeight: 800, color: "#eef2f5" }}>{sel.agent}</div>
                     <div
                       style={{
@@ -1149,31 +1379,17 @@ export default function LiveShipmentsShell({
                       Port Agent
                     </div>
                   </div>
-                  <a
-                    href="#"
+                  <div
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 5,
-                      fontSize: 11,
-                      fontWeight: 700,
-                      color: "#4aa8f0",
-                      textDecoration: "underline",
+                      fontSize: 7,
+                      fontWeight: 800,
+                      letterSpacing: ".8px",
+                      color: "#525d68",
+                      flex: "none",
                     }}
                   >
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="#4aa8f0"
-                      strokeWidth="2"
-                    >
-                      <rect x="2" y="4" width="20" height="16" rx="2" />
-                      <path d="M2 7l10 6 10-6" />
-                    </svg>
-                    Contact
-                  </a>
+                    {sel.boardLabel.toUpperCase()}
+                  </div>
                 </div>
                 <div
                   style={{
@@ -1351,6 +1567,7 @@ export default function LiveShipmentsShell({
               >
                 <button
                   type="button"
+                  onClick={() => setDrawerOpen(true)}
                   style={{
                     border: "1px solid rgba(102,186,247,.35)",
                     background: "#173040",
@@ -1363,9 +1580,11 @@ export default function LiveShipmentsShell({
                     cursor: "pointer",
                   }}
                 >
-                  Explore
+                  Full details
                 </button>
                 <HoverButton
+                  title="Open this work order's card"
+                  onClick={() => router.push(`/bajaj/work-orders/${sel.key}`)}
                   base={{
                     border: "none",
                     background: "transparent",
@@ -1379,35 +1598,7 @@ export default function LiveShipmentsShell({
                   }}
                   hover={{ background: "#1c232b" }}
                 >
-                  AI Report
-                </HoverButton>
-                <HoverButton
-                  base={{
-                    border: "none",
-                    background: "transparent",
-                    color: "#dfe6ec",
-                    borderRadius: 999,
-                    width: 36,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    cursor: "pointer",
-                  }}
-                  hover={{ background: "#1c232b" }}
-                >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="#dfe6ec"
-                    strokeWidth="2"
-                  >
-                    <circle cx="18" cy="5" r="2.5" />
-                    <circle cx="6" cy="12" r="2.5" />
-                    <circle cx="18" cy="19" r="2.5" />
-                    <path d="M8.2 10.8l7.6-4.6M8.2 13.2l7.6 4.6" />
-                  </svg>
+                  Open card
                 </HoverButton>
               </div>
             </div>
@@ -1416,6 +1607,15 @@ export default function LiveShipmentsShell({
 
         {/* ══ map ══ */}
         <LiveShipmentsMap shipment={sel} routes={routes} detailOpen={detailOpen} shellId={SHELL_ID} />
+
+        {/* ══ full-details drawer (over the shell, layout untouched) ══ */}
+        {drawerOpen && sel && (
+          <FullDetailsDrawer
+            sel={sel}
+            monthLabel={monthLabel}
+            onClose={() => setDrawerOpen(false)}
+          />
+        )}
       </div>
     </div>
   );

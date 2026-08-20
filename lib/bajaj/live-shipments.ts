@@ -55,6 +55,11 @@ export type LiveShipment = {
   /** ten entries, aligned to STAGE_NAMES */
   journey: JourneyStep[];
 
+  /** Pre-formatted raw-sheet fields for the "Full details" drawer. Only the
+   * keys listed in DETAIL_GROUPS (plus `container_no`) are ever populated, so
+   * the client never receives the whole `data` jsonb. */
+  details: Record<string, string>;
+
   /** extra haystack for the client-side search box */
   search: string;
   /** sort key: lower = more relevant (on-water first, then recently updated) */
@@ -1324,6 +1329,180 @@ export function buildJourney(data: Record<string, unknown>): JourneyStep[] {
 }
 
 /* ------------------------------------------------------------------ */
+/* Full-details drawer: field groups                                   */
+/* ------------------------------------------------------------------ */
+
+export type DetailRow = { key: string; label: string };
+export type DetailGroup = { title: string; rows: DetailRow[] };
+
+/**
+ * Everything the drawer can show, grouped. Every `key` is either a canonical
+ * ops-sheet key from lib/bajaj/import-map.mjs HEADER_MAP, or one of the two
+ * synthesised keys (`pol`, `updated`). A group with no populated key is skipped
+ * client-side; individual missing fields render as "—".
+ */
+export const DETAIL_GROUPS: DetailGroup[] = [
+  {
+    title: "Shipment",
+    rows: [
+      { key: "wo", label: "WO number" },
+      { key: "consignee", label: "Consignee" },
+      { key: "veh", label: "Vehicle / cargo" },
+      { key: "veh_category", label: "Vehicle type" },
+      { key: "category", label: "Category" },
+      { key: "qty", label: "Quantity" },
+      { key: "assy_config", label: "Assembly config" },
+      { key: "for_hbl", label: "For HBL" },
+      { key: "po_no", label: "PO no" },
+      { key: "plant", label: "Plant" },
+      { key: "haz", label: "HAZ" },
+    ],
+  },
+  {
+    title: "Route",
+    rows: [
+      { key: "pol", label: "POL" },
+      { key: "pol_gate", label: "POL gate / terminal" },
+      { key: "port", label: "POD" },
+      { key: "country", label: "Country" },
+      { key: "transporter", label: "Transporter" },
+      { key: "agent", label: "Agent / CHA" },
+      { key: "buffer_yard", label: "Buffer yard" },
+    ],
+  },
+  {
+    title: "Vessel & booking",
+    rows: [
+      { key: "vslname", label: "Vessel" },
+      { key: "s_line", label: "Shipping line" },
+      { key: "booking_no", label: "Booking no" },
+      { key: "cont", label: "Containers" },
+      { key: "cont_type", label: "Container type" },
+      { key: "hc40", label: "40HC" },
+      { key: "std20", label: "STD20" },
+    ],
+  },
+  {
+    title: "Dates",
+    rows: [
+      { key: "wodt", label: "WO date" },
+      { key: "stuffing_dt", label: "Stuffing" },
+      { key: "do_given_dt", label: "D/O given" },
+      { key: "gate_open", label: "Gate open" },
+      { key: "gate_cut_off", label: "Gate cut-off" },
+      { key: "si_cutoff", label: "SI cut-off" },
+      { key: "si_submitted", label: "SI submitted" },
+      { key: "vgm_submitted", label: "VGM submitted" },
+      { key: "do_etd", label: "D/O ETD" },
+      { key: "current_etd", label: "Current ETD" },
+      { key: "eta_at_destination", label: "ETA at destination" },
+      { key: "sailingdt", label: "Sailing / ETD" },
+      { key: "final_vsl_sob", label: "Final vessel SOB" },
+      { key: "bldt", label: "BL date" },
+      { key: "bl_handover_time", label: "BL handover" },
+      { key: "sb_date", label: "SB date" },
+      { key: "courier_dt", label: "Courier" },
+      { key: "pickup_dt", label: "Pickup" },
+      { key: "cntr_dispatch", label: "Container dispatch" },
+      { key: "cntr_report", label: "Container report NSA" },
+      { key: "cntr_gated", label: "Container gated in" },
+    ],
+  },
+  {
+    title: "Documents & billing",
+    rows: [
+      { key: "blno", label: "BL no" },
+      { key: "sbno", label: "SB no" },
+      { key: "ff_job", label: "FF job" },
+      { key: "sline_payment", label: "S/Line payment" },
+      { key: "e_doc_status", label: "E-doc status" },
+      { key: "clearance_point", label: "Clearance point" },
+      { key: "open_order", label: "Open order" },
+      { key: "lc_no", label: "LC no" },
+      { key: "lc_date", label: "LC date" },
+      { key: "remark", label: "Remarks" },
+    ],
+  },
+  {
+    title: "Sync",
+    rows: [
+      { key: "sheet_month", label: "Sheet month" },
+      { key: "updated", label: "Last updated" },
+    ],
+  },
+];
+
+/** Keys inside DETAIL_GROUPS that are dates (formatted with fmtLong). */
+const DETAIL_DATE_KEYS = new Set([
+  "wodt",
+  "stuffing_dt",
+  "do_given_dt",
+  "gate_open",
+  "gate_cut_off",
+  "si_cutoff",
+  "si_submitted",
+  "vgm_submitted",
+  "do_etd",
+  "current_etd",
+  "eta_at_destination",
+  "sailingdt",
+  "final_vsl_sob",
+  "bldt",
+  "bl_handover_time",
+  "sb_date",
+  "courier_dt",
+  "pickup_dt",
+  "cntr_dispatch",
+  "cntr_report",
+  "cntr_gated",
+  "lc_date",
+]);
+
+/** Rendered as monospace chips rather than a label/value row. */
+export const DETAIL_CHIPS_KEY = "container_no";
+/** Rendered as a wrapping free-text block. */
+export const DETAIL_LONG_KEYS = new Set(["remark"]);
+
+const EMPTY_CELL = new Set(["", "-", "—", "N/A", "NA", "NIL", "NULL"]);
+
+/**
+ * Pre-formats every drawer field from the raw jsonb. Empty / placeholder cells
+ * are dropped so the client can decide which groups to skip entirely.
+ */
+export function buildDetails(
+  data: Record<string, unknown>,
+  updatedAt: string | null | undefined,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  const put = (key: string, value: unknown) => {
+    const s = String(value ?? "").trim();
+    if (!s || EMPTY_CELL.has(s.toUpperCase())) return;
+    out[key] = s;
+  };
+
+  for (const group of DETAIL_GROUPS) {
+    for (const { key } of group.rows) {
+      if (key === "pol" || key === "updated") continue;
+      const raw = data[key];
+      if (DETAIL_DATE_KEYS.has(key) && parseDate(raw) != null) put(key, fmtLong(raw));
+      else put(key, raw);
+    }
+  }
+  put(DETAIL_CHIPS_KEY, data[DETAIL_CHIPS_KEY]);
+
+  out.pol = `${ORIGIN_PORT.city} (${ORIGIN_PORT.code})`;
+
+  const upd = parseDate(updatedAt);
+  if (upd) {
+    const hh = String(upd.getUTCHours()).padStart(2, "0");
+    const mm = String(upd.getUTCMinutes()).padStart(2, "0");
+    out.updated = `${fmtLong(upd)} · ${hh}:${mm} UTC`;
+  }
+
+  return out;
+}
+
+/* ------------------------------------------------------------------ */
 /* Main mapper                                                         */
 /* ------------------------------------------------------------------ */
 
@@ -1443,6 +1622,8 @@ export function toLiveShipment(
 
     stageIndex: Math.max(0, Math.min(STAGE_NAMES.length - 1, displayOrder)),
     journey: buildJourney(data),
+
+    details: buildDetails(data, row.updated_at),
 
     search: [
       woId,

@@ -86,6 +86,7 @@ export default function LiveShipmentsMap({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const readyRef = useRef(false);
+  const originRef = useRef<Marker | null>(null);
   const destRef = useRef<Marker | null>(null);
   const curRef = useRef<Marker | null>(null);
   const shipmentRef = useRef<LiveShipment | null>(shipment);
@@ -137,14 +138,21 @@ export default function LiveShipmentsMap({
     const src = m.getSource("route") as GeoJSONSource | undefined;
     if (src) src.setData(routeGeo());
     const route = routeOf(s);
-    if (destRef.current && route.length) {
-      destRef.current.setLngLat(route[route.length - 1]);
-      destRef.current.getElement().style.display = s.hasRoute ? "block" : "none";
+    // Origin dot, dotted line, ship and destination dot all appear/disappear
+    // together — a POD with no corridor shows none of them.
+    const drawn = s.hasRoute && route.length > 1;
+    if (originRef.current) {
+      if (route.length) originRef.current.setLngLat(route[0]);
+      originRef.current.getElement().style.display = drawn ? "block" : "none";
+    }
+    if (destRef.current) {
+      if (route.length) destRef.current.setLngLat(route[route.length - 1]);
+      destRef.current.getElement().style.display = drawn ? "block" : "none";
     }
     if (curRef.current) {
       curRef.current.setLngLat(s.cur);
       const el = curRef.current.getElement();
-      el.style.display = s.hasRoute ? "flex" : "none";
+      el.style.display = drawn ? "flex" : "none";
       const inner = el.querySelector<HTMLElement>("[data-ship]");
       if (inner) inner.style.transform = `rotate(${headingAtProgress(route, s.progress)}deg)`;
     }
@@ -217,9 +225,12 @@ export default function LiveShipmentsMap({
       // texture drape stack cleanly. NOTE: `line` layers are always draped when
       // terrain is on (MapLibre LAYERS_TO_TEXTURES), i.e. rasterised into a tile
       // texture and resampled onto the pitched mesh — sub-pixel geometry does
-      // not survive that. Hence: a solid dark casing + a solid tinted core that
-      // are visible no matter what, and a dash pattern whose "on" segment is
-      // several real pixels wide (dasharray units are multiples of line-width).
+      // not survive that. So the DOTS are sized in real pixels: dasharray units
+      // are multiples of line-width, and with round caps each dash is drawn
+      // line-width/2 longer at both ends. At the widths below a dot is
+      // (0.4 + 1) × width ≈ 6-9px across with a ~0.9 × width gap, which stays
+      // legible over satellite imagery at both extremes the camera uses
+      // (world lanes sit at z2-3, cameraForBounds caps at z9).
       m.addSource("route", { type: "geojson", data: routeGeo() });
       m.addLayer({
         id: "route-casing",
@@ -227,12 +238,13 @@ export default function LiveShipmentsMap({
         source: "route",
         layout: { "line-cap": "round", "line-join": "round" },
         paint: {
-          "line-color": "#03121e",
-          "line-opacity": 0.55,
-          "line-blur": 1.5,
-          "line-width": ["interpolate", ["linear"], ["zoom"], 1, 6, 6, 9, 12, 13],
+          "line-color": "#02101b",
+          "line-opacity": 0.7,
+          "line-blur": 1.4,
+          "line-width": ["interpolate", ["linear"], ["zoom"], 1, 8, 3, 9, 6, 11, 12, 14],
         },
       });
+      // Faint continuous guide so the arc still reads as one path at low zoom.
       m.addLayer({
         id: "route-line",
         type: "line",
@@ -240,22 +252,28 @@ export default function LiveShipmentsMap({
         layout: { "line-cap": "round", "line-join": "round" },
         paint: {
           "line-color": "#9ed6ff",
-          "line-opacity": 0.5,
-          "line-width": ["interpolate", ["linear"], ["zoom"], 1, 1.8, 6, 2.6, 12, 3.4],
+          "line-opacity": 0.25,
+          "line-width": ["interpolate", ["linear"], ["zoom"], 1, 1.2, 6, 1.6, 12, 2],
         },
       });
+      // Primary treatment: white round dots, origin -> destination.
       m.addLayer({
         id: "route-dots",
         type: "line",
         source: "route",
-        layout: { "line-cap": "butt", "line-join": "round" },
+        layout: { "line-cap": "round", "line-join": "round" },
         paint: {
           "line-color": "#ffffff",
-          "line-opacity": 0.95,
-          "line-width": ["interpolate", ["linear"], ["zoom"], 1, 3, 6, 4.2, 12, 5],
-          "line-dasharray": [1.1, 1.5],
+          "line-opacity": 1,
+          "line-width": ["interpolate", ["linear"], ["zoom"], 1, 4.4, 3, 5, 6, 5.6, 12, 6.4],
+          "line-dasharray": [0.4, 1.9],
         },
       });
+
+      const originEl = mkEl(
+        '<div style="width:12px;height:12px;border-radius:50%;background:#2f9bf0;border:3px solid #fff;box-shadow:0 0 11px rgba(47,155,240,.9),0 2px 6px rgba(0,0,0,.5)"></div>',
+      );
+      originRef.current = new Marker({ element: originEl }).setLngLat([0, 0]).addTo(m);
 
       const destEl = mkEl(
         '<div style="width:15px;height:15px;border-radius:50%;background:#4ad46f;border:3.5px solid #fff;box-shadow:0 0 12px rgba(74,212,111,.9),0 2px 6px rgba(0,0,0,.5)"></div>',
@@ -324,14 +342,6 @@ export default function LiveShipmentsMap({
             <path d="M12 2l10 5-10 5L2 7l10-5z" />
             <path d="M2 12l10 5 10-5" />
             <path d="M2 17l10 5 10-5" />
-          </svg>
-        </MapBtn>
-        <MapBtn title="Share">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#dfe6ec" strokeWidth="2">
-            <circle cx="18" cy="5" r="2.5" />
-            <circle cx="6" cy="12" r="2.5" />
-            <circle cx="18" cy="19" r="2.5" />
-            <path d="M8.2 10.8l7.6-4.6M8.2 13.2l7.6 4.6" />
           </svg>
         </MapBtn>
       </div>
@@ -405,25 +415,6 @@ export default function LiveShipmentsMap({
           </svg>
         </MapBtn>
       </div>
-
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src="/live/minimap.png"
-        alt="Overview"
-        style={{
-          position: "absolute",
-          left: 16,
-          bottom: 20,
-          width: 88,
-          height: 90,
-          borderRadius: 12,
-          border: "1px solid rgba(255,255,255,.2)",
-          boxShadow: "0 8px 24px rgba(0,0,0,.5)",
-          zIndex: 5,
-          cursor: "pointer",
-        }}
-        onClick={flyToShipment}
-      />
     </div>
   );
 }
