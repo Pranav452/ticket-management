@@ -172,6 +172,11 @@ async function api(token, url, init = {}) {
 
 const emailsFor = (role) => (ROLES[role]?.who ?? []).map((n) => P[n]).filter(Boolean);
 
+/** The API refuses a protection that would remove its own creator, so the
+ * service account is always kept on the editor list. It never edits anything —
+ * the dashboard's sync client is a separate, read-only credential. */
+const withCreator = (users) => [...new Set([...users, process.env.GOOGLE_SA_EMAIL].filter(Boolean))];
+
 /** Consecutive columns sharing a role collapse into one protected range. */
 function blocksFor(headers) {
   const out = [];
@@ -309,7 +314,7 @@ async function main() {
         requests.push({ addProtectedRange: { protectedRange: {
           range: { sheetId: p.sh.properties.sheetId, startRowIndex: 0, endRowIndex: firstDataRow },
           description: headerDesc, warningOnly: false,
-          editors: { users: ADMINS, domainUsersCanEdit: false },
+          editors: { users: withCreator(ADMINS), domainUsersCanEdit: false },
         } } });
         planned++;
         console.log(`    row ${firstDataRow}        → ADMINS only (header row lock)`);
@@ -326,7 +331,7 @@ async function main() {
         requests.push({ addProtectedRange: { protectedRange: {
           range: { sheetId: p.sh.properties.sheetId, startColumnIndex: b.start, endColumnIndex: b.end + 1, startRowIndex: firstDataRow },
           description: desc, warningOnly: false,
-          editors: { users, domainUsersCanEdit: false },
+          editors: { users: withCreator(users), domainUsersCanEdit: false },
         } } });
         planned++;
         console.log(`    ${cols.padEnd(9)} → ${b.role.padEnd(16)} ${b.fields.slice(0, 3).join(" / ")}${b.fields.length > 3 ? " …" : ""}`);
