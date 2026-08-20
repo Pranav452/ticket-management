@@ -6,9 +6,12 @@ import { Manrope } from "next/font/google";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { MONTH_RE, resolveSheetSources } from "@/lib/bajaj/sheet-sources";
 import {
+  compareByVoyage,
   routesForShipments,
+  toFleetDot,
   toLiveShipment,
   type BoardOption,
+  type FleetDot,
   type LiveShipment,
   type StatusMeta,
   type WorkOrderRow,
@@ -135,14 +138,32 @@ export default async function BajajLivePage({
         now,
       ),
     )
-    .sort((a, b) => a.rank - b.rank);
+    // Under way first, then arrived, then still at the quay. The old rank-only
+    // order put COMPLETED rows last, so the 250-row cap sliced off nearly every
+    // arrived vessel — the map would draw a green dot the list could not open.
+    .sort(compareByVoyage);
 
   const capped = shipments.slice(0, MAX_CLIENT_ROWS);
+
+  // The MAP gets the whole month, not just the 250 rows the list can hold —
+  // seven scalar fields per work order, no journey / details / search blob.
+  // Rows whose POD has no sea corridor are dropped (they have no position).
+  const fleet: FleetDot[] = rows
+    .map((row) =>
+      toFleetDot(
+        row,
+        statusOf(row),
+        BOARD_NAMES[row.module_slug ?? ""] ?? row.module_slug ?? "—",
+        now,
+      ),
+    )
+    .filter((d): d is FleetDot => d !== null);
 
   return (
     <div className="h-full overflow-hidden p-4" style={{ background: "var(--main-bg)" }}>
       <LiveShipmentsShell
         shipments={capped}
+        fleet={fleet}
         routes={routesForShipments(capped)}
         boards={BOARDS}
         totalCount={shipments.length}

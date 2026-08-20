@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import {
@@ -8,8 +8,12 @@ import {
   DETAIL_GROUPS,
   DETAIL_LONG_KEYS,
   STAGE_NAMES,
+  compareByVoyage,
+  voyageStateOf,
   type BoardOption,
+  type FleetDot,
   type LiveShipment,
+  type VoyageState,
 } from "@/lib/bajaj/live-shipments";
 
 const LiveShipmentsMap = dynamic(() => import("./LiveShipmentsMap"), {
@@ -527,9 +531,19 @@ function FullDetailsDrawer({
 }
 
 /* ------------------------------------------------------------------ */
+/* Voyage state — the axis the list is sorted and filtered on          */
+/* ------------------------------------------------------------------ */
+
+const STATE_TABS: { key: "all" | VoyageState; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "sea", label: "At sea" },
+  { key: "arrived", label: "Arrived" },
+  { key: "origin", label: "Not sailed" },
+];
 
 export default function LiveShipmentsShell({
   shipments,
+  fleet,
   routes,
   boards,
   totalCount,
@@ -537,6 +551,8 @@ export default function LiveShipmentsShell({
   fontClassName,
 }: {
   shipments: LiveShipment[];
+  /** Every live work order for the month, as a bare map position + state. */
+  fleet: FleetDot[];
   /** Sea routes shared per destination port, keyed by LiveShipment.routeKey. */
   routes: Record<string, [number, number][]>;
   boards: BoardOption[];
@@ -545,22 +561,57 @@ export default function LiveShipmentsShell({
   fontClassName: string;
 }) {
   const router = useRouter();
-  const [selKey, setSelKey] = useState<string>(shipments[0]?.key ?? "");
+  const ordered = useMemo(() => [...shipments].sort(compareByVoyage), [shipments]);
+  const [selKey, setSelKey] = useState<string>(() => ordered[0]?.key ?? "");
   const [detailOpen, setDetailOpen] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [board, setBoard] = useState<string>("all");
+  const [voyage, setVoyage] = useState<"all" | VoyageState>("all");
   const [query, setQuery] = useState("");
 
-  const items = useMemo(() => {
+  /** board + search applied, voyage state NOT — this is what the tabs count. */
+  const scoped = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return shipments.filter(
+    return ordered.filter(
       (s) => (board === "all" || s.moduleSlug === board) && (!q || s.search.includes(q)),
     );
-  }, [shipments, board, query]);
+  }, [ordered, board, query]);
+
+  const stateCounts = useMemo(() => {
+    const c = { all: scoped.length, sea: 0, arrived: 0, origin: 0 };
+    for (const s of scoped) c[voyageStateOf(s)]++;
+    return c;
+  }, [scoped]);
+
+  const items = useMemo(
+    () => (voyage === "all" ? scoped : scoped.filter((s) => voyageStateOf(s) === voyage)),
+    [scoped, voyage],
+  );
 
   const sel = useMemo(
-    () => shipments.find((s) => s.key === selKey) ?? items[0] ?? shipments[0] ?? null,
-    [shipments, items, selKey],
+    () => shipments.find((s) => s.key === selKey) ?? items[0] ?? ordered[0] ?? null,
+    [shipments, ordered, items, selKey],
+  );
+
+  /**
+   * A fleet-circle click. The map draws every plotted vessel for the month
+   * while the list holds the first MAX_CLIENT_ROWS; the server orders rows by
+   * the same voyage comparator so every sea/arrived vessel survives the cap,
+   * but the guard keeps a click on a row that did not make it a no-op rather
+   * than silently jumping the selection somewhere else. Any active state /
+   * board / search filter is cleared so the card is actually visible in the
+   * list next to the detail panel.
+   */
+  const selectFromMap = useCallback(
+    (key: string) => {
+      if (!shipments.some((s) => s.key === key)) return;
+      setSelKey(key);
+      setDetailOpen(true);
+      setVoyage("all");
+      setBoard("all");
+      setQuery("");
+    },
+    [shipments],
   );
 
   const pillBase: React.CSSProperties = {
@@ -672,6 +723,59 @@ export default function LiveShipmentsShell({
                   width: "100%",
                 }}
               />
+            </div>
+          </div>
+
+          {/* voyage-state segmented control — the only way "at sea" was ever
+              findable in a list where 300+ rows have not left Nhava Sheva */}
+          <div style={{ padding: "0 14px 8px" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 2,
+                background: "rgba(16,20,26,.92)",
+                border: "1px solid rgba(255,255,255,.1)",
+                borderRadius: 999,
+                padding: 3,
+              }}
+            >
+              {STATE_TABS.map((t) => {
+                const active = voyage === t.key;
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    title={`${t.label} · ${stateCounts[t.key]}`}
+                    onClick={() => setVoyage(t.key)}
+                    style={{
+                      ...pillBase,
+                      flex: 1,
+                      minWidth: 0,
+                      padding: "5px 4px",
+                      fontSize: 10,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 4,
+                      whiteSpace: "nowrap",
+                      background: active ? "#f2f5f7" : "transparent",
+                      color: active ? "#12161b" : "#7d8894",
+                    }}
+                  >
+                    <span
+                      style={{
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {t.label}
+                    </span>
+                    <span style={{ color: active ? "#5a636d" : "#525d68", fontWeight: 800 }}>
+                      {stateCounts[t.key]}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -1635,7 +1739,14 @@ export default function LiveShipmentsShell({
         )}
 
         {/* ══ map ══ */}
-        <LiveShipmentsMap shipment={sel} routes={routes} detailOpen={detailOpen} shellId={SHELL_ID} />
+        <LiveShipmentsMap
+          shipment={sel}
+          fleet={fleet}
+          routes={routes}
+          detailOpen={detailOpen}
+          shellId={SHELL_ID}
+          onSelect={selectFromMap}
+        />
 
         {/* ══ full-details drawer (over the shell, layout untouched) ══ */}
         {drawerOpen && sel && (

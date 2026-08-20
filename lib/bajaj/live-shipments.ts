@@ -1907,6 +1907,99 @@ export function toLiveShipment(
 }
 
 
+/* ------------------------------------------------------------------ */
+/* Voyage state — the axis both the list and the map are grouped on    */
+/* ------------------------------------------------------------------ */
+
+export type VoyageState = "sea" | "arrived" | "origin";
+
+export function voyageStateOf(s: Pick<LiveShipment, "atOrigin" | "arrived">): VoyageState {
+  return s.atOrigin ? "origin" : s.arrived ? "arrived" : "sea";
+}
+
+const VOYAGE_ORDER: Record<VoyageState, number> = { sea: 0, arrived: 1, origin: 2 };
+
+/**
+ * Under way first, then arrived, then still-at-the-quay — each group most
+ * recently updated first.
+ *
+ * `rank` packs stage priority into the top digits and (1e13 − updated_at) into
+ * the bottom ones, so `rank % 1e13` recovers recency without shipping the
+ * timestamp separately. Used BOTH server-side (to decide which rows survive the
+ * client-row cap) and client-side (list order), so the list can never be
+ * missing a vessel the map is drawing.
+ */
+export function compareByVoyage(a: LiveShipment, b: LiveShipment): number {
+  return (
+    VOYAGE_ORDER[voyageStateOf(a)] - VOYAGE_ORDER[voyageStateOf(b)] ||
+    (a.rank % 1e13) - (b.rank % 1e13)
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Fleet dots — EVERY live work order, as a map-only position           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The whole month's fleet, in the smallest shape the map can draw.
+ *
+ * The tracking list is capped at a few hundred `LiveShipment` objects (each one
+ * carries a ten-stage journey, a details map and a search haystack — ~2 KB a
+ * row). The MAP, though, wants every live work order at once so the user can
+ * see the vessels spread across the oceans, so the page ships this parallel
+ * array instead: seven scalar fields, no geometry, no nested objects.
+ */
+export type FleetDot = {
+  /** bajaj_work_orders.id — matches LiveShipment.key, so a click can select it */
+  key: string;
+  lng: number;
+  lat: number;
+  /** "sea" = under way, "arrived" = at the POD, "origin" = not sailed yet */
+  state: "sea" | "arrived" | "origin";
+  /** board label, e.g. "VIPAR" */
+  board: string;
+  /** WO number */
+  id: string;
+  /** 3-letter POD code */
+  port: string;
+};
+
+/**
+ * One fleet dot, or null when the POD has no sea corridor (unknown / mis-typed
+ * / landlocked) — exactly the rows the map already refuses to draw, which would
+ * otherwise all pile up on the Nhava Sheva coordinate.
+ */
+export function toFleetDot(
+  row: WorkOrderRow,
+  status: StatusMeta | null,
+  boardLabel: string,
+  now: Date,
+): FleetDot | null {
+  const data = (row.data ?? {}) as Record<string, unknown>;
+  const seaRoute = routeForPort(data.port);
+  if (!seaRoute) return null;
+
+  const fix = voyageFix(data, status?.name, seaRoute, portKey(data.port), now);
+  const cur = pointAt(seaRoute, fix.markerProgress);
+
+  // Trans-Pacific corridors carry continuous (unwrapped) longitudes past 180 so
+  // the polyline does not wrap the globe; a lone POINT has no such need, and an
+  // unwrapped 241° would drag the fleet bounding box across the whole world.
+  const lng = ((((cur[0] + 180) % 360) + 360) % 360) - 180;
+
+  return {
+    key: row.id,
+    // 3 decimals ≈ 100 m — far finer than any zoom this map reaches, and it
+    // keeps each number to 6-8 characters in the RSC payload.
+    lng: Number(lng.toFixed(3)),
+    lat: Number(cur[1].toFixed(3)),
+    state: fix.atOrigin ? "origin" : fix.arrived ? "arrived" : "sea",
+    board: boardLabel,
+    id: String(data.wo ?? "").trim() || row.id.slice(0, 8).toUpperCase(),
+    port: portCode(data.port),
+  };
+}
+
 /**
  * Routes shared by destination port. A month can hold hundreds of work orders
  * bound for the same POD; shipping one polyline per row would repeat the same

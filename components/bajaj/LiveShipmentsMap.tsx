@@ -1,25 +1,39 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Map as MapLibreMap,
   Marker,
   LngLatBounds,
   type GeoJSONSource,
-  type LngLatLike,
+  type MapMouseEvent,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { headingAtProgress, type LiveShipment } from "@/lib/bajaj/live-shipments";
+import {
+  headingAtProgress,
+  type FleetDot,
+  type LiveShipment,
+} from "@/lib/bajaj/live-shipments";
 
 const MAP_PITCH = 55;
 const TERRAIN_EXAGGERATION = 1.7;
 
+/** the two fleet layers that answer a click */
+const FLEET_HIT_LAYERS = ["fleet-sea", "fleet-arrived"];
+
+const SEA = "#22d3ee";
+const ARRIVED = "#4ad46f";
+
+const panel: React.CSSProperties = {
+  background: "rgba(10,14,18,.9)",
+  border: "1px solid rgba(255,255,255,.12)",
+  borderRadius: 10,
+};
+
 const btnBase: React.CSSProperties = {
   width: 34,
   height: 34,
-  borderRadius: 10,
-  background: "rgba(10,14,18,.9)",
-  border: "1px solid rgba(255,255,255,.12)",
+  ...panel,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -71,17 +85,76 @@ function mkEl(html: string): HTMLElement {
   return d.firstChild as HTMLElement;
 }
 
+/** sea + arrived vessels as point features; origin rows are never plotted. */
+function fleetGeo(fleet: FleetDot[]): GeoJSON.FeatureCollection<GeoJSON.Point> {
+  return {
+    type: "FeatureCollection",
+    features: fleet
+      .filter((d) => d.state !== "origin")
+      .map((d) => ({
+        type: "Feature" as const,
+        properties: { key: d.key, state: d.state, id: d.id, port: d.port, board: d.board },
+        geometry: { type: "Point" as const, coordinates: [d.lng, d.lat] },
+      })),
+  };
+}
+
+function LegendRow({ color, label, n }: { color: string; label: string; n: number }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+      <span
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          flex: "none",
+          background: color,
+          border: color === "transparent" ? "1px solid #5f6a76" : "1px solid rgba(255,255,255,.75)",
+          boxShadow: color === "transparent" ? "none" : `0 0 7px ${color}88`,
+        }}
+      />
+      <span
+        style={{
+          fontSize: 8,
+          fontWeight: 800,
+          letterSpacing: ".8px",
+          textTransform: "uppercase",
+          color: color === "transparent" ? "#9aa5b1" : "#c6cfd8",
+        }}
+      >
+        {label}
+      </span>
+      <span
+        style={{
+          marginLeft: "auto",
+          fontSize: 9.5,
+          fontWeight: 800,
+          color: color === "transparent" ? "#9aa5b1" : "#eef2f5",
+        }}
+      >
+        {n}
+      </span>
+    </div>
+  );
+}
+
 export default function LiveShipmentsMap({
   shipment,
+  fleet,
   routes,
   detailOpen,
   shellId,
+  onSelect,
 }: {
   shipment: LiveShipment | null;
+  /** EVERY live work order for the month, as a bare position + state. */
+  fleet: FleetDot[];
   /** Polylines shared per destination port, keyed by LiveShipment.routeKey. */
   routes: Record<string, [number, number][]>;
   detailOpen: boolean;
   shellId: string;
+  /** select a work order from a fleet-circle click */
+  onSelect: (key: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -90,11 +163,27 @@ export default function LiveShipmentsMap({
   const destRef = useRef<Marker | null>(null);
   const curRef = useRef<Marker | null>(null);
   const shipmentRef = useRef<LiveShipment | null>(shipment);
+  const fleetRef = useRef(fleet);
+  const onSelectRef = useRef(onSelect);
   const [terrainOn, setTerrainOn] = useState(true);
 
   const routesRef = useRef(routes);
   routesRef.current = routes;
   shipmentRef.current = shipment;
+  fleetRef.current = fleet;
+  onSelectRef.current = onSelect;
+
+  const counts = useMemo(() => {
+    let sea = 0;
+    let arrived = 0;
+    let origin = 0;
+    for (const d of fleet) {
+      if (d.state === "sea") sea++;
+      else if (d.state === "arrived") arrived++;
+      else origin++;
+    }
+    return { sea, arrived, origin };
+  }, [fleet]);
 
   /** The selected shipment's polyline ([] when the POD has no corridor). */
   const routeOf = (s: LiveShipment | null): [number, number][] =>
@@ -110,16 +199,31 @@ export default function LiveShipmentsMap({
       (acc, c) => acc.extend(c),
       new LngLatBounds(route[0], route[0]),
     );
-    const cam = m.cameraForBounds(b, { padding: { top: 90, bottom: 90, left: 70, right: 70 } });
-    if (cam && cam.center) {
-      m.flyTo({
-        center: cam.center as LngLatLike,
-        zoom: Math.min(cam.zoom ?? 5, 9),
-        pitch: MAP_PITCH,
-        bearing: -14,
-        duration: 2200,
-      });
-    }
+    const padding = { top: 90, bottom: 90, left: 70, right: 70 };
+    const bearing = -14;
+    // cameraForBounds solves for an UNPITCHED, UNROTATED camera. Feeding its
+    // result into a flyTo at pitch 55 / bearing -14 (what this used to do) put
+    // the far half of an ocean-crossing lane into the sliver above the horizon,
+    // where the terrain-draped dotted line is resampled down to nothing — which
+    // is why long routes looked like they were not drawn at all. fitBounds gets
+    // the same bearing it will end on, and the pitch relaxes as the lane widens.
+    const cam = m.cameraForBounds(b, { padding, bearing, maxZoom: 9 });
+    const zoom = cam?.zoom ?? 4;
+    const pitch = zoom < 3.2 ? 22 : zoom < 5 ? 38 : MAP_PITCH;
+    m.fitBounds(b, { padding, bearing, maxZoom: 9, pitch, duration: 2200 });
+  };
+
+  /** Frame the WHOLE fleet — the default view, and the "Fleet view" button. */
+  const fitFleet = () => {
+    const m = mapRef.current;
+    const pts = fleetRef.current;
+    if (!m || pts.length === 0) return;
+    const first: [number, number] = [pts[0].lng, pts[0].lat];
+    const b = pts.reduce(
+      (acc, p) => acc.extend([p.lng, p.lat] as [number, number]),
+      new LngLatBounds(first, first),
+    );
+    m.fitBounds(b, { padding: 60, maxZoom: 4, pitch: 35, bearing: 0, duration: 1600 });
   };
 
   const routeGeo = (): GeoJSON.Feature<GeoJSON.LineString> => {
@@ -129,6 +233,24 @@ export default function LiveShipmentsMap({
       properties: {},
       geometry: { type: "LineString", coordinates: routeOf(s) },
     };
+  };
+
+  /** Hide the selected work order's fleet circle — its ship glyph supersedes it. */
+  const applyFleetFilters = () => {
+    const m = mapRef.current;
+    if (!m || !readyRef.current || !m.getLayer("fleet-sea")) return;
+    const selKey = shipmentRef.current?.key ?? "";
+    for (const [id, state] of [
+      ["fleet-glow", "sea"],
+      ["fleet-sea", "sea"],
+      ["fleet-arrived", "arrived"],
+    ] as const) {
+      m.setFilter(id, [
+        "all",
+        ["==", ["get", "state"], state],
+        ["!=", ["get", "key"], selKey],
+      ]);
+    }
   };
 
   const updateRoute = (fly: boolean) => {
@@ -141,6 +263,16 @@ export default function LiveShipmentsMap({
     // Origin dot, dotted line, ship and destination dot all appear/disappear
     // together — a POD with no corridor shows none of them.
     const drawn = s.hasRoute && route.length > 1;
+
+    // The route is drawn in EVERY state, including not-yet-sailed: that is the
+    // planned path. Planned reads as a fainter version of the same dots.
+    const planned = s.atOrigin;
+    if (m.getLayer("route-dots")) {
+      m.setPaintProperty("route-dots", "line-opacity", planned ? 0.55 : 1);
+      m.setPaintProperty("route-line", "line-opacity", planned ? 0.14 : 0.25);
+      m.setPaintProperty("route-casing", "line-opacity", planned ? 0.5 : 0.7);
+    }
+
     if (originRef.current) {
       if (route.length) originRef.current.setLngLat(route[0]);
       originRef.current.getElement().style.display = drawn ? "block" : "none";
@@ -172,6 +304,7 @@ export default function LiveShipmentsMap({
         inner.style.opacity = docked ? "0.9" : "1";
       }
     }
+    applyFleetFilters();
     if (fly) flyToShipment();
   };
 
@@ -286,6 +419,66 @@ export default function LiveShipmentsMap({
         },
       });
 
+      // ── the FLEET ────────────────────────────────────────────────────
+      // Every other live work order, all at once. `circle` is deliberately not
+      // in MapLibre's LAYERS_TO_TEXTURES set, so these draw live on top of the
+      // draped terrain instead of being rasterised into the tile texture — they
+      // stay crisp at the low zooms an ocean-wide view needs. DOM markers were
+      // never an option: 200+ absolutely-positioned nodes reprojected on every
+      // frame will not hold 60fps.
+      m.addSource("fleet", { type: "geojson", data: fleetGeo(fleetRef.current) });
+      m.addLayer({
+        id: "fleet-glow",
+        type: "circle",
+        source: "fleet",
+        filter: ["==", ["get", "state"], "sea"],
+        paint: {
+          "circle-color": SEA,
+          "circle-opacity": 0.16,
+          "circle-blur": 0.9,
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 1, 9, 4, 13, 8, 20],
+        },
+      });
+      m.addLayer({
+        id: "fleet-arrived",
+        type: "circle",
+        source: "fleet",
+        filter: ["==", ["get", "state"], "arrived"],
+        paint: {
+          "circle-color": ARRIVED,
+          "circle-opacity": 0.9,
+          "circle-stroke-color": "rgba(255,255,255,.7)",
+          "circle-stroke-width": 1,
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 1, 3, 4, 4, 8, 5],
+        },
+      });
+      m.addLayer({
+        id: "fleet-sea",
+        type: "circle",
+        source: "fleet",
+        filter: ["==", ["get", "state"], "sea"],
+        paint: {
+          "circle-color": SEA,
+          "circle-opacity": 0.95,
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-opacity": 0.85,
+          "circle-stroke-width": 1,
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 1, 3.5, 4, 5, 8, 7],
+        },
+      });
+
+      const hit = (e: MapMouseEvent) => {
+        if (!m.getLayer("fleet-sea")) return [];
+        return m.queryRenderedFeatures(e.point, { layers: FLEET_HIT_LAYERS });
+      };
+      m.on("mousemove", (e) => {
+        m.getCanvas().style.cursor = hit(e).length ? "pointer" : "";
+      });
+      m.on("click", (e) => {
+        const key = hit(e)[0]?.properties?.key;
+        if (typeof key === "string" && key) onSelectRef.current(key);
+      });
+
       const originEl = mkEl(
         '<div style="width:12px;height:12px;border-radius:50%;background:#2f9bf0;border:3px solid #fff;box-shadow:0 0 11px rgba(47,155,240,.9),0 2px 6px rgba(0,0,0,.5)"></div>',
       );
@@ -303,7 +496,9 @@ export default function LiveShipmentsMap({
       );
       curRef.current = new Marker({ element: shipWrap }).setLngLat([0, 0]).addTo(m);
 
-      updateRoute(true);
+      // Default view is the WHOLE fleet, not the first card's lane.
+      updateRoute(false);
+      fitFleet();
     });
 
     return () => {
@@ -319,6 +514,14 @@ export default function LiveShipmentsMap({
     updateRoute(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shipment?.key]);
+
+  // month switched under us -> refresh the fleet without remounting the map
+  useEffect(() => {
+    const m = mapRef.current;
+    if (!m || !readyRef.current) return;
+    const src = m.getSource("fleet") as GeoJSONSource | undefined;
+    if (src) src.setData(fleetGeo(fleet));
+  }, [fleet]);
 
   // detail panel toggled -> resize after layout settles
   useEffect(() => {
@@ -360,6 +563,27 @@ export default function LiveShipmentsMap({
             <path d="M2 17l10 5 10-5" />
           </svg>
         </MapBtn>
+      </div>
+
+      {/* ── fleet legend (real counts for the whole month) ── */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: 20,
+          left: 14,
+          zIndex: 5,
+          ...panel,
+          padding: "9px 11px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+          minWidth: 148,
+          backdropFilter: "blur(8px)",
+        }}
+      >
+        <LegendRow color={SEA} label="At sea" n={counts.sea} />
+        <LegendRow color={ARRIVED} label="Arrived" n={counts.arrived} />
+        <LegendRow color="transparent" label="Awaiting sailing" n={counts.origin} />
       </div>
 
       <div
@@ -411,6 +635,22 @@ export default function LiveShipmentsMap({
             strokeLinejoin="round"
           >
             <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+          </svg>
+        </MapBtn>
+        <MapBtn title="Fleet view — frame every vessel" onClick={fitFleet}>
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#dfe6ec"
+            strokeWidth="1.9"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="M3 12h18" />
+            <path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z" />
           </svg>
         </MapBtn>
         <MapBtn
