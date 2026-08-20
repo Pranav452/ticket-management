@@ -23,6 +23,7 @@ interface TabSyncResult {
   wouldInsert: string[];
   wouldUpdate: string[];
   wouldMove: string[];
+  error?: string;
 }
 interface BookingsSyncResult {
   tab: string;
@@ -102,7 +103,14 @@ function TabTable({ tabs, dryRun }: { tabs: TabSyncResult[]; dryRun: boolean }) 
         <tbody>
           {tabs.map((t) => (
             <tr key={`${t.month ?? ""}-${t.tab}`} className="border-b border-gray-50 dark:border-white/5 last:border-0">
-              <td className="px-4 py-2 text-gray-900 dark:text-white font-medium">{t.tab}</td>
+              <td className="px-4 py-2 text-gray-900 dark:text-white font-medium">
+                {t.tab}
+                {t.error && (
+                  <span className="mt-0.5 block text-[10px] font-normal text-red-600 dark:text-red-400">
+                    ⚠ {t.error}
+                  </span>
+                )}
+              </td>
               <td className="px-2 py-2 text-gray-500 dark:text-white/50">{t.module}</td>
               <td className="px-2 py-2 text-right text-gray-700 dark:text-white/70">{t.rows}</td>
               <td className={cn("px-2 py-2 text-right", t.inserted > 0 ? "text-emerald-600 dark:text-emerald-400 font-medium" : "text-gray-400 dark:text-white/30")}>

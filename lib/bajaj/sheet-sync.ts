@@ -536,12 +536,36 @@ export async function runSheetSync(actor: string, opts: SheetSyncOptions = {}): 
           if (!ctx.firstTab) ctx.firstTab = result;
 
           const gridRows = await fetchSheetRows(sheetId, tab);
-          if (gridRows.length < 2) continue;
+          if (gridRows.length < 2) {
+            result.error = "tab is empty — no rows fetched";
+            continue;
+          }
 
           // Adapter shim (a): Sheets rows are 0-based arrays; the shared mapping
           // helpers expect ExcelJS-style 1-based arrays with an empty slot 0.
-          const colMap = buildColMap([null, ...gridRows[0]]) as Record<string, string>;
-          if (!Object.values(colMap).includes("wo")) continue; // no WO column — not a work-order tab
+          // Header row: NOT assumed to be row 1 — ops sometimes insert banner or
+          // blank rows above the headers (this silently killed 5 tabs for 3 days
+          // in Aug 2026). Scan the first rows for the one whose columns include
+          // a WO header; everything above it is ignored.
+          const HEADER_SCAN_ROWS = 8;
+          let headerIdx = -1;
+          let colMap: Record<string, string> = {};
+          for (let h = 0; h < Math.min(HEADER_SCAN_ROWS, gridRows.length - 1); h++) {
+            const candidate = buildColMap([null, ...gridRows[h]]) as Record<string, string>;
+            if (Object.values(candidate).includes("wo")) {
+              headerIdx = h;
+              colMap = candidate;
+              break;
+            }
+          }
+          if (headerIdx < 0) {
+            // Loud failure instead of a silent skip: this tab's rows can never
+            // reach the board until someone fixes its header row.
+            result.error =
+              `no WO header found in the first ${HEADER_SCAN_ROWS} rows — tab skipped; ` +
+              "check that the header row has a 'WO' column (banner rows above it are fine)";
+            continue;
+          }
 
           const defaultCountry = MODULE_DEFAULT_COUNTRY[meta.slug] ?? null;
           const toInsert: Record<string, unknown>[] = [];
@@ -550,7 +574,7 @@ export async function runSheetSync(actor: string, opts: SheetSyncOptions = {}): 
           }[] = [];
           const moveAudits: Record<string, unknown>[] = [];
 
-          for (let i = 1; i < gridRows.length; i++) {
+          for (let i = headerIdx + 1; i < gridRows.length; i++) {
             const oneBased: unknown[] = [null, ...gridRows[i]];
 
             // Adapter shim (b): convert date serials → YYYY-MM-DD for date keys
