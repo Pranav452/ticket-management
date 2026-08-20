@@ -9,7 +9,7 @@ import {
   type LngLatLike,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { LiveShipment } from "@/lib/bajaj/live-shipments";
+import { headingAtProgress, type LiveShipment } from "@/lib/bajaj/live-shipments";
 
 const MAP_PITCH = 55;
 const TERRAIN_EXAGGERATION = 1.7;
@@ -71,21 +71,15 @@ function mkEl(html: string): HTMLElement {
   return d.firstChild as HTMLElement;
 }
 
-/** bearing (deg, clockwise from north) along the route at the current position */
-function headingAt(route: [number, number][], progress: number): number {
-  if (route.length < 2) return 0;
-  const i = Math.min(route.length - 2, Math.floor(progress * (route.length - 1)));
-  const [x0, y0] = route[i];
-  const [x1, y1] = route[i + 1];
-  return (Math.atan2(x1 - x0, y1 - y0) * 180) / Math.PI - 90;
-}
-
 export default function LiveShipmentsMap({
   shipment,
+  routes,
   detailOpen,
   shellId,
 }: {
   shipment: LiveShipment | null;
+  /** Polylines shared per destination port, keyed by LiveShipment.routeKey. */
+  routes: Record<string, [number, number][]>;
   detailOpen: boolean;
   shellId: string;
 }) {
@@ -97,15 +91,23 @@ export default function LiveShipmentsMap({
   const shipmentRef = useRef<LiveShipment | null>(shipment);
   const [terrainOn, setTerrainOn] = useState(true);
 
+  const routesRef = useRef(routes);
+  routesRef.current = routes;
   shipmentRef.current = shipment;
+
+  /** The selected shipment's polyline ([] when the POD has no corridor). */
+  const routeOf = (s: LiveShipment | null): [number, number][] =>
+    s && s.hasRoute ? (routesRef.current[s.routeKey] ?? []) : [];
 
   const flyToShipment = () => {
     const m = mapRef.current;
     const s = shipmentRef.current;
-    if (!m || !s || s.route.length === 0) return;
-    const b = s.route.reduce(
+    const route = routeOf(s);
+    if (!m || !s || route.length === 0) return;
+    // (a degenerate origin-only route still frames Nhava Sheva)
+    const b = route.reduce(
       (acc, c) => acc.extend(c),
-      new LngLatBounds(s.route[0], s.route[0]),
+      new LngLatBounds(route[0], route[0]),
     );
     const cam = m.cameraForBounds(b, { padding: { top: 90, bottom: 90, left: 70, right: 70 } });
     if (cam && cam.center) {
@@ -124,7 +126,7 @@ export default function LiveShipmentsMap({
     return {
       type: "Feature",
       properties: {},
-      geometry: { type: "LineString", coordinates: s ? s.route : [] },
+      geometry: { type: "LineString", coordinates: routeOf(s) },
     };
   };
 
@@ -134,16 +136,17 @@ export default function LiveShipmentsMap({
     if (!m || !s || !readyRef.current) return;
     const src = m.getSource("route") as GeoJSONSource | undefined;
     if (src) src.setData(routeGeo());
-    if (destRef.current && s.route.length) {
-      destRef.current.setLngLat(s.route[s.route.length - 1]);
-      destRef.current.getElement().style.display = s.route.length > 1 ? "block" : "none";
+    const route = routeOf(s);
+    if (destRef.current && route.length) {
+      destRef.current.setLngLat(route[route.length - 1]);
+      destRef.current.getElement().style.display = s.hasRoute ? "block" : "none";
     }
     if (curRef.current) {
       curRef.current.setLngLat(s.cur);
       const el = curRef.current.getElement();
-      el.style.display = s.route.length > 1 ? "flex" : "none";
+      el.style.display = s.hasRoute ? "flex" : "none";
       const inner = el.querySelector<HTMLElement>("[data-ship]");
-      if (inner) inner.style.transform = `rotate(${headingAt(s.route, s.progress)}deg)`;
+      if (inner) inner.style.transform = `rotate(${headingAtProgress(route, s.progress)}deg)`;
     }
     if (fly) flyToShipment();
   };
@@ -210,17 +213,47 @@ export default function LiveShipmentsMap({
       } catch {
         /* sky unsupported — ignore */
       }
+      // Route layers are added AFTER setTerrain so they join the render-to-
+      // texture drape stack cleanly. NOTE: `line` layers are always draped when
+      // terrain is on (MapLibre LAYERS_TO_TEXTURES), i.e. rasterised into a tile
+      // texture and resampled onto the pitched mesh — sub-pixel geometry does
+      // not survive that. Hence: a solid dark casing + a solid tinted core that
+      // are visible no matter what, and a dash pattern whose "on" segment is
+      // several real pixels wide (dasharray units are multiples of line-width).
       m.addSource("route", { type: "geojson", data: routeGeo() });
+      m.addLayer({
+        id: "route-casing",
+        type: "line",
+        source: "route",
+        layout: { "line-cap": "round", "line-join": "round" },
+        paint: {
+          "line-color": "#03121e",
+          "line-opacity": 0.55,
+          "line-blur": 1.5,
+          "line-width": ["interpolate", ["linear"], ["zoom"], 1, 6, 6, 9, 12, 13],
+        },
+      });
       m.addLayer({
         id: "route-line",
         type: "line",
         source: "route",
         layout: { "line-cap": "round", "line-join": "round" },
         paint: {
+          "line-color": "#9ed6ff",
+          "line-opacity": 0.5,
+          "line-width": ["interpolate", ["linear"], ["zoom"], 1, 1.8, 6, 2.6, 12, 3.4],
+        },
+      });
+      m.addLayer({
+        id: "route-dots",
+        type: "line",
+        source: "route",
+        layout: { "line-cap": "butt", "line-join": "round" },
+        paint: {
           "line-color": "#ffffff",
-          "line-width": 2.4,
-          "line-opacity": 0.92,
-          "line-dasharray": [0.1, 2.4],
+          "line-opacity": 0.95,
+          "line-width": ["interpolate", ["linear"], ["zoom"], 1, 3, 6, 4.2, 12, 5],
+          "line-dasharray": [1.1, 1.5],
         },
       });
 

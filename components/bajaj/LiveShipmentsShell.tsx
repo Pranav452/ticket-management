@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import type { BoardOption, LiveShipment } from "@/lib/bajaj/live-shipments";
+import { STAGE_NAMES, type BoardOption, type LiveShipment } from "@/lib/bajaj/live-shipments";
 
 const LiveShipmentsMap = dynamic(() => import("./LiveShipmentsMap"), {
   ssr: false,
@@ -83,15 +83,188 @@ const shipIcon = (
 );
 
 /* ------------------------------------------------------------------ */
+/* Shipment journey — the full ten-stage lifecycle ladder for one WO   */
+/* ------------------------------------------------------------------ */
+
+const journeyShip = (
+  <svg width="11" height="11" viewBox="0 0 24 24" fill="#4aa8f0" aria-hidden="true">
+    <path d="M3 14h18l-2.5 5H5.5L3 14z" />
+    <rect x="6" y="10" width="4" height="3" />
+    <rect x="11" y="10" width="4" height="3" />
+    <rect x="16" y="10" width="3" height="3" />
+    <rect x="11" y="6" width="3" height="3" />
+  </svg>
+);
+
+function JourneySection({ sel }: { sel: LiveShipment }) {
+  return (
+    <div
+      style={{
+        borderTop: "1px solid rgba(255,255,255,.07)",
+        margin: "14px -16px 0",
+        padding: "12px 16px 0",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          marginBottom: 12,
+        }}
+      >
+        <div style={{ fontSize: 13.5, fontWeight: 800, color: "#eef2f5" }}>Shipment journey</div>
+        <div style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".8px", color: "#5f6a76" }}>
+          STAGE <span style={{ color: "#4aa8f0" }}>{sel.stageIndex + 1}</span>
+          <span style={{ color: "#3a434e" }}> / {STAGE_NAMES.length}</span>
+        </div>
+      </div>
+
+      <div>
+        {STAGE_NAMES.map((name, i) => {
+          const step = sel.journey[i] ?? { d: "—", n: "" };
+          const done = i < sel.stageIndex;
+          const current = i === sel.stageIndex;
+          const last = i === STAGE_NAMES.length - 1;
+
+          const dotStyle: React.CSSProperties = current
+            ? {
+                background: "#4aa8f0",
+                border: "2px solid #4aa8f0",
+                boxShadow: "0 0 0 4px rgba(74,168,240,.16), 0 0 10px rgba(74,168,240,.55)",
+              }
+            : done
+              ? { background: "#45d483", border: "2px solid #45d483" }
+              : { background: "transparent", border: "2px solid #2c343e" };
+
+          return (
+            <div key={name} style={{ display: "flex", gap: 10, position: "relative" }}>
+              {/* rail + dot */}
+              <div style={{ width: 11, flex: "none", position: "relative" }}>
+                <div
+                  style={{
+                    width: 11,
+                    height: 11,
+                    borderRadius: "50%",
+                    marginTop: 2,
+                    boxSizing: "border-box",
+                    ...dotStyle,
+                  }}
+                />
+                {!last && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: 5,
+                      top: 15,
+                      bottom: -2,
+                      width: 1,
+                      background: done ? "rgba(69,212,131,.42)" : "#2c343e",
+                    }}
+                  />
+                )}
+              </div>
+
+              {/* stage */}
+              <div style={{ flex: 1, minWidth: 0, paddingBottom: last ? 2 : 13 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
+                    <span
+                      style={{
+                        fontSize: 11.5,
+                        fontWeight: current ? 800 : 700,
+                        color: current ? "#dfe6ec" : done ? "#c6cfd8" : "#525d68",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {name}
+                    </span>
+                    {current && (
+                      <span
+                        title="Vessel is here"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 3,
+                          flex: "none",
+                          background: "#16283a",
+                          border: "1px solid rgba(74,168,240,.35)",
+                          borderRadius: 999,
+                          padding: "1px 6px 1px 4px",
+                        }}
+                      >
+                        {journeyShip}
+                        <span
+                          style={{
+                            fontSize: 7,
+                            fontWeight: 800,
+                            letterSpacing: ".8px",
+                            color: "#4aa8f0",
+                          }}
+                        >
+                          HERE
+                        </span>
+                      </span>
+                    )}
+                  </div>
+                  <span
+                    style={{
+                      fontSize: 8.5,
+                      fontWeight: 800,
+                      letterSpacing: ".8px",
+                      color: current ? "#c6cfd8" : done ? "#9aa5b1" : "#525d68",
+                      flex: "none",
+                    }}
+                  >
+                    {step.d || "—"}
+                  </span>
+                </div>
+                {step.n ? (
+                  <div
+                    style={{
+                      fontSize: 9.5,
+                      fontWeight: 600,
+                      color: "#5f6a76",
+                      marginTop: 2,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {step.n}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 
 export default function LiveShipmentsShell({
   shipments,
+  routes,
   boards,
   totalCount,
   monthLabel,
   fontClassName,
 }: {
   shipments: LiveShipment[];
+  /** Sea routes shared per destination port, keyed by LiveShipment.routeKey. */
+  routes: Record<string, [number, number][]>;
   boards: BoardOption[];
   totalCount: number;
   monthLabel: string;
@@ -933,6 +1106,8 @@ export default function LiveShipmentsShell({
                 </div>
               </div>
 
+              <JourneySection sel={sel} />
+
               <div
                 style={{
                   background: "#141a21",
@@ -1240,7 +1415,7 @@ export default function LiveShipmentsShell({
         )}
 
         {/* ══ map ══ */}
-        <LiveShipmentsMap shipment={sel} detailOpen={detailOpen} shellId={SHELL_ID} />
+        <LiveShipmentsMap shipment={sel} routes={routes} detailOpen={detailOpen} shellId={SHELL_ID} />
       </div>
     </div>
   );

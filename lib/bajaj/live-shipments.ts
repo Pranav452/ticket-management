@@ -43,8 +43,17 @@ export type LiveShipment = {
   weight: string;
   container: string;
 
-  route: [number, number][];
+  /** Key into the routes lookup (see routesForShipments) — routes are shared
+   * per destination port, never duplicated per work order. */
+  routeKey: string;
   cur: [number, number];
+  /** false when the POD has no sea corridor — map hides the line + ship */
+  hasRoute: boolean;
+
+  /** index into STAGE_NAMES of the stage this WO is currently sitting in */
+  stageIndex: number;
+  /** ten entries, aligned to STAGE_NAMES */
+  journey: JourneyStep[];
 
   /** extra haystack for the client-side search box */
   search: string;
@@ -372,19 +381,28 @@ export function portCode(port: unknown): string {
   return n.replace(/[^A-Z]/g, "").slice(0, 3) || "—";
 }
 
-export function portCoord(port: unknown): [number, number] | null {
+/**
+ * Resolves a loose POD string to the canonical PORT_COORDS key (or null when
+ * the port is unknown — typos like "COBUN", landlocked entries, blanks).
+ */
+export function portKey(port: unknown): string | null {
   const n = norm(port);
   if (!n) return null;
-  if (PORT_COORDS[n]) return PORT_COORDS[n];
+  if (PORT_COORDS[n]) return n;
   const parts = n.split(" ");
   for (let len = parts.length - 1; len >= 1; len--) {
     const k = parts.slice(0, len).join(" ");
-    if (PORT_COORDS[k]) return PORT_COORDS[k];
+    if (PORT_COORDS[k]) return k;
   }
   for (const key of Object.keys(PORT_COORDS)) {
-    if (n.includes(key)) return PORT_COORDS[key];
+    if (n.includes(key)) return key;
   }
   return null;
+}
+
+export function portCoord(port: unknown): [number, number] | null {
+  const k = portKey(port);
+  return k ? PORT_COORDS[k] : null;
 }
 
 export function countryCc(country: unknown): string {
@@ -453,9 +471,11 @@ export function fmtDuration(from: Date | null, to: Date | null): string {
 
 /** "41.72°N, 154.38°E" */
 export function fmtCoords([lng, lat]: [number, number]): string {
+  // routes that cross the antimeridian carry continuous (unwrapped) longitudes
+  const l = ((((lng + 180) % 360) + 360) % 360) - 180;
   const ns = lat >= 0 ? "N" : "S";
-  const ew = lng >= 0 ? "E" : "W";
-  return `${Math.abs(lat).toFixed(2)}°${ns}, ${Math.abs(lng).toFixed(2)}°${ew}`;
+  const ew = l >= 0 ? "E" : "W";
+  return `${Math.abs(lat).toFixed(2)}°${ns}, ${Math.abs(l).toFixed(2)}°${ew}`;
 }
 
 export function normalizeCarrier(v: unknown): string {
@@ -531,43 +551,656 @@ export function deriveStatus(
 /* ------------------------------------------------------------------ */
 
 /**
- * Builds a plausible sea route: a quadratic bezier from origin to destination
- * through a midpoint pushed perpendicular to the straight line, sampled at
- * `steps` points so it renders as a smooth dotted arc.
+ * Waypoint-corridor routing.
+ *
+ * Every voyage leaves Nhava Sheva (JNPT). A route is composed as
+ *   JNPT -> outbound -> shared corridor waypoints -> destination approach -> port
+ * where every waypoint sits in open water, so no leg cuts across a landmass.
+ * The composed waypoint chain is then densified (30-48 points) so the polyline
+ * reads as a smooth line and `pointAt` can place the ship exactly on it.
  */
-export function buildRoute(
-  from: [number, number],
-  to: [number, number],
-  steps = 13,
-): [number, number][] {
-  const [x0, y0] = from;
-  const y1 = to[1];
-  let x1 = to[0];
+type Pt = [number, number];
 
-  // take the short way around the antimeridian
-  if (x1 - x0 > 180) x1 -= 360;
-  if (x0 - x1 > 180) x1 += 360;
+/** concat helper that keeps the tuple type without `as Pt` noise everywhere */
+const cat = (...parts: (Pt[] | number[][])[]): Pt[] => parts.flat() as Pt[];
 
-  const dx = x1 - x0;
-  const dy = y1 - y0;
-  const len = Math.hypot(dx, dy);
-  if (len < 0.0001) return [from, to];
+/* ── shared corridors ─────────────────────────────────────────────── */
 
-  // perpendicular offset ~11% of span, capped so long lanes don't balloon
-  const bow = Math.min(len * 0.11, 12);
-  const mx = (x0 + x1) / 2 - (dy / len) * bow;
-  const my = (y0 + y1) / 2 + (dx / len) * bow;
+// Arabian Sea outbound (west of the Indian coast)
+const ARABIAN_OUT: Pt[] = [
+  [72.0, 18.0],
+  [68.5, 15.5],
+];
 
-  const pts: [number, number][] = [];
-  const n = Math.max(2, steps);
-  for (let i = 0; i < n; i++) {
-    const t = i / (n - 1);
-    const u = 1 - t;
-    const x = u * u * x0 + 2 * u * t * mx + t * t * x1;
-    const y = u * u * y0 + 2 * u * t * my + t * t * y1;
-    pts.push([Number(x.toFixed(4)), Number(Math.max(-85, Math.min(85, y)).toFixed(4))]);
+// Gulf of Aden
+const ADEN: Pt[] = [
+  [60, 13.5],
+  [52, 12.6],
+  [46, 12],
+];
+// ... continuing to Bab-el-Mandeb
+const BAB: Pt[] = [
+  [60, 13.5],
+  [52, 12.6],
+  [45, 12.3],
+  [43.4, 12.6],
+];
+// Red Sea -> Gulf of Suez -> canal -> Port Said
+const RED_SEA: Pt[] = [
+  [39.5, 17.5],
+  [36.5, 23.5],
+  [33.8, 27.5],
+  [32.56, 29.9],
+  [32.35, 31.3],
+];
+// Mediterranean, Port Said -> Gibraltar
+const MED_W: Pt[] = [
+  [30, 32.5],
+  [24, 33.8],
+  [15, 35.2],
+  [5, 37.3],
+  [-5.6, 35.95],
+];
+
+const RED_SEA_IN = cat(ARABIAN_OUT, BAB); // ends at Bab-el-Mandeb
+const SUEZ_MED = cat(RED_SEA_IN, RED_SEA); // ends at Port Said
+const SUEZ = cat(SUEZ_MED, MED_W); // ends at Gibraltar
+
+// Atlantic: Iberia -> Biscay -> Western Approaches -> Channel -> North Sea
+const IBERIA: Pt[] = [
+  [-9.9, 38.9],
+  [-10.0, 41.5],
+  [-10.2, 43.6],
+];
+const BISCAY: Pt[] = [
+  [-6, 47.5],
+  [-6, 48.8],
+  [-4.5, 49.8],
+];
+const EUROPE_NORTH = cat(SUEZ, IBERIA, BISCAY);
+const CHANNEL = cat(EUROPE_NORTH, [[-2.5, 50.3]]);
+const DOVER = cat(CHANNEL, [
+  [0.5, 50.4],
+  [1.5, 51.1],
+]);
+const NORTH_SEA = cat(DOVER, [
+  [2.6, 51.5],
+  [3.6, 52.0],
+]);
+
+// North Atlantic to the US east coast, and the Caribbean approach
+const US_EAST = cat(SUEZ, [
+  [-20, 36],
+  [-40, 36.5],
+  [-60, 36.8],
+]);
+const CARIB = cat(SUEZ, [
+  [-20, 32],
+  [-45, 25],
+  [-62, 17],
+  [-70, 13],
+]);
+
+// Indian Ocean south-west: Mozambique Channel and the Cape
+const MOZ_ENTRY = cat(ARABIAN_OUT, [
+  [65, 8],
+  [58, 0],
+  [52, -7],
+  [48, -11],
+]);
+const MOZ_CHANNEL = cat(MOZ_ENTRY, [
+  [45, -13],
+  [41, -18],
+]);
+const CAPE = cat(MOZ_CHANNEL, [
+  [38, -25],
+  [33, -32],
+  [26, -35.5],
+  [18.5, -35.5], // Cape of Good Hope, offshore
+  [12, -30],
+]);
+const WEST_AFRICA = cat(CAPE, [
+  [11, -20],
+  [11.5, -12],
+]);
+const BONNY = cat(WEST_AFRICA, [[8, -3]]);
+const GUINEA = cat(BONNY, [[5, 3]]);
+
+// South Atlantic and Cape Horn
+const S_ATLANTIC = cat(CAPE, [
+  [5, -33],
+  [-15, -30],
+  [-30, -25],
+]);
+const HORN = cat(CAPE, [
+  [-20, -40],
+  [-45, -52],
+  [-67, -56], // Cape Horn, offshore
+  [-75, -56],
+  [-77, -50],
+  [-76, -45],
+  [-74.5, -38],
+]);
+
+// Sri Lanka / Bay of Bengal / Malacca / South China Sea
+const LANKA_BASE: Pt[] = [
+  [72.5, 16],
+  [74, 11],
+  [77, 7.5],
+];
+const LANKA = cat(LANKA_BASE, [[79, 5.2]]); // clears Sri Lanka to the south
+const BENGAL = cat(LANKA, [
+  [81.5, 5.3],
+  [83, 7],
+  [85, 10],
+]);
+const MALACCA_N = cat(LANKA, [
+  [83, 4.5],
+  [90, 4.5],
+  [95, 6], // north of the Aceh tip
+  [97.5, 5.6],
+  [99.5, 4.6],
+]);
+const MALACCA = cat(MALACCA_N, [
+  [101, 3.2],
+  [102.2, 1.9],
+  [103.4, 1.2],
+]);
+const SG = cat(MALACCA, [[103.85, 1.27]]); // Singapore
+const SG_EAST = cat(SG, [[105, 3]]);
+const SCS = cat(SG_EAST, [[110, 8]]);
+const GULF_THAI = cat(SG_EAST, [
+  [104.3, 6.0],
+  [103.8, 9.0],
+]);
+const VIETNAM = cat(SG_EAST, [[106, 8]]);
+const LUZON_N = cat(SCS, [
+  [117, 13],
+  [119.5, 18.5],
+  [121.5, 21],
+]);
+const PHIL_SEA = cat(LUZON_N, [[124, 22.5]]);
+const EAST_CHINA = cat(PHIL_SEA, [[124, 27]]);
+
+// Trans-Pacific. Longitudes stay continuous past 180 (see `unwrap`).
+const PACIFIC = cat(PHIL_SEA, [
+  [135, 30],
+  [150, 34],
+  [170, 38],
+  [-175, 40],
+  [-150, 38],
+  [-130, 35],
+]);
+
+// Indian Ocean south of Sumatra/Java, then along southern Australia
+const INDIAN_S = cat(LANKA, [
+  [83, 4.5],
+  [90, 4.5],
+  [95, 6],
+  [93, 3],
+  [96, -2],
+  [100, -6],
+  [105, -9],
+  [112, -11],
+]);
+const AUSTRALIA_S = cat(INDIAN_S, [
+  [112, -25],
+  [115, -35],
+  [120, -36],
+  [130, -36],
+  [140, -39],
+]);
+const TASMAN = cat(AUSTRALIA_S, [[147, -44]]);
+
+// Persian Gulf via the Gulf of Oman and Hormuz
+const HORMUZ: Pt[] = [
+  [70, 20],
+  [63, 22.5],
+  [59, 24.5],
+  [56.7, 26.8],
+  [55.5, 25.5],
+];
+const GULF_MID = cat(HORMUZ, [
+  [53, 26.5],
+  [51.3, 27.0],
+]);
+
+// Aegean / Marmara / Black Sea (coarse — never seen on a Bajaj lane)
+const AEGEAN = cat(SUEZ_MED, [
+  [30, 32.5],
+  [26, 33.5],
+  [25, 34.5],
+  [24.5, 36.5],
+  [24.2, 37.5],
+  [24.3, 38.5],
+]);
+const MARMARA = cat(AEGEAN, [
+  [25.2, 39.6],
+  [26.0, 40.0],
+  [26.7, 40.4],
+  [27.5, 40.55],
+]);
+const BLACK_SEA = cat(MARMARA, [
+  [28.6, 40.85],
+  [29.1, 41.05],
+  [29.2, 41.5],
+]);
+
+// Baltic via the Skagerrak / Kattegat / Oresund
+const BALTIC = cat(NORTH_SEA, [
+  [5, 54.5],
+  [7.5, 57.3],
+  [10.2, 57.8],
+  [11.2, 57.3],
+  [12.0, 56.6],
+  [12.65, 56.05],
+  [12.75, 55.6],
+  [12.9, 55.3],
+  [13.5, 55.0],
+  [19, 55.6],
+]);
+
+/**
+ * POD key (a PORT_COORDS key) -> corridor waypoints, ORIGIN and the port
+ * coordinate excluded (both are added by `routeForPort`).
+ */
+const SEA_ROUTES: Record<string, Pt[]> = {
+  /* ── Indian sub-continent / Bay of Bengal ── */
+  COLOMBO: cat(LANKA_BASE, [[78.9, 6.9]]),
+  CHATTOGRAM: cat(BENGAL, [
+    [88, 15],
+    [90.5, 20.5],
+    [91.3, 21.9],
+  ]),
+  YANGON: cat(BENGAL, [
+    [90, 12],
+    [94, 15.5],
+    [96, 15.9],
+    [96.2, 16.3],
+  ]),
+  DHAKA: cat(BENGAL, [
+    [88, 15],
+    [90.5, 20.5],
+    [90.8, 22.2],
+    [90.6, 23.0],
+  ]),
+  KARACHI: cat([
+    [70, 20],
+    [67.5, 23.5],
+  ]),
+
+  /* ── Persian Gulf ── */
+  "JEBEL ALI": HORMUZ,
+  DAMMAM: cat(GULF_MID, [[50.4, 26.7]]),
+  "UMM QASR": cat(GULF_MID, [
+    [50, 29],
+    [48.6, 29.6],
+  ]),
+
+  /* ── Red Sea / Horn of Africa ── */
+  DJIBOUTI: cat(ARABIAN_OUT, ADEN),
+  MASSAWA: cat(RED_SEA_IN, [[40.5, 14.8]]),
+  JEDDAH: cat(RED_SEA_IN, [
+    [39.5, 17.5],
+    [38.8, 21.3],
+  ]),
+  "PORT SUDAN": cat(RED_SEA_IN, [
+    [39.5, 17.5],
+    [37.8, 19.4],
+  ]),
+
+  /* ── Mediterranean ── */
+  ALEXANDRIA: cat(SUEZ_MED, [[30.5, 31.7]]),
+  ASHDOD: cat(SUEZ_MED, [
+    [33.0, 31.6],
+    [34.4, 31.9],
+  ]),
+  MERSIN: cat(SUEZ_MED, [
+    [33.0, 32.5],
+    [34.9, 35.0],
+    [35.0, 36.3],
+  ]),
+  TRIPOLI: cat(SUEZ_MED, [
+    [30, 32.5],
+    [24, 33.8],
+    [16, 33.5],
+    [13.2, 33.5],
+  ]),
+  IZMIR: cat(AEGEAN, [
+    [25.5, 38.6],
+    [26.4, 38.5],
+  ]),
+  GEMLIK: MARMARA,
+  CONSTANTA: cat(BLACK_SEA, [[29.0, 44.1]]),
+  ODESSA: cat(BLACK_SEA, [
+    [30.5, 44.5],
+    [30.9, 45.9],
+  ]),
+  NOVOROSSIYSK: cat(BLACK_SEA, [
+    [33, 43],
+    [37.5, 44.5],
+  ]),
+
+  /* ── North-west Europe ── */
+  SOUTHAMPTON: cat(CHANNEL, [[-1.3, 50.72]]),
+  FELIXSTOWE: cat(DOVER, [
+    [1.7, 51.5],
+    [1.5, 51.9],
+  ]),
+  ANTWERP: cat(DOVER, [
+    [2.6, 51.5],
+    [3.3, 51.6],
+    [3.6, 51.45],
+  ]),
+  ROTTERDAM: cat(NORTH_SEA, [[4.0, 52.0]]),
+  HAMBURG: cat(NORTH_SEA, [
+    [4.5, 53.2],
+    [7.0, 54.0],
+    [8.2, 54.0],
+    [8.5, 53.9],
+  ]),
+  KLAIPEDA: BALTIC,
+  "ST PETERSBURG": cat(BALTIC, [
+    [20.5, 57.5],
+    [21.5, 58.8],
+    [24, 59.6],
+    [28, 60.1],
+    [29.6, 59.95],
+  ]),
+
+  /* ── Americas ── */
+  NORFOLK: cat(US_EAST, [[-75.9, 36.95]]),
+  "NEW YORK": cat(US_EAST, [
+    [-72, 39.5],
+    [-73.9, 40.4],
+  ]),
+  SAVANNAH: cat(US_EAST, [
+    [-75, 33],
+    [-80.5, 31.9],
+  ]),
+  CARTAGENA: cat(CARIB, [[-75.6, 10.6]]),
+  VERACRUZ: cat(CARIB, [
+    [-79, 19.5],
+    [-84.5, 20.5],
+    [-92, 20.3],
+    [-95.8, 19.4],
+  ]),
+  HOUSTON: cat(CARIB, [
+    [-79, 19.5],
+    [-84.5, 20.5],
+    [-88, 25],
+    [-94.5, 29.3],
+  ]),
+  "LOS ANGELES": PACIFIC,
+  MANAUS: cat(S_ATLANTIC, [
+    [-40, -10],
+    [-45, -2],
+    [-48, -0.6], // Amazon mouth; the last legs run up the river
+    [-55, -2.2],
+  ]),
+  SANTOS: cat(S_ATLANTIC, [
+    [-40, -25],
+    [-45.5, -24.5],
+  ]),
+  MONTEVIDEO: cat(S_ATLANTIC, [
+    [-40, -33],
+    [-53, -36],
+    [-55.8, -35.2],
+  ]),
+  "BUENOS AIRES": cat(S_ATLANTIC, [
+    [-40, -33],
+    [-53, -36],
+    [-56.5, -35.5],
+  ]),
+  "SAN ANTONIO": cat(HORN, [[-73.0, -34.5]]),
+  VALPARAISO: cat(HORN, [[-73.0, -34.2]]),
+  CALLAO: cat(HORN, [
+    [-73, -30],
+    [-72, -20],
+    [-77.5, -12.2],
+  ]),
+  GUAYAQUIL: cat(HORN, [
+    [-73, -30],
+    [-72, -20],
+    [-80, -8],
+    [-81.5, -4],
+    [-81.0, -2.6],
+  ]),
+
+  /* ── East / southern Africa & the Indian Ocean islands ── */
+  MOMBASA: cat(ARABIAN_OUT, [
+    [65, 8],
+    [58, 0],
+    [52, -2],
+    [45, -3.5],
+    [40.5, -4.0],
+  ]),
+  "DAR ES SALAAM": cat(ARABIAN_OUT, [
+    [65, 8],
+    [58, 0],
+    [52, -2],
+    [45, -5.5],
+    [40.0, -6.9],
+  ]),
+  "PORT LOUIS": cat(ARABIAN_OUT, [
+    [65, 8],
+    [58, 0],
+    [57, -10],
+    [57.6, -19.5],
+  ]),
+  NACALA: cat(MOZ_ENTRY, [
+    [45, -13],
+    [41.5, -14.4],
+  ]),
+  BEIRA: cat(MOZ_ENTRY, [
+    [45, -13],
+    [41, -16],
+    [38, -19],
+    [36, -19.9],
+  ]),
+  TAMATAVE: cat(MOZ_ENTRY, [
+    [50.3, -11.6], // round the northern tip of Madagascar
+    [51.0, -14.0],
+    [50.5, -17.0],
+  ]),
+  MAPUTO: cat(MOZ_CHANNEL, [
+    [38, -25],
+    [33.5, -25.9],
+  ]),
+  DURBAN: cat(MOZ_CHANNEL, [
+    [38, -25],
+    [32.5, -29.5],
+  ]),
+
+  /* ── West Africa ── */
+  "WALVIS BAY": cat(CAPE, [
+    [13.5, -25],
+    [14.2, -23.2],
+  ]),
+  LUANDA: WEST_AFRICA,
+  MATADI: cat(WEST_AFRICA, [
+    [11.5, -6.5],
+    [12.3, -6.05],
+  ]),
+  ONNE: cat(BONNY, [
+    [7.2, 3.0],
+    [7.2, 4.2],
+  ]),
+  DOUALA: cat(BONNY, [
+    [8.5, 2.5],
+    [9.4, 3.6],
+  ]),
+  "APAPA LAGOS": cat(GUINEA, [[3.5, 6.0]]),
+  LEKKI: cat(GUINEA, [[4.1, 6.0]]),
+  TEMA: cat(GUINEA, [[0.2, 5.0]]),
+  ABIDJAN: cat(GUINEA, [
+    [0, 4.0],
+    [-4.0, 4.7],
+  ]),
+  CONAKRY: cat(GUINEA, [
+    [0, 4.0],
+    [-4.0, 4.7],
+    [-9, 6],
+    [-14, 8.8],
+  ]),
+  DAKAR: cat(GUINEA, [
+    [0, 4.0],
+    [-4.0, 4.7],
+    [-9, 6],
+    [-14, 8.8],
+    [-17.5, 11],
+    [-17.9, 14.6],
+  ]),
+
+  /* ── South-east / east Asia ── */
+  BELAWAN: cat(MALACCA_N, [[99.0, 4.1]]),
+  "PORT KLANG": cat(MALACCA_N, [[101, 3.2]]),
+  SINGAPORE: MALACCA,
+  JAKARTA: cat(SG, [
+    [107.5, -2],
+    [107, -4.5],
+  ]),
+  SIHANOUKVILLE: GULF_THAI,
+  "LAEM CHABANG": cat(GULF_THAI, [
+    [102.5, 11],
+    [101.5, 12.2],
+  ]),
+  "HO CHI MINH": cat(VIETNAM, [[107, 10.3]]),
+  HAIPHONG: cat(VIETNAM, [
+    [110, 13],
+    [109.5, 16.5],
+    [107.8, 18.0],
+    [107.2, 20.3],
+  ]),
+  MANILA: cat(SCS, [
+    [117, 13],
+    [119.8, 14.6],
+    [120.6, 14.4],
+  ]),
+  KEELUNG: cat(LUZON_N, [
+    [119.5, 22.3],
+    [119.8, 24.5],
+    [121.3, 25.6],
+  ]),
+  NINGBO: cat(EAST_CHINA, [[122.8, 29.5]]),
+  SHANGHAI: cat(EAST_CHINA, [
+    [123.5, 31.0],
+    [122.3, 31.3],
+  ]),
+  QINGDAO: cat(EAST_CHINA, [
+    [124, 33],
+    [122.5, 35.5],
+  ]),
+  BUSAN: cat(PHIL_SEA, [
+    [126, 27],
+    [127, 31],
+    [128, 33],
+  ]),
+  TOKYO: cat(PHIL_SEA, [
+    [126, 26],
+    [130, 30],
+    [135, 32.5],
+    [138, 34],
+  ]),
+
+  /* ── Oceania ── */
+  MELBOURNE: cat(AUSTRALIA_S, [[144.3, -38.6]]),
+  SYDNEY: cat(TASMAN, [
+    [152, -38],
+    [151.5, -34.2],
+  ]),
+  AUCKLAND: cat(TASMAN, [
+    [155, -42],
+    [170, -38],
+    [174, -34.5],
+    [175.6, -36.3],
+  ]),
+};
+
+/* aliases that share a corridor with their canonical port */
+SEA_ROUTES.CHITTAGONG = SEA_ROUTES.CHATTOGRAM;
+SEA_ROUTES.TOAMASINA = SEA_ROUTES.TAMATAVE;
+SEA_ROUTES["BEIRA PORT"] = SEA_ROUTES.BEIRA;
+SEA_ROUTES.DUBAI = SEA_ROUTES["JEBEL ALI"];
+SEA_ROUTES.WALVIS = SEA_ROUTES["WALVIS BAY"];
+SEA_ROUTES.APAPA = SEA_ROUTES["APAPA LAGOS"];
+SEA_ROUTES.LAGOS = SEA_ROUTES["APAPA LAGOS"];
+SEA_ROUTES.TINCAN = SEA_ROUTES["APAPA LAGOS"];
+SEA_ROUTES["TIN CAN"] = SEA_ROUTES["APAPA LAGOS"];
+SEA_ROUTES["DKI JAKARTA"] = SEA_ROUTES.JAKARTA;
+SEA_ROUTES["TANJUNG PRIOK"] = SEA_ROUTES.JAKARTA;
+SEA_ROUTES["HO CHI MINH CITY"] = SEA_ROUTES["HO CHI MINH"];
+
+/* ------------------------------------------------------------------ */
+/* Densification                                                       */
+/* ------------------------------------------------------------------ */
+
+/** Keeps longitudes continuous so trans-Pacific lanes don't wrap the globe. */
+function unwrap(pts: Pt[]): Pt[] {
+  const out: Pt[] = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    let lng = pts[i][0];
+    const prev = out[i - 1][0];
+    while (lng - prev > 180) lng -= 360;
+    while (prev - lng > 180) lng += 360;
+    out.push([lng, pts[i][1]]);
   }
-  return pts;
+  return out;
+}
+
+const MIN_POINTS = 34;
+const MAX_POINTS = 48;
+
+/** Linear interpolation between the corridor waypoints, ~34-48 points total. */
+function densify(wp: Pt[]): Pt[] {
+  if (wp.length < 2) return wp.slice();
+  const segs = wp.slice(1).map((p, i) => Math.hypot(p[0] - wp[i][0], p[1] - wp[i][1]));
+  const total = segs.reduce((a, b) => a + b, 0);
+  if (total === 0) return wp.slice();
+
+  const target = Math.max(MIN_POINTS, Math.min(MAX_POINTS, wp.length * 2)) - 1;
+  const out: Pt[] = [];
+  for (let i = 0; i < segs.length; i++) {
+    const n = Math.max(1, Math.round((segs[i] / total) * target));
+    for (let k = 0; k < n; k++) {
+      const t = k / n;
+      out.push([
+        Number((wp[i][0] + (wp[i + 1][0] - wp[i][0]) * t).toFixed(2)),
+        Number((wp[i][1] + (wp[i + 1][1] - wp[i][1]) * t).toFixed(2)),
+      ]);
+    }
+  }
+  out.push([Number(wp[wp.length - 1][0].toFixed(2)), Number(wp[wp.length - 1][1].toFixed(2))]);
+  return out;
+}
+
+const routeCache = new Map<string, Pt[]>();
+
+/**
+ * Densified sea route from Nhava Sheva to `port`, or null when the POD has no
+ * corridor (unknown / mis-typed / landlocked) — callers hide the line + ship.
+ */
+export function routeForPortKey(key: string): Pt[] | null {
+  if (!key) return null;
+  const hit = routeCache.get(key);
+  if (hit) return hit;
+  const wps = SEA_ROUTES[key];
+  const coord = PORT_COORDS[key];
+  if (!wps || !coord) return null;
+  const dense = densify(unwrap(cat([ORIGIN_PORT.coord], wps, [coord])));
+  routeCache.set(key, dense);
+  return dense;
+}
+
+export function routeForPort(port: unknown): Pt[] | null {
+  const key = portKey(port);
+  return key ? routeForPortKey(key) : null;
+}
+
+/** Ports that resolve to a coordinate but have no hand-built corridor. */
+export function hasSeaRoute(port: unknown): boolean {
+  const key = portKey(port);
+  return !!key && !!SEA_ROUTES[key];
 }
 
 /** Point at `progress` (0..1) along a polyline, by cumulative segment length. */
@@ -596,11 +1229,99 @@ export function pointAt(route: [number, number][], progress: number): [number, n
   return route[route.length - 1];
 }
 
+/**
+ * Bearing (deg, clockwise from north, minus 90 so the ship glyph — which points
+ * east at rest — lines up) of the route at `progress`, measured by the same
+ * cumulative-distance walk `pointAt` uses so the icon matches the drawn line.
+ */
+export function headingAtProgress(route: [number, number][], progress: number): number {
+  if (route.length < 2) return 0;
+  const p = Math.max(0, Math.min(1, progress));
+  const segs: number[] = [];
+  let total = 0;
+  for (let i = 1; i < route.length; i++) {
+    const d = Math.hypot(route[i][0] - route[i - 1][0], route[i][1] - route[i - 1][1]);
+    segs.push(d);
+    total += d;
+  }
+  if (total === 0) return 0;
+  let target = total * p;
+  let idx = segs.length - 1;
+  for (let i = 0; i < segs.length; i++) {
+    if (target <= segs[i]) {
+      idx = i;
+      break;
+    }
+    target -= segs[i];
+  }
+  const [x0, y0] = route[idx];
+  const [x1, y1] = route[idx + 1];
+  return (Math.atan2(x1 - x0, y1 - y0) * 180) / Math.PI - 90;
+}
+
 /* ------------------------------------------------------------------ */
 /* Board (module) labels                                               */
 /* ------------------------------------------------------------------ */
 
 export type BoardOption = { slug: string; label: string };
+
+/* ------------------------------------------------------------------ */
+/* Lifecycle journey (per work order)                                  */
+/* ------------------------------------------------------------------ */
+
+/** Exactly the `bajaj_statuses` names, in `display_order` order (0..9). */
+export const STAGE_NAMES = [
+  "Planning",
+  "Booking Request",
+  "Booking",
+  "Container Allocation",
+  "SI Filing",
+  "Custom Clearance",
+  "Gate Open",
+  "BL Release",
+  "Billing",
+  "Completed",
+] as const;
+
+/** One rung of the ladder: `d` = short date (or "—"), `n` = subtitle. */
+export type JourneyStep = { d: string; n: string };
+
+/** first value that actually parses as a date (blank/"-" cells are skipped) */
+function firstDate(...vals: unknown[]): unknown {
+  for (const v of vals) if (parseDate(v) != null) return v;
+  return null;
+}
+
+const txt = (v: unknown): string => String(v ?? "").trim();
+
+/**
+ * All ten lifecycle stages for one work order, aligned to STAGE_NAMES.
+ * Dates come from the ops-sheet keys defined in lib/bajaj/import-map.mjs.
+ */
+export function buildJourney(data: Record<string, unknown>): JourneyStep[] {
+  const cont = txt(data.cont);
+  const pay = txt(data.sline_payment);
+  const vessel = txt(data.vslname) || txt(data.s_line);
+  const sb = txt(data.sbno);
+  const bl = txt(data.blno);
+  const booking = txt(data.booking_no);
+
+  return [
+    { d: fmtShort(firstDate(data.wodt, data.stuffing_dt)), n: "" },
+    { d: fmtShort(data.do_given_dt), n: vessel ? "Vessel nominated" : "" },
+    { d: fmtShort(data.do_given_dt), n: booking },
+    {
+      d: fmtShort(data.cntr_dispatch),
+      n: cont ? `${cont} container${cont === "1" ? "" : "s"}` : "",
+    },
+    { d: fmtShort(firstDate(data.si_submitted, data.si_cutoff)), n: "" },
+    { d: fmtShort(data.sb_date), n: sb ? `SB ${sb}` : "" },
+    { d: fmtShort(firstDate(data.gate_open, data.cntr_gated)), n: "" },
+    { d: fmtShort(data.bldt), n: bl },
+    { d: fmtShort(data.courier_dt), n: pay.toUpperCase().includes("INV") ? pay : "" },
+    { d: fmtShort(data.bl_handover_time), n: "" },
+  ];
+}
 
 /* ------------------------------------------------------------------ */
 /* Main mapper                                                         */
@@ -630,11 +1351,12 @@ export function toLiveShipment(
   const displayOrder = status?.display_order ?? 0;
   const progress = Math.max(0, Math.min(1, displayOrder / MAX_ORDER));
 
-  const dCoord = portCoord(data.port);
-  // Unknown port -> degenerate 2-point line; the map hides the route + markers.
-  const route: [number, number][] = dCoord
-    ? buildRoute(ORIGIN_PORT.coord, dCoord)
-    : [ORIGIN_PORT.coord, ORIGIN_PORT.coord];
+  // Waypoint-corridor route. Unknown / landlocked PODs keep the degenerate
+  // 2-point line (so the camera still frames Nhava Sheva) but hasRoute=false
+  // makes the map hide the line and both markers instead of drawing over land.
+  const seaRoute = routeForPort(data.port);
+  const hasRoute = seaRoute != null;
+  const route: [number, number][] = seaRoute ?? [ORIGIN_PORT.coord, ORIGIN_PORT.coord];
   const cur = pointAt(route, progress);
 
   const sailing = parseDate(data.sailingdt) ?? parseDate(data.stuffing_dt);
@@ -715,8 +1437,12 @@ export function toLiveShipment(
     weight,
     container: container || "—",
 
-    route,
+    routeKey: hasRoute ? (portKey(data.port) ?? "") : "",
     cur: [Number(cur[0].toFixed(4)), Number(cur[1].toFixed(4))],
+    hasRoute,
+
+    stageIndex: Math.max(0, Math.min(STAGE_NAMES.length - 1, displayOrder)),
+    journey: buildJourney(data),
 
     search: [
       woId,
@@ -735,4 +1461,21 @@ export function toLiveShipment(
       .toLowerCase(),
     rank,
   };
+}
+
+
+/**
+ * Routes shared by destination port. A month can hold hundreds of work orders
+ * bound for the same POD; shipping one polyline per row would repeat the same
+ * 30-60 coordinate pairs over and over in the RSC payload, so the page sends
+ * this lookup once and each shipment references it by `routeKey`.
+ */
+export function routesForShipments(shipments: LiveShipment[]): Record<string, [number, number][]> {
+  const out: Record<string, [number, number][]> = {};
+  for (const s of shipments) {
+    if (!s.routeKey || out[s.routeKey]) continue;
+    const r = routeForPortKey(s.routeKey);
+    if (r) out[s.routeKey] = r;
+  }
+  return out;
 }

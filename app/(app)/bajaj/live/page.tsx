@@ -6,6 +6,7 @@ import { Manrope } from "next/font/google";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { MONTH_RE, resolveSheetSources } from "@/lib/bajaj/sheet-sources";
 import {
+  routesForShipments,
   toLiveShipment,
   type BoardOption,
   type LiveShipment,
@@ -142,6 +143,7 @@ export default async function BajajLivePage({
     <div className="h-full overflow-hidden p-4" style={{ background: "var(--main-bg)" }}>
       <LiveShipmentsShell
         shipments={capped}
+        routes={routesForShipments(capped)}
         boards={BOARDS}
         totalCount={shipments.length}
         monthLabel={monthLabel}
