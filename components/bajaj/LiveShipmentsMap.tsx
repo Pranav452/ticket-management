@@ -153,8 +153,24 @@ export default function LiveShipmentsMap({
       curRef.current.setLngLat(s.cur);
       const el = curRef.current.getElement();
       el.style.display = drawn ? "flex" : "none";
+      // Three render states. Only a vessel actually AT SEA gets the pulsing
+      // ring; one that has not sailed sits quietly on the origin dot and one
+      // that has arrived sits on the destination dot, both smaller and static
+      // so "docked" reads differently from "under way" at a glance.
+      const docked = s.atOrigin || s.arrived;
+      const pulse = el.querySelector<HTMLElement>("[data-pulse]");
+      const ring = el.querySelector<HTMLElement>("[data-ring]");
+      if (pulse) pulse.style.display = docked ? "none" : "block";
+      if (ring) ring.style.display = docked ? "none" : "block";
       const inner = el.querySelector<HTMLElement>("[data-ship]");
-      if (inner) inner.style.transform = `rotate(${headingAtProgress(route, s.progress)}deg)`;
+      if (inner) {
+        // docked vessels keep the route heading but shrink and sit off the dot
+        const rot = headingAtProgress(route, s.markerProgress);
+        inner.style.transform = docked
+          ? `translate(0,-13px) scale(.62) rotate(${rot}deg)`
+          : `rotate(${rot}deg)`;
+        inner.style.opacity = docked ? "0.9" : "1";
+      }
     }
     if (fly) flyToShipment();
   };
@@ -281,7 +297,7 @@ export default function LiveShipmentsMap({
       destRef.current = new Marker({ element: destEl }).setLngLat([0, 0]).addTo(m);
 
       const shipWrap = mkEl(
-        '<div style="position:relative;display:flex;align-items:center;justify-content:center"><div style="position:absolute;width:74px;height:74px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.14),rgba(255,255,255,0) 65%);border:1px solid rgba(255,255,255,.3);animation:lg-pulse 2.4s ease-out infinite"></div><div style="position:absolute;width:74px;height:74px;border-radius:50%;border:1px solid rgba(255,255,255,.18)"></div><div data-ship>' +
+        '<div style="position:relative;display:flex;align-items:center;justify-content:center"><div data-pulse style="position:absolute;width:74px;height:74px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.14),rgba(255,255,255,0) 65%);border:1px solid rgba(255,255,255,.3);animation:lg-pulse 2.4s ease-out infinite"></div><div data-ring style="position:absolute;width:74px;height:74px;border-radius:50%;border:1px solid rgba(255,255,255,.18)"></div><div data-ship>' +
           shipSvg(-24) +
           "</div></div>",
       );

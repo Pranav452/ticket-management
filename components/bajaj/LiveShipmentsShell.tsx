@@ -1197,7 +1197,36 @@ export default function LiveShipmentsShell({
                       color: "#5f6a76",
                     }}
                   >
-                    ON THE WAY: <span style={{ color: "#c6cfd8" }}>{sel.onway}</span>
+                    {sel.atOrigin ? (
+                      <>
+                        NOT SAILED
+                        {sel.departsOn !== "—" && (
+                          <>
+                            {" · DEPARTS "}
+                            <span style={{ color: "#c6cfd8" }}>{sel.departsOn}</span>
+                          </>
+                        )}
+                      </>
+                    ) : sel.arrived ? (
+                      <>
+                        ARRIVED <span style={{ color: "#c6cfd8" }}>{sel.arrivesOn}</span>
+                      </>
+                    ) : (
+                      <>
+                        ON THE WAY: <span style={{ color: "#c6cfd8" }}>{sel.onway || "—"}</span>
+                        {sel.arrivesOn !== "—" && (
+                          <>
+                            {" · ETA "}
+                            <span style={{ color: "#c6cfd8" }}>{sel.arrivesOn}</span>
+                            {sel.etaEstimated && (
+                              <span style={{ color: "#8a94a3" }} title="ETA estimated from route length">
+                                {" ~"}
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
                 <div
@@ -1208,7 +1237,7 @@ export default function LiveShipmentsShell({
                       height: 4,
                       borderRadius: 99,
                       background: "linear-gradient(90deg,#2f9bf0,#57b6f7)",
-                      width: `${Math.round(sel.progress * 100)}%`,
+                      width: `${Math.round(sel.voyageProgress * 100)}%`,
                       position: "relative",
                     }}
                   >

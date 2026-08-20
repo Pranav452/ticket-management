@@ -35,8 +35,33 @@ export type LiveShipment = {
   dSched: string;
   dEst: string;
 
+  /** remaining voyage time when at sea, e.g. "12D 06H" ("" otherwise) */
   onway: string;
-  progress: number;
+  /**
+   * DATE-DRIVEN position along the sea route, 0..1 — how far the vessel is from
+   * its POD given its actual sail-away date and its ETA. NOT a lifecycle-stage
+   * fraction: a WO parked at "Gate Open" in Nhava Sheva is still at 0.
+   */
+  voyageProgress: number;
+  /** no sail-away date yet (or it is in the future) — still docked at the POL */
+  atOrigin: boolean;
+  /** stage is Completed, or the ETA has passed */
+  arrived: boolean;
+  /** the ETA was derived from route length ÷ service speed, not from the sheet */
+  etaEstimated: boolean;
+  /** whole days from departure to arrival, null when either is unknown */
+  transitDaysTotal: number | null;
+  /** whole days from now to arrival, null when not at sea */
+  daysRemaining: number | null;
+  /**
+   * Fraction along the route where the MARKER is drawn. Equals voyageProgress
+   * except for river PODs at sea, where it is capped at the seaward anchorage.
+   */
+  markerProgress: number;
+  /** "AUG 28" — planned departure, shown while the vessel has not sailed */
+  departsOn: string;
+  /** "SEP 14" — arrival date (actual or estimated) */
+  arrivesOn: string;
   agent: string;
   caseId: string;
   etaConf: "HIGH" | "MEDIUM" | "LOW";
@@ -189,13 +214,15 @@ const PORT_COORDS: Record<string, [number, number]> = {
   TINCAN: [3.34, 6.44],
   "TIN CAN": [3.34, 6.44],
   ONNE: [7.15, 4.72],
-  SOUTHAMPTON: [-1.42, 50.9],
+  SOUTHAMPTON: [-1.457, 50.907], // DP World Southampton container terminal
   SIHANOUKVILLE: [103.52, 10.63],
-  DHAKA: [90.41, 23.71],
+  // Dhaka has no seaport: the actual container facility is Pangaon ICT,
+  // a river terminal on the Buriganga ~250 km inland (see RIVER_ANCHORAGE).
+  DHAKA: [90.456, 23.657],
   MANAUS: [-60.02, -3.13],
   "BEIRA PORT": [34.84, -19.83],
   BEIRA: [34.84, -19.83],
-  DJIBOUTI: [43.14, 11.6],
+  DJIBOUTI: [43.069, 11.601], // Doraleh container terminal
   TAMATAVE: [49.41, -18.15],
   TOAMASINA: [49.41, -18.15],
   "LOS ANGELES": [-118.26, 33.73],
@@ -271,6 +298,40 @@ const PORT_COORDS: Record<string, [number, number]> = {
   "ST PETERSBURG": [30.24, 59.9],
   NOVOROSSIYSK: [37.79, 44.72],
 };
+
+/**
+ * Ports whose container terminal is materially inland — reached only after a
+ * long river / estuary passage. Value is the SEAWARD ANCHORAGE: the open-water
+ * point a vessel would sit off before making that passage.
+ *
+ * While a shipment is AT SEA its marker is clamped to this anchorage, so the
+ * boat never appears to be steaming across a landmass (Manaus is ~1,500 km up
+ * the Amazon; Dhaka is ~250 km up the Meghna/Buriganga). The dotted route line
+ * is still drawn all the way to the terminal, and once the vessel has ARRIVED
+ * it sits on the terminal coordinate itself.
+ */
+const RIVER_ANCHORAGE: Record<string, [number, number]> = {
+  // ~1,500 km up the Amazon. Hold at the Canal Norte / river mouth.
+  MANAUS: [-49.3, 0.6],
+  // Yangon River; the pilot station alone sits 32 km seaward of Elephant Point.
+  YANGON: [96.37, 15.97],
+  // Pangaon ICT is ~250 km inland — hold in the outer Meghna estuary.
+  DHAKA: [90.7, 21.4],
+  // ~15 km up the Karnaphuli — hold at the Patenga outer anchorage.
+  CHATTOGRAM: [91.803, 22.226],
+  // ~220 km of dredged Rio de la Plata channel; hold at the Recalada pilot station.
+  "BUENOS AIRES": [-56.0, -35.07],
+};
+RIVER_ANCHORAGE.CHITTAGONG = RIVER_ANCHORAGE.CHATTOGRAM;
+
+/** true when the POD's terminal sits materially inland up a river */
+export function isRiverPort(key: string | null): boolean {
+  return !!key && RIVER_ANCHORAGE[key] != null;
+}
+
+export function anchorageForPortKey(key: string | null): [number, number] | null {
+  return key ? (RIVER_ANCHORAGE[key] ?? null) : null;
+}
 
 /** country (upper-cased) -> ISO2 for flagcdn */
 const COUNTRY_CC: Record<string, string> = {
@@ -1234,6 +1295,76 @@ export function pointAt(route: [number, number][], progress: number): [number, n
   return route[route.length - 1];
 }
 
+/* ------------------------------------------------------------------ */
+/* Voyage distance / speed                                             */
+/* ------------------------------------------------------------------ */
+
+const EARTH_NM = 3440.065; // mean Earth radius in nautical miles
+const RAD = Math.PI / 180;
+
+/** Great-circle distance between two [lng,lat] points, in nautical miles. */
+export function haversineNm(a: [number, number], b: [number, number]): number {
+  const dLat = (b[1] - a[1]) * RAD;
+  const dLng = (b[0] - a[0]) * RAD;
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(a[1] * RAD) * Math.cos(b[1] * RAD) * Math.sin(dLng / 2) ** 2;
+  return 2 * EARTH_NM * Math.asin(Math.min(1, Math.sqrt(s)));
+}
+
+/** Total great-circle length of a densified polyline, in nautical miles. */
+export function routeLengthNm(route: [number, number][]): number {
+  let total = 0;
+  for (let i = 1; i < route.length; i++) total += haversineNm(route[i - 1], route[i]);
+  return total;
+}
+
+/**
+ * Service speed assumed when the ops sheet carries no ETA. 330 nm/day
+ * ≈ 13.75 kn, a realistic door-to-door average for the container services on
+ * these lanes once port time and slow steaming are absorbed.
+ */
+export const SERVICE_SPEED_NM_PER_DAY = 330;
+
+/**
+ * Fraction (0..1) along `route` of the point closest to `target`, measured by
+ * the same cumulative-segment walk `pointAt` uses. Used to convert a seaward
+ * anchorage coordinate into a progress ceiling for river ports.
+ */
+export function progressOfNearest(route: [number, number][], target: [number, number]): number {
+  if (route.length < 2) return 0;
+  const segs: number[] = [];
+  let total = 0;
+  for (let i = 1; i < route.length; i++) {
+    const d = Math.hypot(route[i][0] - route[i - 1][0], route[i][1] - route[i - 1][1]);
+    segs.push(d);
+    total += d;
+  }
+  if (total === 0) return 0;
+
+  let best = Infinity;
+  let bestAt = 0;
+  let walked = 0;
+  for (let i = 0; i < segs.length; i++) {
+    const [ax, ay] = route[i];
+    const [bx, by] = route[i + 1];
+    const vx = bx - ax;
+    const vy = by - ay;
+    const len2 = vx * vx + vy * vy;
+    // projection of `target` onto this segment, clamped to its endpoints
+    const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((target[0] - ax) * vx + (target[1] - ay) * vy) / len2));
+    const px = ax + vx * t;
+    const py = ay + vy * t;
+    const d2 = (target[0] - px) ** 2 + (target[1] - py) ** 2;
+    if (d2 < best) {
+      best = d2;
+      bestAt = (walked + segs[i] * t) / total;
+    }
+    walked += segs[i];
+  }
+  return bestAt;
+}
+
 /**
  * Bearing (deg, clockwise from north, minus 90 so the ship glyph — which points
  * east at rest — lines up) of the route at `progress`, measured by the same
@@ -1516,7 +1647,128 @@ export type WorkOrderRow = {
 
 export type StatusMeta = { name: string; display_order: number };
 
-const MAX_ORDER = 9;
+const DAY_MS = 86400000;
+
+/** Clamp used while the vessel is at sea so the marker never sits on a port dot. */
+const AT_SEA_MIN = 0.02;
+const AT_SEA_MAX = 0.98;
+
+export type VoyageFix = {
+  /** date-driven fraction of the voyage completed, 0..1 */
+  voyageProgress: number;
+  /** where the marker is drawn — anchorage-clamped for river PODs while at sea */
+  markerProgress: number;
+  atOrigin: boolean;
+  arrived: boolean;
+  etaEstimated: boolean;
+  departure: Date | null;
+  plannedDep: Date | null;
+  arrival: Date | null;
+  transitDaysTotal: number | null;
+  daysRemaining: number | null;
+};
+
+/**
+ * DATE-DRIVEN vessel position.
+ *
+ * The old model placed the ship at `display_order / 9` — a lifecycle-stage
+ * fraction — so a work order still sitting at "Gate Open" in Nhava Sheva was
+ * drawn 67% of the way to its POD, i.e. mid-Atlantic. Position now comes from
+ * how close the vessel actually is to its destination in TIME:
+ *
+ *   1. NOT SAILED  — no sail-away date, or it is still in the future.
+ *                    progress 0, docked at the POL.
+ *   2. ARRIVED     — stage is Completed, or the ETA has passed. progress 1.
+ *   3. AT SEA      — (now − departure) / (arrival − departure), clamped so the
+ *                    marker never overlaps either port dot. With no ETA in the
+ *                    sheet, one is estimated from route length ÷ service speed.
+ */
+export function voyageFix(
+  data: Record<string, unknown>,
+  statusName: unknown,
+  route: [number, number][],
+  routeKey: string | null,
+  now: Date,
+): VoyageFix {
+  // actual sail-away, then the planned ETD as a fallback intent
+  const departure = parseDate(data.final_vsl_sob) ?? parseDate(data.sailingdt);
+  const plannedDep = parseDate(data.current_etd) ?? parseDate(data.do_etd);
+  const sheetArrival = parseDate(data.eta_at_destination);
+
+  const completed = norm(statusName) === "COMPLETED";
+  const hasSailed = departure != null && departure.getTime() <= now.getTime();
+
+  // ETA: from the sheet, else estimated from the corridor length at service speed
+  let arrival = sheetArrival;
+  let etaEstimated = false;
+  if (!arrival && departure && route.length > 1) {
+    const days = routeLengthNm(route) / SERVICE_SPEED_NM_PER_DAY;
+    arrival = new Date(departure.getTime() + days * DAY_MS);
+    etaEstimated = true;
+  }
+
+  const base = {
+    etaEstimated,
+    departure,
+    plannedDep,
+    arrival,
+    transitDaysTotal:
+      departure && arrival
+        ? Math.max(0, Math.round((arrival.getTime() - departure.getTime()) / DAY_MS))
+        : null,
+  };
+
+  // 1. not sailed — still alongside at Nhava Sheva
+  if (!hasSailed && !completed) {
+    return {
+      ...base,
+      voyageProgress: 0,
+      markerProgress: 0,
+      atOrigin: true,
+      arrived: false,
+      daysRemaining: null,
+    };
+  }
+
+  // 2. arrived — completed, or the ETA is behind us
+  if (completed || (arrival != null && arrival.getTime() <= now.getTime())) {
+    return {
+      ...base,
+      voyageProgress: 1,
+      markerProgress: 1,
+      atOrigin: false,
+      arrived: true,
+      daysRemaining: 0,
+    };
+  }
+
+  // 3. at sea — linear in time between departure and arrival
+  let voyageProgress = 0.5;
+  if (departure && arrival) {
+    const span = arrival.getTime() - departure.getTime();
+    voyageProgress = span > 0 ? (now.getTime() - departure.getTime()) / span : 1;
+  }
+  voyageProgress = Math.max(AT_SEA_MIN, Math.min(AT_SEA_MAX, voyageProgress));
+
+  // River PODs: hold the marker at the seaward anchorage until it has arrived,
+  // so the vessel never appears to steam 1,500 km up the Amazon.
+  let markerProgress = voyageProgress;
+  const anchor = anchorageForPortKey(routeKey);
+  if (anchor && route.length > 1) {
+    markerProgress = Math.min(markerProgress, progressOfNearest(route, anchor));
+  }
+
+  return {
+    ...base,
+    voyageProgress,
+    markerProgress,
+    atOrigin: false,
+    arrived: false,
+    daysRemaining: arrival
+      ? Math.max(0, Math.round((arrival.getTime() - now.getTime()) / DAY_MS))
+      : null,
+  };
+}
 
 export function toLiveShipment(
   row: WorkOrderRow,
@@ -1528,25 +1780,23 @@ export function toLiveShipment(
 
   const statusLabel = deriveStatus(status?.name, data, now);
   const displayOrder = status?.display_order ?? 0;
-  const progress = Math.max(0, Math.min(1, displayOrder / MAX_ORDER));
 
   // Waypoint-corridor route. Unknown / landlocked PODs keep the degenerate
   // 2-point line (so the camera still frames Nhava Sheva) but hasRoute=false
   // makes the map hide the line and both markers instead of drawing over land.
+  const pKey = portKey(data.port);
   const seaRoute = routeForPort(data.port);
   const hasRoute = seaRoute != null;
   const route: [number, number][] = seaRoute ?? [ORIGIN_PORT.coord, ORIGIN_PORT.coord];
-  const cur = pointAt(route, progress);
 
-  const sailing = parseDate(data.sailingdt) ?? parseDate(data.stuffing_dt);
-  const eta =
-    parseDate(data.eta_at_destination) ?? parseDate(data.current_etd) ?? parseDate(data.sailingdt);
+  // DATE-driven position (see voyageFix) — never the lifecycle-stage fraction.
+  const fix = voyageFix(data, status?.name, route, hasRoute ? pKey : null, now);
+  const cur = pointAt(route, fix.markerProgress);
 
   const oDateRaw = data.stuffing_dt;
   const dDateRaw = data.eta_at_destination ?? data.current_etd ?? data.sailingdt;
 
-  const transitDays =
-    sailing && eta ? Math.max(0, Math.round((eta.getTime() - sailing.getTime()) / 86400000)) : null;
+  const transitDays = fix.transitDaysTotal;
 
   // NOTE: the ops sheet has no `gross_wt_kg` key; the closest real field is
   // `gross_weight` (only present on some modules). Fall back to unit count.
@@ -1608,8 +1858,20 @@ export function toLiveShipment(
     dSched: fmtShort(data.do_etd ?? data.current_etd),
     dEst: fmtShort(data.eta_at_destination ?? data.current_etd),
 
-    onway: fmtDuration(sailing, now),
-    progress,
+    // remaining voyage time, e.g. "12D 06H" — blank unless actually at sea
+    onway:
+      fix.atOrigin || fix.arrived || !fix.arrival
+        ? ""
+        : fmtDuration(now, fix.arrival).replace(/ \d{2}M$/, ""),
+    voyageProgress: Number(fix.voyageProgress.toFixed(4)),
+    atOrigin: fix.atOrigin,
+    arrived: fix.arrived,
+    etaEstimated: fix.etaEstimated,
+    transitDaysTotal: fix.transitDaysTotal,
+    daysRemaining: fix.daysRemaining,
+    markerProgress: Number(fix.markerProgress.toFixed(4)),
+    departsOn: fmtShort(fix.plannedDep ?? fix.departure),
+    arrivesOn: fmtShort(fix.arrival),
     agent: String(data.agent ?? "").trim() || "—",
     caseId: String(data.ff_job ?? "").trim() || String(data.booking_no ?? "").trim() || "—",
     etaConf,
