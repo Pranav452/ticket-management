@@ -225,7 +225,7 @@ async function main() {
   let planned = 0;
 
   for (const id of targets) {
-    const meta = await api(token, `https://sheets.googleapis.com/v4/spreadsheets/${id}?fields=properties.title,sheets(properties(sheetId,title,index),protectedRanges(protectedRangeId,description,range,editors))`);
+    const meta = await api(token, `https://sheets.googleapis.com/v4/spreadsheets/${id}?fields=properties.title,sheets(properties(sheetId,title,index),protectedRanges(protectedRangeId,description,range,editors,warningOnly))`);
     console.log(`\n📗 ${meta.properties?.title ?? id}`);
 
     if (mode === "list") {
