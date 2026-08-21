@@ -54,6 +54,7 @@ import { createVersionSnapshot } from "@/lib/bajaj/versions";
 import {
   SHEET_MODULE_MAP, normHeader, buildColMap, buildRecord, deriveStatusName, formatCell,
 } from "@/lib/bajaj/import-map.mjs";
+import { explainSync, type SyncExplanation } from "@/lib/bajaj/sync-explain";
 
 /* Same defaults as the old /api/bajaj/import route. */
 const MODULE_DEFAULT_COUNTRY: Record<string, string> = {
@@ -273,6 +274,12 @@ export interface SheetSyncResult {
   /** app_config key of the version snapshot stored after a real run. */
   versionKey?: string;
   versionError?: string;
+  /**
+   * Plain-language AI briefing on what went wrong and how to fix it
+   * (lib/bajaj/sync-explain.ts). Null when there is nothing worth explaining,
+   * no OpenAI key, or the model call failed — never an error path.
+   */
+  explanation?: SyncExplanation | null;
 }
 
 interface ExistingRow {
@@ -451,7 +458,15 @@ async function syncBookingsForMonth(
   }
 }
 
-export interface SheetSyncOptions { dryRun?: boolean }
+export interface SheetSyncOptions {
+  dryRun?: boolean;
+  /**
+   * Attach the plain-language AI explanation to the result (default true).
+   * Internal reconciliation runs that nobody reads (archiveMissing) pass false
+   * so they don't pay for a briefing that is thrown away.
+   */
+  explain?: boolean;
+}
 
 const EMPTY_TOTALS: SheetSyncTotals = {
   rows: 0, inserted: 0, updated: 0, moved: 0, unchanged: 0, violations: 0, missingFromSheet: 0,
@@ -856,6 +871,17 @@ export async function runSheetSync(actor: string, opts: SheetSyncOptions = {}): 
       } catch (err) {
         console.error("[sheet-sync] snapshot failed", err);
         result.versionError = err instanceof Error ? err.message : "Snapshot failed";
+      }
+    }
+
+    // Plain-language briefing for ops (dry runs included). Strictly optional:
+    // any failure in here is swallowed — it must never fail a sync.
+    if (opts.explain !== false) {
+      try {
+        result.explanation = await explainSync(result);
+      } catch (err) {
+        console.error("[sheet-sync] explanation failed", err);
+        result.explanation = null;
       }
     }
 

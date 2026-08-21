@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import {
   RefreshCw, Eye, CheckCircle, AlertCircle, Loader2, Table2, CloudOff,
-  Archive, ChevronDown, X,
+  Archive, ChevronDown, X, Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -47,10 +47,29 @@ interface UnclaimedRow {
   module: string;
   month: string;
 }
+interface SyncIssue {
+  title: string;
+  what_happened: string;
+  likely_cause: string;
+  how_to_fix: string;
+  who_fixes: "ops team" | "admin";
+  affected: string;
+  severity: "high" | "medium" | "low";
+}
+interface SyncExplanation {
+  headline: string;
+  status: "healthy" | "attention" | "problem";
+  issues: SyncIssue[];
+  all_good: string | null;
+  model?: string;
+  generated_at?: string;
+}
 interface SheetSyncResult {
   ok: boolean;
   dryRun: boolean;
   error?: string;
+  /** Plain-language AI briefing on this run (null when there is nothing to say). */
+  explanation?: SyncExplanation | null;
   /** Flattened per-tab results across all months (tabs carry .month). */
   tabs: TabSyncResult[];
   /** Current (latest active) month's bookings result. */
@@ -209,6 +228,101 @@ function BookingsLine({ bookings, monthLabel }: { bookings: BookingsSyncResult; 
             <span className="text-gray-400 dark:text-white/40">preview — not replaced</span>
           )}
         </p>
+      )}
+    </div>
+  );
+}
+
+/* ── Plain-language AI briefing (above the per-month tables) ─────────────── */
+const STATUS_STYLES: Record<SyncExplanation["status"], { chip: string; label: string; icon: string }> = {
+  healthy: {
+    chip: "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30",
+    label: "All good",
+    icon: "text-emerald-500",
+  },
+  attention: {
+    chip: "bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/30",
+    label: "Needs attention",
+    icon: "text-amber-500",
+  },
+  problem: {
+    chip: "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/30",
+    label: "Problem",
+    icon: "text-red-500",
+  },
+};
+
+const SEVERITY_DOT: Record<SyncIssue["severity"], string> = {
+  high: "bg-red-500",
+  medium: "bg-amber-500",
+  low: "bg-gray-300 dark:bg-white/20",
+};
+
+function ExplanationCard({ ex }: { ex: SyncExplanation }) {
+  const s = STATUS_STYLES[ex.status] ?? STATUS_STYLES.attention;
+  return (
+    <div className="rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#111] overflow-hidden">
+      <div className="flex items-start gap-3 px-4 py-3 border-b border-gray-100 dark:border-white/5">
+        <div className="flex size-8 items-center justify-center rounded-md bg-violet-50 dark:bg-violet-500/10 flex-shrink-0">
+          <Sparkles className={cn("size-4", s.icon)} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full border border-violet-200 dark:border-violet-500/30 bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300">
+              AI
+            </span>
+            <span className={cn("text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full border", s.chip)}>
+              {s.label}
+            </span>
+          </div>
+          <p className="text-[13px] font-semibold text-gray-900 dark:text-white mt-1.5 leading-snug">
+            {ex.headline}
+          </p>
+          <p className="text-[10px] text-gray-400 dark:text-white/35 mt-1">
+            Written automatically from this sync&apos;s results — not a fixed rule. Check the tables below before acting.
+          </p>
+        </div>
+      </div>
+
+      {ex.issues.length > 0 && (
+        <div className="divide-y divide-gray-100 dark:divide-white/5">
+          {ex.issues.map((issue, i) => (
+            <div key={i} className="px-4 py-3 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className={cn("size-1.5 rounded-full flex-shrink-0", SEVERITY_DOT[issue.severity] ?? SEVERITY_DOT.medium)} />
+                <p className="text-[12px] font-semibold text-gray-900 dark:text-white">{issue.title}</p>
+              </div>
+              {issue.what_happened && (
+                <p className="text-[12px] text-gray-600 dark:text-white/60 leading-relaxed">{issue.what_happened}</p>
+              )}
+              {issue.likely_cause && (
+                <p className="text-[11px] text-gray-600 dark:text-white/60">
+                  <span className="font-semibold text-gray-500 dark:text-white/45">Likely cause:</span>{" "}
+                  {issue.likely_cause}
+                </p>
+              )}
+              {issue.how_to_fix && (
+                <p className="text-[11px] text-gray-600 dark:text-white/60">
+                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">Fix:</span>{" "}
+                  {issue.how_to_fix}{" "}
+                  <span className="ml-1 align-middle text-[10px] px-1.5 py-0.5 rounded-full border border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/45">
+                    {issue.who_fixes}
+                  </span>
+                </p>
+              )}
+              {issue.affected && (
+                <p className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-white/35">{issue.affected}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {ex.all_good && (
+        <div className="px-4 py-2.5 border-t border-gray-100 dark:border-white/5 flex items-start gap-2">
+          <CheckCircle className="size-3.5 text-emerald-500 flex-shrink-0 mt-[1px]" />
+          <p className="text-[11px] text-gray-600 dark:text-white/55">{ex.all_good}</p>
+        </div>
       )}
     </div>
   );
@@ -480,6 +594,9 @@ export function SheetSyncPanel({ enabled, missingEnv }: SheetSyncPanelProps) {
               </p>
             )}
           </div>
+
+          {/* Plain-language briefing (silent when there is nothing to explain) */}
+          {result.explanation && <ExplanationCard ex={result.explanation} />}
 
           {/* Per-month sections */}
           {(result.months ?? []).map((m) => (

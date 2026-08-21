@@ -41,7 +41,8 @@ export async function GET(req: NextRequest) {
 
     if (!(await sheetSyncEnabled())) return notConfigured();
 
-    const result = await runSheetSync("cron", { dryRun: false });
+    // Scheduled run: skip the AI briefing — nobody reads the cron response.
+    const result = await runSheetSync("cron", { dryRun: false, explain: false });
     return NextResponse.json(result, { status: result.ok ? 200 : 500 });
   } catch (err) {
     console.error("[GET /api/bajaj/sheet-sync]", err);

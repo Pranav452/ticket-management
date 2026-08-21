@@ -42,7 +42,9 @@ export interface ArchiveMissingResult {
 export async function archiveMissing(actor: string): Promise<ArchiveMissingResult> {
   try {
     // Recompute which rows are missing — dry run, zero board writes.
-    const sync = await runSheetSync(actor, { dryRun: true });
+    // explain:false — this run only feeds the archive logic; nobody reads a
+    // briefing for it.
+    const sync = await runSheetSync(actor, { dryRun: true, explain: false });
     if (!sync.ok) {
       return { ok: false, error: sync.error ?? "Sheet reconciliation failed", archived: 0, workOrders: [], rows: [] };
     }
