@@ -203,7 +203,9 @@ async function main() {
   const val = (f) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : null; };
 
   const mode = has("--apply") ? "apply" : has("--clear") ? "clear"
-    : has("--warn-only") ? "warn" : has("--access-tab") ? "tab" : has("--relax-header") ? "relax" : has("--list") ? "list" : "dry";
+    : has("--warn-only") ? "warn" : has("--access-tab") ? "tab"
+    : has("--audit-headers") ? "audit" : has("--fix-headers") ? "fixhdr"
+    : val("--set-header") ? "sethdr" : has("--lock-headers") ? "lockhdr" : has("--relax-header") ? "relax" : has("--list") ? "list" : "dry";
   const onlyTab = val("--tab") ? normTab(val("--tab")) : null;
   const keepBanner = has("--keep-banner");
   // The header row carries the filter controls everyone uses to sort/filter.
@@ -231,6 +233,99 @@ async function main() {
           const cols = r.startColumnIndex === undefined ? "whole sheet" : `${colLetter(r.startColumnIndex)}:${colLetter((r.endColumnIndex ?? 1) - 1)}`;
           console.log(`  ${sh.properties.title.padEnd(28)} ${cols.padEnd(12)} ${(pr.editors?.users ?? []).length} editor(s)  ${pr.description ?? ""}`);
         }
+      }
+      continue;
+    }
+
+    if (mode === "lockhdr") {
+      // Hard-lock the header row (admins only) and freeze it. Sorting and
+      // filtering keep working: a sort rewrites the DATA rows, not the header,
+      // and the column protections are advisory. Reverse with --relax-header.
+      const requests = [];
+      for (const sh of meta.sheets ?? []) {
+        if (!WORK_ORDER_TABS.includes(normTab(sh.properties.title))) continue;
+        for (const pr of sh.protectedRanges ?? []) {
+          if ((pr.description ?? "") !== `${DESC}: header row`) continue;
+          requests.push({ updateProtectedRange: {
+            protectedRange: {
+              protectedRangeId: pr.protectedRangeId,
+              warningOnly: false,
+              editors: { users: withCreator(ADMINS), domainUsersCanEdit: false },
+            },
+            fields: "warningOnly,editors",
+          } });
+        }
+        requests.push({ updateSheetProperties: {
+          properties: { sheetId: sh.properties.sheetId, gridProperties: { frozenRowCount: 1 } },
+          fields: "gridProperties.frozenRowCount",
+        } });
+      }
+      if (!requests.length) { console.log("  no header protections found — run --apply first"); continue; }
+      await api(token, `https://sheets.googleapis.com/v4/spreadsheets/${id}:batchUpdate`, { method: "POST", body: JSON.stringify({ requests }) });
+      console.log(`  header rows locked to admins + frozen on ${requests.filter((r) => r.updateSheetProperties).length} tab(s)`);
+      continue;
+    }
+
+    if (mode === "sethdr") {
+      // Repair one header cell:  --set-header "Nigeria!AA1=GATE CUT OFF"
+      const spec = val("--set-header");
+      const m = spec.match(/^(.+?)!([A-Z]+\d+)=(.*)$/);
+      if (!m) throw new Error(`--set-header expects "Tab!A1=HEADER TEXT", got: ${spec}`);
+      const [, tab, cell, text] = m;
+      if (!(meta.sheets ?? []).some((sh) => normTab(sh.properties.title) === normTab(tab))) {
+        console.log(`  (no "${tab}" tab here — skipped)`);
+        continue;
+      }
+      const range = `'${tab.replace(/'/g, "''")}'!${cell}`;
+      const before = await api(token, `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(range)}`);
+      const was = before.values?.[0]?.[0] ?? "";
+      await api(token, `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(range)}?valueInputOption=RAW`, {
+        method: "PUT", body: JSON.stringify({ values: [[text]] }),
+      });
+      console.log(`  ✅ ${tab} ${cell}: "${was}" → "${text}"`);
+      continue;
+    }
+
+    if (mode === "audit" || mode === "fixhdr") {
+      // Header integrity: find the real header row even when its WO cell was
+      // overwritten (July's "Sri Lanka parts and frams" had `sea` in A1, which
+      // hid 60 work orders from the sync), and optionally repair it.
+      const fixes = [];
+      for (const sh of meta.sheets ?? []) {
+        const title = sh.properties.title;
+        if (!WORK_ORDER_TABS.includes(normTab(title))) continue;
+        if (onlyTab && normTab(title) !== onlyTab) continue;
+
+        const g = await api(token, `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(`'${title.replace(/'/g, "''")}'!A1:CZ6`)}?majorDimension=ROWS`);
+        const rows = g.values ?? [];
+        // The header row is the one with the most cells matching known field names.
+        let best = -1, bestScore = 0;
+        rows.slice(0, 6).forEach((r, i) => {
+          const sc = (r ?? []).filter((c) => FIELD_POLICY[fieldKey(c)] !== undefined).length;
+          if (sc > bestScore) { bestScore = sc; best = i; }
+        });
+        if (best < 0) { console.log(`  ${title.padEnd(30)} no header-like row found in the first 6 rows`); continue; }
+        const hdr = rows[best] ?? [];
+        const hasWO = hdr.some((c) => fieldKey(c) === "WO");
+        const unknown = [];
+        hdr.forEach((c, i) => { const v = norm(c); if (v && FIELD_POLICY[fieldKey(v)] === undefined) unknown.push(`${colLetter(i)}="${v.slice(0, 24)}"`); });
+
+        console.log(`  ${title.padEnd(30)} header row ${best + 1}  ${bestScore} known fields  WO ${hasWO ? "ok" : "MISSING → A" + (best + 1) + ' is "' + norm(hdr[0]) + '"'}`);
+        if (unknown.length) console.log(`      unrecognised: ${unknown.join(", ")}`);
+
+        // Repair: the WO column is always the first column of these sheets.
+        if (!hasWO) {
+          fixes.push({ range: `'${title.replace(/'/g, "''")}'!A${best + 1}`, values: [["WO"]], title, cell: `A${best + 1}`, was: norm(hdr[0]) });
+        }
+      }
+      if (mode === "fixhdr" && fixes.length) {
+        await api(token, `https://sheets.googleapis.com/v4/spreadsheets/${id}/values:batchUpdate`, {
+          method: "POST",
+          body: JSON.stringify({ valueInputOption: "RAW", data: fixes.map((f) => ({ range: f.range, values: f.values })) }),
+        });
+        for (const f of fixes) console.log(`  ✅ ${f.title}: ${f.cell} "${f.was}" → "WO"`);
+      } else if (fixes.length) {
+        console.log(`  (${fixes.length} header cell(s) would be repaired — re-run with --fix-headers)`);
       }
       continue;
     }
