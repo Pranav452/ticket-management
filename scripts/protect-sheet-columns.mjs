@@ -42,8 +42,9 @@ const P = {
 
 /** Can edit everything, including the header row and the access tab. */
 const ADMINS = [
-  "nakultanna1@gmail.com",   // Nakul Tanna
+  "nakultanna1@gmail.com",     // Nakul Tanna
   "pranavnairop090@gmail.com", // Pranav Nair
+  "yogeshpednekar2326@gmail.com", // Yogesh Pednekar — works across every column
 ];
 
 /**
@@ -205,7 +206,8 @@ async function main() {
   const mode = has("--apply") ? "apply" : has("--clear") ? "clear"
     : has("--warn-only") ? "warn" : has("--access-tab") ? "tab"
     : has("--audit-headers") ? "audit" : has("--fix-headers") ? "fixhdr"
-    : val("--set-header") ? "sethdr" : has("--lock-headers") ? "lockhdr" : has("--relax-header") ? "relax" : has("--list") ? "list" : "dry";
+    : val("--set-header") ? "sethdr" : has("--lock-headers") ? "lockhdr"
+    : has("--clear-filters") ? "clearfilter" : has("--refresh-editors") ? "refresh-editors" : has("--relax-header") ? "relax" : has("--list") ? "list" : "dry";
   const onlyTab = val("--tab") ? normTab(val("--tab")) : null;
   const keepBanner = has("--keep-banner");
   // The header row carries the filter controls everyone uses to sort/filter.
@@ -234,6 +236,51 @@ async function main() {
           console.log(`  ${sh.properties.title.padEnd(28)} ${cols.padEnd(12)} ${(pr.editors?.users ?? []).length} editor(s)  ${pr.description ?? ""}`);
         }
       }
+      continue;
+    }
+
+    if (mode === "refresh-editors") {
+      // Re-apply the current ROLES/ADMINS lists to protections that already exist,
+      // so an added admin (or a staffing change) does not need a full re-apply.
+      const requests = [];
+      let skippedAdvisory = 0;
+      for (const sh of meta.sheets ?? []) {
+        for (const pr of sh.protectedRanges ?? []) {
+          const d = pr.description ?? "";
+          if (!d.startsWith(DESC)) continue;
+          // Advisory ranges have no editor list at all — everyone may edit after
+          // confirming — so there is nothing to refresh on them.
+          if (pr.warningOnly) { skippedAdvisory++; continue; }
+          const role = d.slice(`${DESC}: `.length);
+          const users = role === "header row" ? withCreator(ADMINS) : withCreator([...emailsFor(role), ...ADMINS]);
+          if (users.length <= 1) continue;
+          requests.push({ updateProtectedRange: {
+            protectedRange: { protectedRangeId: pr.protectedRangeId, editors: { users, domainUsersCanEdit: false } },
+            fields: "editors",
+          } });
+        }
+      }
+      if (!requests.length) {
+        console.log(`  nothing to refresh${skippedAdvisory ? ` — ${skippedAdvisory} protection(s) are advisory, so they carry no editor list` : ""}`);
+        continue;
+      }
+      for (let i = 0; i < requests.length; i += 100) {
+        await api(token, `https://sheets.googleapis.com/v4/spreadsheets/${id}:batchUpdate`, { method: "POST", body: JSON.stringify({ requests: requests.slice(i, i + 100) }) });
+      }
+      console.log(`  refreshed editors on ${requests.length} protection(s)`);
+      continue;
+    }
+
+    if (mode === "clearfilter") {
+      // Removes the shared basic filter from the work-order tabs. Anyone can
+      // re-apply one; personal Data > Filter views are the better habit since
+      // they do not change what everyone else sees.
+      const requests = (meta.sheets ?? [])
+        .filter((sh) => WORK_ORDER_TABS.includes(normTab(sh.properties.title)))
+        .map((sh) => ({ clearBasicFilter: { sheetId: sh.properties.sheetId } }));
+      if (!requests.length) { console.log("  no work-order tabs here"); continue; }
+      await api(token, `https://sheets.googleapis.com/v4/spreadsheets/${id}:batchUpdate`, { method: "POST", body: JSON.stringify({ requests }) });
+      console.log(`  cleared the shared filter on ${requests.length} tab(s)`);
       continue;
     }
 
